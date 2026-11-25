@@ -1,7 +1,9 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show OrdinalSortKey;
 
+import 'header_chip_band.dart';
 import 'list_header_accessibility.dart';
 
 /// An applied filter with independent Edit and Reset targets.
@@ -72,8 +74,15 @@ class FilterChipWidget extends StatelessWidget {
         : caption.height.ceil() + 2 * _contourVerticalClearance,
   );
 
-  double requiredHeight(BuildContext context) =>
-      _hitHeight(_measure(context).size);
+  HeaderChipSize measureInBand(BuildContext context, double maxWidth) =>
+      measureBandChip(
+        context,
+        label,
+        maxWidth: maxWidth,
+        insets: onTap == null ? 28 : 32,
+        style: headerChipLabelStyle,
+        split: true,
+      );
 
   FilterChipWidget withHeaderFocus({
     required FocusNode editFocusNode,
@@ -103,6 +112,16 @@ class FilterChipWidget extends StatelessWidget {
     final palette = HeaderPalette.of(context);
     final available = enabled && ListHeaderFilterScope.enabledOf(context);
     final ink = palette.appliedInkFor(available);
+    final size = HeaderChipSizeScope.maybeOf(context);
+    if (size != null) {
+      return _buildInBand(
+        size,
+        palette,
+        available,
+        ink,
+        FocusTraversalOrder.maybeOf(context),
+      );
+    }
     final caption = _measure(context).size;
     final pillHeight = _paintHeight(caption);
     final hitHeight = _hitHeight(caption);
@@ -142,11 +161,6 @@ class FilterChipWidget extends StatelessWidget {
         ),
       ),
     );
-
-    void reset() {
-      onResetInvoked?.call();
-      onDeleted();
-    }
 
     return Stack(
       alignment: AlignmentDirectional.centerStart,
@@ -195,5 +209,119 @@ class FilterChipWidget extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  void reset() {
+    onResetInvoked?.call();
+    onDeleted();
+  }
+
+  Widget _buildInBand(
+    HeaderChipSize size,
+    HeaderPalette palette,
+    bool available,
+    Color ink,
+    FocusOrder? order,
+  ) {
+    final stacked = size.stackedReset;
+    final targetHeight = stacked ? size.height / 2 : size.height;
+    final editWidth = stacked ? size.width : size.width - headerChipResetWidth;
+    final editable = onTap != null;
+
+    final caption = Row(
+      children: [
+        Icon(icon, size: 16, color: ink),
+        const SizedBox(width: 4),
+        Expanded(
+          child: HeaderBandCaption(
+            label,
+            size: size,
+            style: headerChipLabelStyle,
+            color: ink,
+          ),
+        ),
+      ],
+    );
+
+    final body = editable
+        ? HeaderChipButton(
+            label: editSemanticLabel ?? 'Edit $label',
+            value: 'Applied filter',
+            onPressed: available ? onTap : null,
+            paint: HeaderChipPaint.split,
+            tooltip: label,
+            tooltipOnFocus: true,
+            focusNode: editFocusNode,
+            width: editWidth,
+            height: targetHeight,
+            padding: const EdgeInsetsDirectional.only(start: 8, end: 4),
+            child: caption,
+          )
+        : SizedBox(
+            width: editWidth,
+            height: targetHeight,
+            child: HeaderCaptionTooltip(
+              message: label,
+              child: Semantics(
+                label: label,
+                value: 'Applied filter',
+                excludeSemantics: true,
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.only(start: 8),
+                  child: caption,
+                ),
+              ),
+            ),
+          );
+    final close = HeaderChipButton(
+      label: resetSemanticLabel ?? 'Reset $label',
+      tooltip: editable ? null : label,
+      tooltipOnFocus: !editable,
+      onPressed: available ? reset : null,
+      paint: HeaderChipPaint.split,
+      focusNode: resetFocusNode,
+      semanticDismiss: dismissesChip ? reset : null,
+      width: stacked ? size.width : headerChipResetWidth,
+      height: targetHeight,
+      child: Icon(Icons.close, size: 15, color: ink),
+    );
+    final editSegment = Semantics(
+      container: true,
+      sortKey: const OrdinalSortKey(0),
+      child: body,
+    );
+    final resetSegment = Semantics(
+      container: true,
+      sortKey: const OrdinalSortKey(1),
+      child: order is NumericFocusOrder
+          ? FocusTraversalOrder(
+              order: NumericFocusOrder(order.order + 1),
+              child: close,
+            )
+          : close,
+    );
+
+    Widget pill(Widget child) => Stack(
+      alignment: Alignment.center,
+      children: [
+        Positioned(
+          left: 0,
+          right: 0,
+          height: size.paintHeight,
+          child: IgnorePointer(
+            child: HeaderPill(
+              fill: palette.appliedFillFor(available),
+              perimeter: palette.appliedPerimeterFor(available),
+              disabled: !available,
+            ),
+          ),
+        ),
+        child,
+      ],
+    );
+
+    return stacked
+        ? Column(children: [pill(editSegment), pill(resetSegment)])
+        : pill(Row(children: [editSegment, resetSegment]));
   }
 }

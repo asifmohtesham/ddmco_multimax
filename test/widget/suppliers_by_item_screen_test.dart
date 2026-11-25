@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'dart:ui' show CheckedState, SemanticsAction, Tristate;
+import 'dart:ui'
+    show CheckedState, PointerDeviceKind, SemanticsAction, Tristate;
 
 // Keep the shared Flutter Material API until the app migrates to material_ui.
 // ignore: deprecated_member_use
@@ -26,6 +27,7 @@ import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/count_badge.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/header_chip_band.dart';
 import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
 import 'package:multimax/app/modules/theme/theme_controller.dart';
 import 'package:multimax/app/modules/item/form/item_form_controller.dart';
@@ -601,6 +603,11 @@ void main() {
   }
 
   final viewButton = find.byKey(const ValueKey('suppliers-by-item-view'));
+  final chipBand = find.byKey(const ValueKey('list-header-chip-band'));
+  final viewAction = find.descendant(
+    of: viewButton,
+    matching: find.byType(TextButton),
+  );
 
   Future<void> openView(WidgetTester tester) async {
     if (viewButton.hitTestable().evaluate().isEmpty) {
@@ -653,8 +660,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-      tester.widget<ActionChip>(viewButton).visualDensity,
-      VisualDensity.compact,
+      tester.widget<HeaderQuickChip>(viewButton).role,
+      HeaderQuickRole.command,
     );
 
     void expectChecked<T extends Enum>(T value, bool expected) {
@@ -689,7 +696,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      tester.getSemantics(viewButton).getSemanticsData().value,
+      tester.getSemantics(viewAction).getSemanticsData().value,
       'Supplier, Last Purchase Date, Oldest first',
     );
     expect(find.byTooltip('Fields').hitTestable(), findsOneWidget);
@@ -703,7 +710,7 @@ void main() {
   });
 
   testWidgets(
-    'View shows the saved order in the scrolling chip row at 320 dp and 2x',
+    'View shows the saved order in the wrapped chip band at 320 dp and 2x',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(320, 780);
@@ -737,15 +744,13 @@ void main() {
         tester.renderObject<RenderParagraph>(caption).didExceedMaxLines,
         isFalse,
       );
-      final chipRow = find
-          .ancestor(
-            of: viewButton,
-            matching: find.byType(SingleChildScrollView),
-          )
-          .first;
       expect(
-        tester.widget<SingleChildScrollView>(chipRow).scrollDirection,
-        Axis.horizontal,
+        find.descendant(of: chipBand, matching: find.byType(Scrollable)),
+        findsNothing,
+      );
+      expect(
+        tester.getRect(viewButton).right,
+        lessThan(tester.getRect(chipBand).right),
       );
       expect(find.byTooltip('Fields').hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -803,16 +808,18 @@ void main() {
     final edge = pairOccurrence('supplier:KIT:EDGE');
     final lockal = pairOccurrence('supplier:KIT:LOCKAL');
     final frame = pairOccurrence('supplier:FRAME:EDGE');
-    expect(within(edge, 'Last Purchase Date 1 Oct 25'), findsOneWidget);
-    expect(within(edge, 'Open Order Qty 4 Nos'), findsOneWidget);
-    expect(within(frame, 'KIT › BOM-KIT-001 › FRAME'), findsOneWidget);
-    expect(within(rowWith('EDGE'), 'Items 1'), findsOneWidget);
-    expect(within(rowWith('EDGE'), 'BOM components 1'), findsOneWidget);
-
     final scroll = reportScroll(tester);
     final scrollable = find.byWidgetPredicate(
       (widget) => widget is Scrollable && widget.controller == scroll,
     );
+    expect(within(edge, 'Last Purchase Date 1 Oct 25'), findsOneWidget);
+    expect(within(edge, 'Open Order Qty 4 Nos'), findsOneWidget);
+    expect(within(rowWith('EDGE'), 'Items 1'), findsOneWidget);
+    expect(within(rowWith('EDGE'), 'BOM components 1'), findsOneWidget);
+    await tester.scrollUntilVisible(frame, 160, scrollable: scrollable);
+    await tester.pumpAndSettle();
+    expect(within(frame, 'KIT › BOM-KIT-001 › FRAME'), findsOneWidget);
+
     await tester.scrollUntilVisible(lockal, 160, scrollable: scrollable);
     expect(within(lockal, 'Last Purchase Date 10 Nov 26'), findsOneWidget);
     expect(within(lockal, 'Open Order Qty'), findsNothing);
@@ -829,6 +836,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Items 1'), findsNothing);
     expect(find.text('BOM components 1'), findsNothing);
+    await tester.scrollUntilVisible(frame, 160, scrollable: scrollable);
+    await tester.pumpAndSettle();
     expect(within(frame, 'KIT › BOM-KIT-001 › FRAME'), findsOneWidget);
     expect(within(frame, 'Component FRAME for KIT'), findsOneWidget);
 
@@ -879,12 +888,13 @@ void main() {
       await tester.tap(within(rowWith('LOCKAL'), 'LOCKAL'));
       await tester.pumpAndSettle();
       final lockal = pairOccurrence('supplier:KIT:LOCKAL');
-      await tester.tap(
-        find.descendant(
-          of: lockal,
-          matching: find.widgetWithText(TextButton, 'Show supplier details'),
-        ),
+      final details = find.descendant(
+        of: lockal,
+        matching: find.widgetWithText(TextButton, 'Show supplier details'),
       );
+      await tester.ensureVisible(details);
+      await tester.pumpAndSettle();
+      await tester.tap(details);
       await tester.pumpAndSettle();
       expect(within(lockal, 'Purchase Order'), findsOneWidget);
 
@@ -1219,9 +1229,9 @@ void main() {
     },
   );
 
-  void loadStickySupplierRows() {
+  void loadStickySupplierRows({int count = 16}) {
     api.load = () async => SuppliersByItemNode.parseRows([
-      for (var index = 0; index < 16; index++) ...[
+      for (var index = 0; index < count; index++) ...[
         {
           'node_id': 'item:STICKY-$index',
           'balance_qty': 16 - index,
@@ -1243,6 +1253,113 @@ void main() {
     );
     return find.byKey(ValueKey<SuppliersByItemRowKey>(group.key));
   }
+
+  testWidgets('supplier heading pins when the toolbar scrolls offscreen', (
+    tester,
+  ) async {
+    loadStickySupplierRows(count: 80);
+    await openReport(
+      tester,
+      size: const Size(320, 600),
+      filters: const SuppliersByItemFilters(
+        warehouses: ['Stock'],
+        suppliers: ['SUP'],
+        includeDrafts: false,
+        expandBom: true,
+      ),
+      fontFamily: reportFont,
+    );
+    final controller = currentReport();
+    await controller.setGroup(SuppliersByItemGroup.supplier);
+    controller.expandAll();
+    await tester.pumpAndSettle();
+    reportScroll(tester).jumpTo(1800);
+    await tester.pumpAndSettle();
+    await tester.binding.setSurfaceSize(const Size(320, 210));
+    await tester.pumpAndSettle();
+
+    final viewport = tester.renderObject<RenderViewport>(find.byType(Viewport));
+    final header = tester.widget<DocTypeListHeader>(
+      find.byType(DocTypeListHeader, skipOffstage: false),
+    );
+    final search = viewport.childAfter(viewport.firstChild!)!;
+    final supplier = viewport.childAfter(search)!;
+    expect(
+      DocTypeListHeader.extentInViewport(header.sliverKey!, viewport),
+      lessThan(0),
+    );
+    expect(search.geometry!.maxScrollObstructionExtent, 0);
+    expect(supplier.geometry!.paintExtent, 48);
+    expect(find.text('Sticky Supplier').hitTestable(), findsOneWidget);
+  });
+
+  testWidgets(
+    'wrapped header reflows around pinned search and supplier heading',
+    (tester) async {
+      tester.platformDispatcher.textScaleFactorTestValue = 1;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      loadStickySupplierRows();
+      await openReport(
+        tester,
+        size: const Size(411, 850),
+        filters: const SuppliersByItemFilters(includeDrafts: false),
+        fontFamily: reportFont,
+      );
+      await tester.pumpAndSettle();
+      final controller = currentReport();
+      await controller.setGroup(SuppliersByItemGroup.supplier);
+      controller.expandAll();
+      await tester.pumpAndSettle();
+      final scroll = reportScroll(tester);
+      scroll.jumpTo(550);
+      await tester.pumpAndSettle();
+      final sliverKey = tester
+          .widget<DocTypeListHeader>(find.byType(DocTypeListHeader))
+          .sliverKey!;
+      final search = find.byType(TextField);
+      final heading = find.text('Sticky Supplier').hitTestable();
+      final before = tester.getSize(chipBand).height;
+      final revision = controller.filterRevision.value;
+
+      void checkEdges() {
+        final viewport = tester.renderObject<RenderViewport>(
+          find.byType(Viewport),
+        );
+        final edge = DocTypeListHeader.extentInViewport(sliverKey, viewport)!;
+        expect(tester.getRect(chipBand).bottom, closeTo(edge, .5));
+        expect(tester.getTopLeft(search).dy, greaterThanOrEqualTo(edge - .5));
+        expect(
+          tester.getTopLeft(heading).dy,
+          greaterThanOrEqualTo(tester.getBottomLeft(search).dy),
+        );
+        expect(
+          pinnedBottom(tester),
+          greaterThan(pinnedBottom(tester, includesSupplier: false)),
+        );
+        expect(
+          find.byType(SuppliersByItemDisplayTile).hitTestable(),
+          findsWidgets,
+        );
+        expect(viewAction.hitTestable(), findsOneWidget);
+      }
+
+      checkEdges();
+      await tester.binding.setSurfaceSize(const Size(320, 1250));
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      await tester.pump();
+      expect(tester.getSize(chipBand).height, greaterThan(before));
+      await tester.pumpAndSettle();
+      checkEdges();
+      expect(controller.filterRevision.value, revision);
+      expect(scroll.offset, 550);
+
+      await controller.run(filters: const SuppliersByItemFilters());
+      await tester.pumpAndSettle();
+      expect(scroll.offset, 0);
+      expect(controller.filterRevision.value, greaterThan(revision));
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('a child at the header boundary keeps its supplier heading', (
     tester,
@@ -1283,9 +1400,12 @@ void main() {
       controller.expandAll();
       await tester.pumpAndSettle();
       final scroll = reportScroll(tester);
+      final group = stickySupplierGroup();
+      // Find the in-flow heading with enough space for the expanded band.
+      await tester.binding.setSurfaceSize(const Size(390, 460));
+      await tester.pumpAndSettle();
       scroll.jumpTo(200);
       await tester.pumpAndSettle();
-      final group = stickySupplierGroup();
       final base = pinnedBottom(tester, includesSupplier: false);
       scroll.jumpTo(scroll.offset + tester.getTopLeft(group).dy - base + 2);
       await tester.pumpAndSettle();
@@ -1758,6 +1878,114 @@ void main() {
     await loader.load();
   });
 
+  for (final scale in [.85, 1.0, 1.3]) {
+    testWidgets(
+      'full draft caption and View are visible at 411 dp and ${scale}x',
+      (tester) async {
+        const size = Size(411, 900);
+        tester.view.devicePixelRatio = 2.625;
+        tester.view.physicalSize = size * 2.625;
+        addTearDown(tester.view.reset);
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        final database = _useFieldPreferences('buyer');
+        loadAnchorRows((index) => 'Item $index');
+        await openReport(
+          tester,
+          size: size,
+          filters: const SuppliersByItemFilters(includeDrafts: false),
+          fontFamily: reportFont,
+        );
+        await tester.pumpAndSettle();
+        final sliver = find.byKey(
+          tester
+              .widget<DocTypeListHeader>(find.byType(DocTypeListHeader))
+              .sliverKey!,
+        );
+        final config = tester.widget<SliverPersistentHeader>(sliver);
+        if (scale == 1) {
+          expect(tester.getSize(chipBand).height, 100);
+          expect(config.delegate.maxExtent, 252);
+        }
+        final draft = find.text('Include Draft Purchase Orders: Off');
+        final add = find.byType(AddFilterChip);
+        final scroll = reportScroll(tester);
+
+        void expectVisible() {
+          final band = tester.getRect(chipBand);
+          for (final control in [draft, add, viewAction]) {
+            expect(control.hitTestable(), findsOneWidget);
+            final bounds = tester.getRect(control);
+            expect(bounds.left, greaterThanOrEqualTo(band.left + 12 - .01));
+            expect(bounds.right, lessThanOrEqualTo(band.right - 12 + .01));
+            expect(band.inflate(.01).contains(bounds.bottomRight), isTrue);
+          }
+          expect(
+            tester.renderObject<RenderParagraph>(draft).didExceedMaxLines,
+            isFalse,
+          );
+          expect(
+            find.descendant(of: chipBand, matching: find.byType(Scrollable)),
+            findsNothing,
+          );
+          expect(
+            tester.getSemantics(viewAction).rect.size,
+            tester.getSize(viewAction),
+          );
+        }
+
+        for (final offset in [0.0, 40.0, 140.0]) {
+          scroll.jumpTo(offset);
+          await tester.pump();
+          expectVisible();
+        }
+        final beforeSave = tester.getRect(viewAction);
+        database.onSave = () async => throw StateError('disk unavailable');
+        final controller = currentReport();
+        await controller.setSortDirection(SuppliersByItemSortDirection.asc);
+        await tester.pumpAndSettle();
+
+        final pending = Completer<void>();
+        database.onSave = () => pending.future;
+        final afterDirection = tester.getRect(viewAction);
+        final retry = controller.retryView();
+        await tester.pump();
+        expectVisible();
+        expect(tester.getRect(viewAction), afterDirection);
+        expect(tester.getRect(viewAction).size, beforeSave.size);
+        expect(
+          find.descendant(
+            of: viewButton,
+            matching: find.byType(CircularProgressIndicator),
+          ),
+          findsOneWidget,
+        );
+        final announcements = tester.semantics
+            .simulatedAccessibilityTraversal()
+            .where((node) => node.getSemanticsData().label == 'Saving View');
+        expect(announcements, hasLength(1));
+        expect(
+          announcements.single.getSemanticsData().flagsCollection.isLiveRegion,
+          isTrue,
+        );
+        pending.complete();
+        await retry;
+        await tester.pumpAndSettle();
+        expect(tester.getRect(viewAction), afterDirection);
+        expect(
+          find.descendant(
+            of: viewButton,
+            matching: find.byType(CircularProgressIndicator),
+          ),
+          findsNothing,
+        );
+        expectVisible();
+        expect(api.requests, hasLength(1));
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('View chip fits at rest with Variant Of ALS at 411 dp', (
     tester,
   ) async {
@@ -1785,9 +2013,7 @@ void main() {
       ),
       isA<RenderSliverPersistentHeader>(),
     );
-    final chipRow = find
-        .ancestor(of: viewButton, matching: find.byType(SingleChildScrollView))
-        .first;
+    final chipRow = chipBand;
     expect(find.byType(FilterChipWidget), findsOneWidget);
     expect(find.text('Variant Of: ALS').hitTestable(), findsOneWidget);
     expect(find.byType(AddFilterChip).hitTestable(), findsOneWidget);
@@ -1798,12 +2024,12 @@ void main() {
     expect(viewButton.hitTestable(), findsOneWidget);
     expect(within(viewButton, 'Balance Qty ↓').hitTestable(), findsOneWidget);
     expect(
-      tester.getSemantics(viewButton).getSemanticsData().value,
+      tester.getSemantics(viewAction).getSemanticsData().value,
       'Item, Balance Qty, High to low',
     );
 
     final viewBounds = tester.getRect(viewButton);
-    final viewSemantics = tester.getSemantics(viewButton).rect;
+    final viewSemantics = tester.getSemantics(viewAction).rect;
     for (final size in [viewBounds.size, viewSemantics.size]) {
       expect(size.width, greaterThanOrEqualTo(48));
       expect(size.height, greaterThanOrEqualTo(48));
@@ -1813,99 +2039,121 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.widgetWithText(TextButton, 'Done'), findsOneWidget);
       await doneWithView(tester);
-      expect(tester.widget<ActionChip>(viewButton).focusNode!.hasFocus, isTrue);
+      expect(
+        tester.widget<HeaderQuickChip>(viewButton).focusNode!.hasFocus,
+        isTrue,
+      );
     }
   });
 
-  testWidgets('standard filter row scrolls at 411 dp and hides while busy', (
+  testWidgets('View shows its tooltip when the full sort caption is visible', (
     tester,
   ) async {
-    tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(411, 780);
-    addTearDown(tester.view.reset);
-    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
-    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     await openReport(
       tester,
-      filters: const SuppliersByItemFilters(
-        items: ['ITEM-WITH-A-LONG-CODE-4217845'],
-      ),
       size: const Size(411, 780),
       fontFamily: reportFont,
     );
-    await currentReport().setGroup(SuppliersByItemGroup.supplier);
     await tester.pumpAndSettle();
+    final viewText = within(viewButton, 'Balance Qty ↓');
+    final tooltip = find.text('View', findRichText: true);
+    expect(viewText.hitTestable(), findsOneWidget);
+    expect(tooltip, findsNothing);
 
-    final header = find.byType(DocTypeListHeader);
-    final addFilter = find.descendant(
-      of: header,
-      matching: find.byType(AddFilterChip),
-    );
-    expect(within(addFilter, 'Filter'), findsOneWidget);
-    expect(
-      find.descendant(of: addFilter, matching: find.byIcon(Icons.add)),
-      findsOneWidget,
-    );
-    final chipRow = find
-        .ancestor(of: addFilter, matching: find.byType(SingleChildScrollView))
-        .first;
-    await tester.ensureVisible(addFilter);
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: const Offset(1, 1));
+    addTearDown(mouse.removePointer);
+    await mouse.moveTo(tester.getCenter(viewButton));
+    await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
-    final filterBounds = tester.getRect(addFilter);
-    final chipRowBounds = tester.getRect(chipRow);
-    expect(filterBounds.left, greaterThanOrEqualTo(chipRowBounds.left));
-    expect(filterBounds.right, lessThanOrEqualTo(chipRowBounds.right));
-    expect(addFilter.hitTestable(), findsOneWidget);
-    final viewChip = find.descendant(of: chipRow, matching: viewButton);
-    expect(within(viewChip, 'Supplier · Balance Qty ↓'), findsOneWidget);
-    expect(
-      tester.widget<ActionChip>(viewChip).visualDensity,
-      VisualDensity.compact,
-    );
-    expect(
-      find.widgetWithIcon(IconButton, Icons.view_agenda_outlined),
-      findsOneWidget,
-    );
-
-    final toolbarFilter = find.widgetWithIcon(IconButton, Icons.filter_alt);
-    final activeChip = find.widgetWithText(
-      FilterChipWidget,
-      'Items: ITEM-WITH-A-LONG-CODE-4217845',
-    );
-    expect(tester.widget<FilterChipWidget>(activeChip).maxLabelWidth, isNull);
-    final badge = find.byType(CountBadge);
-    expect(tester.widget<CountBadge>(badge).count, 1);
-    expect(tester.widget<CountBadge>(badge).muted, isFalse);
-    expect(
-      tester.widget<IconButton>(toolbarFilter).tooltip,
-      'Filters, 1 active',
-    );
-    expect(tester.widget<IconButton>(toolbarFilter).onPressed, isNotNull);
-    expect(tester.widget<AddFilterChip>(addFilter).onTap, isNotNull);
-
-    final pending = Completer<List<SuppliersByItemNode>>();
-    api.load = () => pending.future;
-    await tester.tap(find.byTooltip('Refresh report'));
-    await tester.pump();
-    expect(toolbarFilter, findsNothing);
-    expect(badge, findsNothing);
-    expect(activeChip, findsNothing);
-    expect(addFilter, findsNothing);
-    expect(viewButton.hitTestable(), findsOneWidget);
-
-    pending.complete([]);
-    await tester.pumpAndSettle();
-    expect(tester.widget<IconButton>(toolbarFilter).onPressed, isNotNull);
-    expect(activeChip, findsOneWidget);
-    await tester.ensureVisible(addFilter);
-    await tester.pumpAndSettle();
-    await tester.tap(addFilter);
-    await tester.pumpAndSettle();
-    expect(find.text('Run Report'), findsOneWidget);
+    expect(tooltip, findsOneWidget);
   });
 
+  testWidgets(
+    'standard filter band wraps at 411 dp and hides filters while busy',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(411, 780);
+      addTearDown(tester.view.reset);
+      tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await openReport(
+        tester,
+        filters: const SuppliersByItemFilters(
+          items: ['ITEM-WITH-A-LONG-CODE-4217845'],
+        ),
+        size: const Size(411, 780),
+        fontFamily: reportFont,
+      );
+      await currentReport().setGroup(SuppliersByItemGroup.supplier);
+      await tester.pumpAndSettle();
+
+      final header = find.byType(DocTypeListHeader);
+      final addFilter = find.descendant(
+        of: header,
+        matching: find.byType(AddFilterChip),
+      );
+      expect(within(addFilter, 'Filter'), findsOneWidget);
+      expect(
+        find.descendant(of: addFilter, matching: find.byIcon(Icons.add)),
+        findsOneWidget,
+      );
+      final chipRow = chipBand;
+      await tester.ensureVisible(addFilter);
+      await tester.pumpAndSettle();
+      final filterBounds = tester.getRect(addFilter);
+      final chipRowBounds = tester.getRect(chipRow);
+      expect(filterBounds.left, greaterThanOrEqualTo(chipRowBounds.left));
+      expect(filterBounds.right, lessThanOrEqualTo(chipRowBounds.right));
+      expect(addFilter.hitTestable(), findsOneWidget);
+      final viewChip = find.descendant(of: chipRow, matching: viewButton);
+      expect(within(viewChip, 'Supplier · Balance Qty ↓'), findsOneWidget);
+      expect(viewChip.hitTestable(), findsOneWidget);
+      expect(
+        find.widgetWithIcon(IconButton, Icons.view_agenda_outlined),
+        findsOneWidget,
+      );
+
+      final toolbarFilter = find.widgetWithIcon(IconButton, Icons.filter_alt);
+      final activeChip = find.widgetWithText(
+        FilterChipWidget,
+        'Items: ITEM-WITH-A-LONG-CODE-4217845',
+      );
+      expect(tester.widget<FilterChipWidget>(activeChip).maxLabelWidth, isNull);
+      final badge = find.byType(CountBadge);
+      expect(tester.widget<CountBadge>(badge).count, 1);
+      expect(tester.widget<CountBadge>(badge).muted, isFalse);
+      expect(
+        tester.widget<IconButton>(toolbarFilter).tooltip,
+        'Filters, 1 active',
+      );
+      expect(tester.widget<IconButton>(toolbarFilter).onPressed, isNotNull);
+      expect(tester.widget<AddFilterChip>(addFilter).onTap, isNotNull);
+
+      final pending = Completer<List<SuppliersByItemNode>>();
+      api.load = () => pending.future;
+      await tester.tap(find.byTooltip('Refresh report'));
+      await tester.pump();
+      expect(toolbarFilter, findsNothing);
+      expect(badge, findsNothing);
+      expect(activeChip, findsNothing);
+      expect(addFilter, findsNothing);
+      expect(viewButton.hitTestable(), findsOneWidget);
+
+      pending.complete([]);
+      await tester.pumpAndSettle();
+      expect(tester.widget<IconButton>(toolbarFilter).onPressed, isNotNull);
+      expect(activeChip, findsOneWidget);
+      await tester.ensureVisible(addFilter);
+      await tester.pumpAndSettle();
+      await tester.tap(addFilter);
+      await tester.pumpAndSettle();
+      expect(find.text('Run Report'), findsOneWidget);
+    },
+  );
+
   for (final width in [320.0, 411.0]) {
-    testWidgets('check filter values stay visible when scrolled at $width dp', (
+    testWidgets('full filter captions are visible at rest at $width dp', (
       tester,
     ) async {
       tester.view.devicePixelRatio = 1;
@@ -1928,8 +2176,6 @@ void main() {
         final caption = find.text(label);
         final chip = find.widgetWithText(FilterChipWidget, label);
         expect(tester.widget<FilterChipWidget>(chip).maxLabelWidth, isNull);
-        await tester.ensureVisible(caption);
-        await tester.pumpAndSettle();
         expect(caption.hitTestable(), findsOneWidget);
         final bounds = tester.getRect(caption);
         expect(bounds.left, greaterThanOrEqualTo(0));
@@ -1943,7 +2189,7 @@ void main() {
       await tester.ensureVisible(addFilter);
       await tester.pumpAndSettle();
       expect(addFilter.hitTestable(), findsOneWidget);
-      expect(tester.widget<ActionChip>(viewButton).padding, isNull);
+      expect(viewButton.hitTestable(), findsOneWidget);
     });
   }
 
@@ -3192,7 +3438,7 @@ void main() {
         of: chip,
         matching: find.byIcon(Icons.close),
       );
-      expect(tester.widget<Text>(edit).overflow, isNull);
+      expect(tester.widget<Text>(edit).overflow, TextOverflow.visible);
       await Scrollable.ensureVisible(tester.element(edit), alignment: 0.5);
       await tester.pumpAndSettle();
       expect(edit.hitTestable(), findsOneWidget);
@@ -4062,15 +4308,20 @@ void main() {
       find.text('Not used in manufacturing'),
     );
     expect(manufacturingNote.style?.color, AppScheme.dark.textMuted);
+    await tester.ensureVisible(componentTile);
+    await tester.pumpAndSettle();
     await tester.tap(componentTile);
     await tester.pumpAndSettle();
-    expect(
-      find.descendant(
-        of: reportRow(missing),
-        matching: find.text('No supplier recorded'),
+    final missingRow = reportRow(missing);
+    await tester.scrollUntilVisible(
+      missingRow,
+      120,
+      scrollable: find.byWidgetPredicate(
+        (widget) =>
+            widget is Scrollable && widget.controller == reportScroll(tester),
       ),
-      findsOneWidget,
     );
+    expect(within(missingRow, 'No supplier recorded'), findsOneWidget);
 
     final fields = currentReport();
     await fields.setFieldVisible(SuppliersByItemField.componentBalance, false);
@@ -4099,6 +4350,8 @@ void main() {
     );
     expect(within(supplier, 'Item Vendor'), findsOneWidget);
 
+    await tester.ensureVisible(title);
+    await tester.pumpAndSettle();
     await tester.tap(title);
     await tester.pumpAndSettle();
     expect(reportRow(component), findsNothing);

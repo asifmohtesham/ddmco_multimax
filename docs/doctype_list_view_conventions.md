@@ -63,12 +63,13 @@ Active filters and the current search query are rendered as `FilterChipWidget`s
 via the header's `filterChipsBuilder`. Surface the search query as its own chip
 where the screen supports free-text search.
 
-The chip row also renders a persistent **`AddFilterChip`** (`+ Filter`) at its
-trailing end whenever the header is given an `onFilterTap` — opening the same
-filter sheet as the toolbar funnel. Because the 48dp chip-row band is always
-reserved, the row is never an empty gap: with no filter active it shows just the
-`+ Filter` chip. `DocTypeListHeader` adds this automatically; screens don't wire
-it up beyond passing `onFilterTap`.
+The chip band starts with **`AddFilterChip`** (`+ Filter`) whenever the header
+receives an `onFilterTap`. It opens the same sheet as the toolbar funnel.
+Applied chips, quick actions and the optional bulk reset follow in that order.
+Controls wrap onto additional rows with at least 48 dp per target. Applied
+chips display the caption supplied by the caller. By default, long captions
+wrap within their target. The header measures the band before laying out the
+sliver and omits it when there are no controls.
 
 ---
 

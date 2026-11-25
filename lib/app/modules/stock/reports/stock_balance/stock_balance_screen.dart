@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
@@ -9,6 +10,7 @@ import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/item_image.dart';
 import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
+import 'package:multimax/app/modules/global_widgets/list_header_accessibility.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
 import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_anchor.dart';
@@ -93,6 +95,9 @@ class StockBalanceScreen extends GetView<StockBalanceController> {
         final visible = hasData
             ? controller.visibleRows
             : const <Map<String, dynamic>>[];
+        final warehouses = hasData
+            ? controller.distinctWarehouses
+            : const <String>[];
         final dimensions = stockBalanceDimensionKeys(controller.reportColumns);
         final occurrenceIds = stockBalanceOccurrenceIds(
           visible,
@@ -153,9 +158,9 @@ class StockBalanceScreen extends GetView<StockBalanceController> {
                         children: [
                           // Single-tap warehouse facet — only worth showing when
                           // the result set spans more than one warehouse.
-                          if (controller.distinctWarehouses.length > 1) ...[
+                          if (warehouses.length > 1) ...[
                             _WarehouseChips(
-                              warehouses: controller.distinctWarehouses,
+                              warehouses: warehouses,
                               selected: controller.quickWarehouse.value,
                               onSelected: controller.setQuickWarehouse,
                             ),
@@ -508,7 +513,7 @@ class _SegmentedStateFilter extends StatelessWidget {
 // distinct warehouse, in a horizontal scroller so long warehouse names never
 // wrap or crowd the row. Tapping a chip sets the warehouse quick filter; tapping
 // the already-selected chip is a harmless re-select.
-class _WarehouseChips extends StatelessWidget {
+class _WarehouseChips extends StatefulWidget {
   final List<String> warehouses;
   final String selected;
   final ValueChanged<String> onSelected;
@@ -520,24 +525,58 @@ class _WarehouseChips extends StatelessWidget {
   });
 
   @override
+  State<_WarehouseChips> createState() => _WarehouseChipsState();
+}
+
+class _WarehouseChipsState extends State<_WarehouseChips> {
+  double? _height;
+
+  @override
+  void initState() {
+    super.initState();
+    PaintingBinding.instance.systemFonts.addListener(_fontsChanged);
+  }
+
+  void _fontsChanged() => setState(() => _height = null);
+
+  @override
+  void dispose() {
+    PaintingBinding.instance.systemFonts.removeListener(_fontsChanged);
+    super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Measuring subscribes to the inherited text style, scaler and locale.
+    _height = null;
+  }
+
+  @override
+  void didUpdateWidget(covariant _WarehouseChips oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!listEquals(oldWidget.warehouses, widget.warehouses)) _height = null;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final items = <String>['ALL', ...warehouses];
+    final warehouses = widget.warehouses;
     return SizedBox(
-      height: 36,
+      height: _height ??= choiceTargetHeight(context, ['All', ...warehouses]),
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: EdgeInsets.zero,
-        itemCount: items.length,
+        padding: const EdgeInsetsDirectional.symmetric(horizontal: 4),
+        itemCount: warehouses.length + 1,
         separatorBuilder: (_, __) => const SizedBox(width: 6),
         itemBuilder: (context, i) {
-          final w = items[i];
+          final w = i == 0 ? 'ALL' : warehouses[i - 1];
           final isAll = w == 'ALL';
           return Align(
             alignment: Alignment.center,
             child: SelectableFilterChip(
               label: isAll ? 'All' : w,
-              selected: isAll ? selected == 'ALL' : selected == w,
-              onSelected: (_) => onSelected(w),
+              selected: widget.selected == w,
+              onSelected: (_) => widget.onSelected(w),
             ),
           );
         },

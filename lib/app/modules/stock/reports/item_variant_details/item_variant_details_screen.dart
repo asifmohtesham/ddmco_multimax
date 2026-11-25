@@ -6,6 +6,7 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/header_chip_band.dart';
 import 'package:multimax/app/modules/global_widgets/item_image.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
@@ -76,6 +77,7 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
     return [
       for (final entry in controller.activeFilters.entries)
         FilterChipWidget(
+          key: ValueKey(entry.key),
           icon: Icons.filter_alt_outlined,
           label: entry.value,
           onDeleted: () => controller.clearFilter(entry.key),
@@ -110,6 +112,11 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
         final data = controller.results.value;
         final query = controller.query.value;
         final stock = controller.inStock.value;
+        final stockCaption = switch (controller.warehouseCount) {
+          0 => 'In stock',
+          1 => 'In stock in 1 warehouse',
+          final count => 'In stock in $count warehouses',
+        };
         final groups = controller.visibleGroups(data, query, stock);
         final shown = groups.expand((match) => match.variants).toList();
         final grouped = (data?.templateCount ?? 0) > 0;
@@ -195,18 +202,15 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
                       ],
                       quickChips: [
                         if (data != null)
-                          FilterChip(
-                            selected: stock,
-                            visualDensity: VisualDensity.compact,
-                            onSelected: controller.setInStock,
-                            label: Text(switch (controller.warehouseCount) {
-                              0 => 'In stock',
-                              1 => 'In stock in 1 warehouse',
-                              final count => 'In stock in $count warehouses',
-                            }),
+                          HeaderQuickChip(
+                            key: const ValueKey('variant-in-stock'),
+                            role: HeaderQuickRole.toggle,
+                            active: stock,
+                            onPressed: () => controller.setInStock(!stock),
+                            caption: stockCaption,
+                            label: stockCaption,
                           ),
                       ],
-                      quickChipsKey: (stock, busy, controller.warehouseCount),
                     ),
                   ),
                   if (!busy)
@@ -716,6 +720,14 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
       if (heading == null) {
         slivers.add(inset(variants(group, match.variants, null), group));
       } else {
+        final title = topObstruction(
+          track(
+            group,
+            'title',
+            0,
+            SizedBox(height: headingExtent, child: _groupTitle(group)),
+          ),
+        );
         slivers.add(
           inset(
             SliverPadding(
@@ -724,18 +736,15 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
                 decoration: _groupDecoration(scheme, top: true, bottom: true),
                 sliver: SliverMainAxisGroup(
                   slivers: [
-                    PinnedHeaderSliver(
-                      child: topObstruction(
-                        track(
-                          group,
-                          'title',
-                          0,
-                          SizedBox(
-                            height: headingExtent,
-                            child: _groupTitle(group),
-                          ),
-                        ),
-                      ),
+                    SliverLayoutBuilder(
+                      builder: (context, constraints) {
+                        final available =
+                            constraints.remainingPaintExtent -
+                            constraints.overlap;
+                        return available >= headingExtent + kMinInteractiveDimension
+                            ? PinnedHeaderSliver(child: title)
+                            : SliverToBoxAdapter(child: title);
+                      },
                     ),
                     SliverToBoxAdapter(
                       child: track(
@@ -895,15 +904,18 @@ class _RenderStickyGroupList extends RenderSliverList {
       final viewport = RenderAbstractViewport.maybeOf(this);
       // The preceding header can only be measured after the viewport's layout.
       final headerBottom = viewport != null && next != null
-          ? DocTypeListHeader.extentInViewport(headerKey, viewport)
+          ? DocTypeListHeader.extentInViewport(
+              headerKey,
+              viewport,
+            )?.clamp(0.0, double.infinity)
           : null;
-      sticky.value = next == null || headerBottom == null
-          ? null
-          : (
-              group: next.group,
-              offset: next.offset,
-              headerBottom: headerBottom.clamp(0.0, double.infinity),
-            );
+      sticky.value =
+          next != null &&
+              headerBottom != null &&
+              constraints.viewportMainAxisExtent - headerBottom >=
+                  headingExtent + kMinInteractiveDimension
+          ? (group: next.group, offset: next.offset, headerBottom: headerBottom)
+          : null;
     });
   }
 }

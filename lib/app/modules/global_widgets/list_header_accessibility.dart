@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 // ignore: deprecated_member_use
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/theme/theme_controller.dart';
@@ -89,7 +91,35 @@ class HeaderPalette {
     ),
   );
 
+  Color quickInk({
+    required bool selected,
+    required bool enabled,
+    required bool command,
+  }) => !enabled
+      ? muted
+      : selected
+      ? colors.onSecondaryContainer
+      : command
+      ? colors.onSurface
+      : colors.onSurfaceVariant;
+
+  Color quickFill(Set<WidgetState> states, {required bool selected}) {
+    if (states.contains(WidgetState.disabled)) return surface;
+    final base = selected ? colors.secondaryContainer : surface;
+    if (states.contains(WidgetState.pressed)) {
+      return Color.alphaBlend(quickPressedLayer, base);
+    }
+    return base;
+  }
+
   Color get quickPressedLayer => colors.onSurface.withAlpha(20);
+
+  Color choiceFill(bool selected, bool enabled) =>
+      selected ? (enabled ? colors.primary : muted) : surface;
+
+  Color choiceInk(bool selected, bool enabled) => selected
+      ? (enabled ? colors.onPrimary : surface)
+      : (enabled ? ink : muted);
 }
 
 /// Disables filter commands without disabling the surrounding list toolbar.
@@ -113,16 +143,10 @@ class ListHeaderFilterScope extends InheritedWidget {
       enabled != oldWidget.enabled;
 }
 
-/// Lets shared selectable chips in the bottom slot opt in to the header style.
-class ListHeaderBottomScope extends InheritedWidget {
-  const ListHeaderBottomScope({super.key, required super.child});
-
-  static bool contains(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<ListHeaderBottomScope>() !=
-      null;
-
-  @override
-  bool updateShouldNotify(ListHeaderBottomScope oldWidget) => false;
+/// A bottom that measures itself with the header's effective typography.
+abstract interface class MeasuredListHeaderBottom
+    implements PreferredSizeWidget {
+  double heightFor(BuildContext context, double paneWidth);
 }
 
 /// Restores the OS scaler at the header boundary where the app root has
@@ -205,6 +229,7 @@ HeaderTextMetrics measureHeaderText(
   int? maxLines,
   String? ellipsis,
   TextScaler? textScaler,
+  void Function(TextPainter)? onLayout,
 }) {
   final ambient = DefaultTextStyle.of(context);
   final lineHeight = MediaQuery.maybeLineHeightScaleFactorOverrideOf(context);
@@ -234,12 +259,39 @@ HeaderTextMetrics measureHeaderText(
         ambient.textHeightBehavior ??
         DefaultTextHeightBehavior.maybeOf(context),
   )..layout(maxWidth: maxWidth);
-  final result = (
-    size: painter.size,
-    didExceedMaxLines: painter.didExceedMaxLines,
-  );
-  painter.dispose();
-  return result;
+  try {
+    onLayout?.call(painter);
+    return (size: painter.size, didExceedMaxLines: painter.didExceedMaxLines);
+  } finally {
+    painter.dispose();
+  }
+}
+
+TextStyle choiceLabelStyle(BuildContext context) =>
+    Theme.of(context).textTheme.labelLarge ?? const TextStyle(fontSize: 14);
+
+/// Shares the native choice's label metrics with parents that allocate a row.
+double choiceTargetHeight(BuildContext context, Iterable<String> captions) {
+  final style = choiceLabelStyle(context);
+  var height = 48.0;
+  for (final caption in captions) {
+    final scaled = measureHeaderText(context, caption, style, maxLines: 1);
+    final base = measureHeaderText(
+      context,
+      caption,
+      style,
+      maxLines: 1,
+      textScaler: TextScaler.noScaling,
+    );
+    height = math.max(
+      height,
+      math.max(
+        48 + scaled.size.height - base.size.height,
+        scaled.size.height + 26,
+      ),
+    );
+  }
+  return height.ceilToDouble();
 }
 
 double headerContourWidth(Set<WidgetState> states) {
@@ -372,35 +424,38 @@ class HeaderPill extends StatelessWidget {
     required this.fill,
     required this.perimeter,
     this.disabled = false,
+    this.radius,
     this.child,
   });
 
   final Color fill;
   final Color perimeter;
   final bool disabled;
+  final double? radius;
   final Widget? child;
 
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      painter: _PillPainter(fill, perimeter, disabled),
+      painter: _PillPainter(fill, perimeter, disabled, radius),
       child: child,
     );
   }
 }
 
 class _PillPainter extends CustomPainter {
-  const _PillPainter(this.fill, this.perimeter, this.disabled);
+  const _PillPainter(this.fill, this.perimeter, this.disabled, this.radius);
 
   final Color fill;
   final Color perimeter;
   final bool disabled;
+  final double? radius;
 
   @override
   void paint(Canvas canvas, Size size) {
     final shape = RRect.fromRectAndRadius(
       (Offset.zero & size).deflate(.5),
-      Radius.circular(size.height / 2),
+      Radius.circular(radius ?? size.height / 2),
     );
     canvas.drawRRect(shape, Paint()..color = fill);
     final stroke = Paint()
@@ -426,7 +481,8 @@ class _PillPainter extends CustomPainter {
   bool shouldRepaint(_PillPainter old) =>
       fill != old.fill ||
       perimeter != old.perimeter ||
-      disabled != old.disabled;
+      disabled != old.disabled ||
+      radius != old.radius;
 }
 
 ButtonStyle headerActionButtonStyle(
@@ -596,7 +652,7 @@ class HeaderIconAction extends StatelessWidget {
   }
 }
 
-enum HeaderChipPaint { add, bulk, split }
+enum HeaderChipPaint { add, bulk, split, quick }
 
 /// A native button with a header-local name and interaction contour.
 class HeaderChipButton extends StatelessWidget {
@@ -610,6 +666,12 @@ class HeaderChipButton extends StatelessWidget {
     this.paintedHeight = 34,
     this.tooltip,
     this.semanticDismiss,
+    this.value,
+    this.selected,
+    this.toggled,
+    this.quickActive = false,
+    this.tooltipOnFocus = false,
+    this.bandBulkOutline = false,
     this.width,
     this.height,
     this.padding = EdgeInsets.zero,
@@ -623,6 +685,12 @@ class HeaderChipButton extends StatelessWidget {
   final double paintedHeight;
   final String? tooltip;
   final VoidCallback? semanticDismiss;
+  final String? value;
+  final bool? selected;
+  final bool? toggled;
+  final bool quickActive;
+  final bool tooltipOnFocus;
+  final bool bandBulkOutline;
   final double? width;
   final double? height;
   final EdgeInsetsGeometry padding;
@@ -651,9 +719,22 @@ class HeaderChipButton extends StatelessWidget {
             ),
             shape: const WidgetStatePropertyAll(RoundedRectangleBorder()),
             backgroundBuilder: (context, states, child) {
+              final fill = switch (paint) {
+                HeaderChipPaint.add => palette.addFill(states),
+                HeaderChipPaint.bulk => palette.bulkFill(states),
+                HeaderChipPaint.quick => palette.quickFill(
+                  states,
+                  selected: quickActive,
+                ),
+                HeaderChipPaint.split => Colors.transparent,
+              };
               return HeaderActionContour(
                 states: states,
-                borderRadius: paint == HeaderChipPaint.split ? 10 : 999,
+                borderRadius: switch (paint) {
+                  HeaderChipPaint.split => 10,
+                  HeaderChipPaint.quick => 9,
+                  _ => 999,
+                },
                 inset: paint == HeaderChipPaint.split
                     ? const EdgeInsets.symmetric(horizontal: 1.5, vertical: 2.5)
                     : HeaderActionContour._inset,
@@ -667,13 +748,14 @@ class HeaderChipButton extends StatelessWidget {
                             width: double.infinity,
                             height: paintedHeight,
                             child: HeaderPill(
-                              fill: paint == HeaderChipPaint.add
-                                  ? palette.addFill(states)
-                                  : palette.bulkFill(states),
+                              fill: fill,
                               perimeter:
-                                  paint == HeaderChipPaint.add || disabled
-                                  ? palette.muted
-                                  : palette.bulkFill(states),
+                                  paint == HeaderChipPaint.bulk &&
+                                      !disabled &&
+                                      !bandBulkOutline
+                                  ? fill
+                                  : palette.muted,
+                              radius: paint == HeaderChipPaint.quick ? 8 : null,
                               disabled: disabled,
                             ),
                           ),
@@ -687,14 +769,81 @@ class HeaderChipButton extends StatelessWidget {
           ),
       child: Semantics(
         label: label,
+        value: value,
+        selected: selected,
+        inMutuallyExclusiveGroup: selected != null,
+        toggled: toggled,
         onDismiss: disabled ? null : semanticDismiss,
         child: ExcludeSemantics(child: child),
       ),
     );
-    return tooltip == null
-        ? button
-        : Tooltip(message: tooltip, excludeFromSemantics: true, child: button);
+    final message = tooltip;
+    if (message == null) return button;
+    return tooltipOnFocus
+        ? HeaderCaptionTooltip(message: message, child: button)
+        : Tooltip(message: message, excludeFromSemantics: true, child: button);
   }
+}
+
+/// Discloses the full caption by hover, long press or keyboard focus.
+class HeaderCaptionTooltip extends StatefulWidget {
+  const HeaderCaptionTooltip({
+    super.key,
+    required this.message,
+    required this.child,
+  });
+
+  final String message;
+  final Widget child;
+
+  @override
+  State<HeaderCaptionTooltip> createState() => _HeaderCaptionTooltipState();
+}
+
+class _HeaderCaptionTooltipState extends State<HeaderCaptionTooltip> {
+  final _tooltip = GlobalKey<TooltipState>();
+  final _focus = FocusNode();
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Focus(
+    focusNode: _focus,
+    skipTraversal: true,
+    canRequestFocus: false,
+    includeSemantics: false,
+    onFocusChange: (focused) {
+      if (!focused) {
+        Tooltip.dismissAllToolTips();
+      } else {
+        // Other captions may still receive their blur in this focus update.
+        scheduleMicrotask(() {
+          if (mounted &&
+              _focus.hasFocus &&
+              FocusManager.instance.highlightMode ==
+                  FocusHighlightMode.traditional) {
+            _tooltip.currentState?.ensureTooltipVisible();
+          }
+        });
+      }
+    },
+    onKeyEvent: (_, event) =>
+        event is KeyDownEvent &&
+            event.logicalKey == LogicalKeyboardKey.escape &&
+            Tooltip.dismissAllToolTips()
+        ? KeyEventResult.handled
+        : KeyEventResult.ignored,
+    child: Tooltip(
+      key: _tooltip,
+      message: widget.message,
+      excludeFromSemantics: true,
+      child: widget.child,
+    ),
+  );
 }
 
 /// Preserves native chip state and selection roles while bounding Ink to one

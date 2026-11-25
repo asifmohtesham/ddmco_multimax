@@ -13,6 +13,7 @@ import 'package:multimax/app/modules/global_widgets/add_filter_chip.dart';
 import 'package:multimax/app/modules/global_widgets/count_badge.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/header_choice_row.dart';
 import 'package:multimax/app/modules/global_widgets/list_header_accessibility.dart';
 import 'package:multimax/main.dart' show buildAppTheme;
 
@@ -58,6 +59,7 @@ class _Pixels {
     Color ink,
     double ratio, {
     Color? inside,
+    Color? activeInk,
   }) {
     var inkPixels = 0;
     final overwritten = <(int, int, String)>[];
@@ -78,7 +80,7 @@ class _Pixels {
         if (color(x, y) != ink) continue;
         inkPixels++;
         final activeColor = active.color(x, y);
-        if (contrast(activeColor, ink) > 1.05) {
+        if (contrast(activeColor, activeInk ?? ink) > 1.05) {
           overwritten.add((x, y, active.rgba(x, y).toRadixString(16)));
         }
       }
@@ -88,6 +90,33 @@ class _Pixels {
       overwritten,
       isEmpty,
       reason: 'opaque glyph and indicator pixels survive raster rounding',
+    );
+  }
+}
+
+void _expectSalesChoiceInk({
+  required _Pixels rest,
+  required _Pixels active,
+  required Rect caption,
+  required Rect? check,
+  required HeaderChoicePaint restPaint,
+  required HeaderChoicePaint activePaint,
+  required double ratio,
+}) {
+  rest.expectInkPreserved(
+    active,
+    caption,
+    restPaint.caption,
+    ratio,
+    activeInk: activePaint.caption,
+  );
+  if (check != null) {
+    rest.expectInkPreserved(
+      active,
+      check,
+      restPaint.check,
+      ratio,
+      activeInk: activePaint.check,
     );
   }
 }
@@ -121,6 +150,242 @@ void main() {
       textTheme: app.textTheme.apply(fontFamily: font),
     );
   }
+
+  for (final part in ['caption', 'check']) {
+    test('Sales paint detects partially covered $part ink', () {
+      final palette = HeaderPalette(theme());
+      final restPaint = resolveHeaderChoicePaint(palette, {}, selected: true);
+      final disabledPaint = resolveHeaderChoicePaint(palette, {
+        WidgetState.disabled,
+      }, selected: true);
+      const caption = Rect.fromLTWH(0, 0, 2, 1);
+      const check = Rect.fromLTWH(2, 0, 2, 1);
+
+      _Pixels capture(HeaderChoicePaint paint, {bool covered = false}) {
+        final colors = [
+          paint.caption,
+          covered && part == 'caption' ? paint.fill : paint.caption,
+          paint.check,
+          covered && part == 'check' ? paint.fill : paint.check,
+        ];
+        final bytes = ByteData(colors.length * 4);
+        for (final (index, color) in colors.indexed) {
+          final argb = color.toARGB32();
+          bytes.setUint32(index * 4, ((argb & 0xffffff) << 8) | (argb >> 24));
+        }
+        return _Pixels(bytes, colors.length);
+      }
+
+      final rest = capture(restPaint);
+      void verify(_Pixels active) => _expectSalesChoiceInk(
+        rest: rest,
+        active: active,
+        caption: caption,
+        check: check,
+        restPaint: restPaint,
+        activePaint: disabledPaint,
+        ratio: 1,
+      );
+
+      verify(capture(disabledPaint));
+      expect(
+        () => verify(capture(disabledPaint, covered: true)),
+        throwsA(isA<TestFailure>()),
+      );
+    });
+  }
+
+  testWidgets(
+    'scope and status paint a separate visible focus ring in every palette',
+    (tester) async {
+      _showKeyboardFocus();
+      tester.view.devicePixelRatio = 2;
+      tester.view.physicalSize = const Size(1000, 240);
+      addTearDown(tester.view.reset);
+      final key = GlobalKey();
+      const ratio = 2.0;
+      for (final brightness in Brightness.values) {
+        for (final accent in AppAccent.all) {
+          final app = buildAppTheme(
+            AppScheme.of(brightness),
+            brightness,
+            accent: accent,
+          );
+          final theme = app.copyWith(
+            textTheme: app.textTheme.apply(fontFamily: font),
+          );
+          final palette = HeaderPalette(theme);
+          const labels = ['Mine', 'Everyone', 'Draft', 'Closed'];
+
+          Finder button(int index) => find.byWidgetPredicate(
+            (widget) =>
+                widget is HeaderChoiceButton &&
+                widget.option.id == labels[index],
+          );
+          Finder part(int index, Finder match) =>
+              find.descendant(of: button(index), matching: match);
+          Rect bounds(int index) => tester.getRect(button(index));
+          Color sample(_Pixels pixels, double x, double y) =>
+              pixels.color((x * ratio).floor(), (y * ratio).floor());
+          Color sampleTop(_Pixels pixels, int index, double dy) {
+            final rect = bounds(index);
+            return sample(pixels, rect.center.dx, rect.top + dy);
+          }
+
+          Future<_Pixels> capture() => _Pixels.capture(tester, key, ratio);
+          Future<void> mount({required bool enabled}) async {
+            await tester.pumpWidget(
+              MaterialApp(
+                theme: theme,
+                home: RepaintBoundary(
+                  key: key,
+                  child: Scaffold(
+                    backgroundColor: palette.surface,
+                    body: HeaderChoiceRow(
+                      options: [
+                        for (final (index, label) in labels.indexed)
+                          HeaderChoiceOption(
+                            id: label,
+                            groupId: index < 2 ? 'scope' : 'status',
+                            label: label,
+                            semanticLabel: label,
+                            selected: index.isEven,
+                            onPressed: enabled ? () {} : null,
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+            await tester.pumpAndSettle();
+          }
+
+          late final _Pixels rest;
+          late final List<({Rect caption, Rect? check})> inkBounds;
+
+          void verify(_Pixels pixels, int index, Set<WidgetState> states) {
+            final selected = index.isEven;
+            final paint = resolveHeaderChoicePaint(
+              palette,
+              states,
+              selected: selected,
+            );
+            expect(
+              sampleTop(pixels, index, 11).toARGB32(),
+              paint.fill.toARGB32(),
+            );
+            if (!paint.dashed) {
+              expect(sampleTop(pixels, index, 7.5), paint.perimeter);
+            }
+            expect(
+              sampleTop(pixels, index, 3.5),
+              paint.contour == 0 ? palette.surface : palette.muted,
+            );
+            expect(sampleTop(pixels, index, .5), palette.surface);
+            final check = part(index, find.byIcon(Icons.check));
+            expect(check, selected ? findsOneWidget : findsNothing);
+            _expectSalesChoiceInk(
+              rest: rest,
+              active: pixels,
+              caption: inkBounds[index].caption,
+              check: inkBounds[index].check,
+              restPaint: resolveHeaderChoicePaint(
+                palette,
+                {},
+                selected: selected,
+              ),
+              activePaint: paint,
+              ratio: ratio,
+            );
+          }
+
+          await mount(enabled: true);
+          final nodes = [
+            for (var index = 0; index < labels.length; index++)
+              tester
+                  .widget<TextButton>(part(index, find.byType(TextButton)))
+                  .focusNode!,
+          ];
+          rest = await capture();
+          inkBounds = [
+            for (final (index, label) in labels.indexed)
+              (
+                caption: tester.getRect(part(index, find.text(label))),
+                check: index.isEven
+                    ? tester.getRect(part(index, find.byIcon(Icons.check)))
+                    : null,
+              ),
+          ];
+          for (var i = 0; i < labels.length; i++) {
+            verify(rest, i, {});
+          }
+          final mouse = await tester.createGesture(
+            kind: ui.PointerDeviceKind.mouse,
+          );
+          await mouse.addPointer(location: const Offset(499, 8));
+          for (var i = 0; i < labels.length; i++) {
+            final rect = bounds(i);
+            await mouse.moveTo(rect.center);
+            await tester.pumpAndSettle();
+            verify(await capture(), i, {WidgetState.hovered});
+            await mouse.moveTo(const Offset(499, 8));
+            await tester.pumpAndSettle();
+
+            final held = await tester.startGesture(rect.center);
+            await tester.pump(const Duration(milliseconds: 150));
+            final pressed = await capture();
+            verify(pressed, i, {WidgetState.pressed});
+            expect(sampleTop(pressed, i, 4.5), palette.muted);
+            await held.cancel();
+
+            // Real Tab traversal moves the ring in the domain's option order.
+            if (i > 0) nodes[i - 1].requestFocus();
+            await tester.pumpAndSettle();
+            await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+            await tester.pumpAndSettle();
+            expect(nodes[i].hasPrimaryFocus, isTrue);
+            final focused = await capture();
+            verify(focused, i, {WidgetState.focused});
+            expect(sampleTop(focused, i, 2.5), palette.muted);
+            expect(
+              sampleTop(focused, (i + 1) % labels.length, 3.5),
+              palette.surface,
+            );
+            final combined = await tester.startGesture(rect.center);
+            await tester.pump(const Duration(milliseconds: 150));
+            final combinedPaint = await capture();
+            verify(combinedPaint, i, {
+              WidgetState.focused,
+              WidgetState.pressed,
+            });
+            final mark = rect.bottom - 1.5;
+            expect(sample(combinedPaint, rect.center.dx, mark), palette.muted);
+            expect(
+              sample(combinedPaint, rect.center.dx + 10, mark),
+              palette.surface,
+            );
+            await combined.cancel();
+            nodes[i].unfocus();
+            await tester.pumpAndSettle();
+          }
+          await mouse.removePointer();
+          await mount(enabled: false);
+          final disabled = await capture();
+          for (var i = 0; i < labels.length; i++) {
+            verify(disabled, i, {WidgetState.disabled});
+            final rect = bounds(i);
+            final outline = [
+              for (var x = rect.center.dx - 22; x < rect.center.dx + 22; x++)
+                sample(disabled, x, rect.top + 7.5),
+            ];
+            expect(outline, containsAll([palette.surface, palette.muted]));
+          }
+          await tester.pumpWidget(const SizedBox.shrink());
+        }
+      }
+    },
+  );
 
   testWidgets('focus and held press preserve the applied caption ink', (
     tester,

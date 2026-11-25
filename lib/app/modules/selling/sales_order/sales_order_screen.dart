@@ -12,6 +12,7 @@ import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
 import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
+import 'package:multimax/app/modules/global_widgets/header_choice_row.dart';
 import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
 import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
 import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
@@ -31,6 +32,7 @@ class SalesOrderScreen extends StatefulWidget {
 class _SalesOrderScreenState extends State<SalesOrderScreen> {
   final SalesOrderController controller = Get.find();
   final _scrollController = ScrollController();
+  final _headerKey = GlobalKey();
 
   @override
   void initState() {
@@ -46,7 +48,10 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
   }
 
   void _onScroll() {
-    if (_isBottom && controller.hasMore.value && !controller.isFetchingMore.value) {
+    if (_isBottom &&
+        controller.hasMore.value &&
+        !controller.isLoading.value &&
+        !controller.isFetchingMore.value) {
       controller.fetch(isLoadMore: true);
     }
   }
@@ -75,20 +80,14 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
       chips.add(FilterChipWidget(
         icon: Icons.search,
         label: 'Search: ${controller.searchQuery.value}',
-        onDeleted: () {
-          controller.searchQuery.value = '';
-          controller.fetch(clear: true);
-        },
+        onDeleted: controller.clearSearch,
         onTap: () => editListSearch(
           context,
           doctype: 'Sales Order',
           targetRoute: AppRoutes.SALES_ORDER_FORM,
           searchQuery: controller.searchQuery,
           onSearchChanged: controller.onSearchChanged,
-          onSearchClear: () {
-            controller.searchQuery.value = '';
-            controller.fetch(clear: true);
-          },
+          onSearchClear: controller.clearSearch,
         ),
       ));
     }
@@ -149,6 +148,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return AppShellScaffold(
+      floatingActionButtonHeaderKey: _headerKey,
       // No Obx here: DocTypeGuard is reactive internally, and an Obx whose
       // builder reads no observables throws GetX's improper-use error.
       floatingActionButton: DocTypeGuard(
@@ -173,21 +173,19 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
             slivers: [
               // ── Unified header: AppBar + status chips + filter chips ──────
               DocTypeListHeader(
+                sliverKey: _headerKey,
                 title: 'Sales Order',
                 automaticallyImplyLeading: false,
                 searchDoctype: 'Sales Order',
                 searchRoute: AppRoutes.SALES_ORDER_FORM,
                 searchQuery: controller.searchQuery,
                 onSearchChanged: controller.onSearchChanged,
-                onSearchClear: () {
-                  controller.searchQuery.value = '';
-                  controller.fetch(clear: true);
-                },
+                onSearchClear: controller.clearSearch,
                 activeFilters: controller.activeFilters,
                 onFilterTap: () => _showFilterSheet(),
                 filterChipsBuilder: _buildFilterChips,
                 onClearAllFilters: controller.clearFilters,
-                bottom: _StatusChipBar(controller),
+                measuredBottomBuilder: _buildQuickChips,
               ),
 
               // ── Result count pill ────────────────────────────────────────
@@ -258,6 +256,41 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
     );
   }
 
+  HeaderChoiceRow _buildQuickChips(BuildContext _) {
+    const scopes = {
+      ActionableScope.mine: 'Mine',
+      ActionableScope.everyone: 'Everyone',
+    };
+    final scope = controller.scope.value;
+    final status = controller.activeFilters['status'];
+    final busy = controller.isLoading.value;
+    return HeaderChoiceRow(
+      busy: busy,
+      busyLabel: busy ? 'Loading sales orders' : null,
+      options: [
+        for (final entry in scopes.entries)
+          HeaderChoiceOption(
+            id: 'scope:${entry.key.name}',
+            groupId: 'scope',
+            label: entry.value,
+            semanticLabel: 'Order scope, ${entry.value}',
+            selected: entry.key == scope,
+            onPressed: () => controller.setScope(entry.key),
+          ),
+        for (final label in SalesOrderController.statusChips)
+          HeaderChoiceOption(
+            id: 'status:$label',
+            groupId: 'status',
+            label: label,
+            semanticLabel: 'Order status, $label',
+            selected: label == status,
+            selectedHint: 'Activate to clear status filter',
+            onPressed: () => controller.setStatusChip(label),
+          ),
+      ],
+    );
+  }
+
   Widget _buildCard(BuildContext context, SalesOrder so) {
     final currencySymbol = FormattingHelper.getCurrencySymbol(so.currency);
     final grandTotal = NumberFormat('#,##0.00').format(so.grandTotal);
@@ -293,41 +326,6 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
       body: so.docstatus == 1
           ? SoProgressRow(perDelivered: so.perDelivered, perBilled: so.perBilled)
           : null,
-    );
-  }
-}
-
-/// Mine/Everyone toggle + status quick-filter chips, pinned below the toolbar.
-class _StatusChipBar extends StatelessWidget implements PreferredSizeWidget {
-  final SalesOrderController controller;
-  const _StatusChipBar(this.controller);
-
-  @override
-  Size get preferredSize => const Size.fromHeight(52);
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 52,
-      child: Obx(() => ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            children: [
-              ActionableScopeToggle(
-                scope: controller.scope.value,
-                onChanged: controller.setScope,
-              ),
-              const SizedBox(width: 8),
-              for (final s in SalesOrderController.statusChips) ...[
-                ChoiceChip(
-                  label: Text(s),
-                  selected: controller.activeFilters['status'] == s,
-                  onSelected: (_) => controller.setStatusChip(s),
-                ),
-                const SizedBox(width: 6),
-              ],
-            ],
-          )),
     );
   }
 }

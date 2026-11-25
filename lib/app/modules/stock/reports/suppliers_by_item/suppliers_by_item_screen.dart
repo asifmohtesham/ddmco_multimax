@@ -14,6 +14,7 @@ import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/header_chip_band.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/modules/stock/reports/suppliers_by_item/suppliers_by_item_binding.dart';
 import 'package:multimax/app/modules/stock/reports/suppliers_by_item/suppliers_by_item_controller.dart';
@@ -302,8 +303,7 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
                     onFilterTap: loading ? null : () => _openFilters(context),
                     filterChipsBuilder: _filterChips,
                     onClearAllFilters: _clearFilters,
-                    quickChips: [_ViewChip(controller: _controller)],
-                    quickChipsKey: loading,
+                    quickChips: [_viewChip(_controller, view)],
                     extraActions: [
                       IconButton(
                         focusNode: _fieldsFocus,
@@ -485,17 +485,50 @@ class _SettingsScopeFeedback extends StatelessWidget {
   );
 }
 
+Widget _viewChip(SuppliersByItemController controller, SuppliersByItemView view) {
+  final group = suppliersByItemGroupLabel(view.group);
+  final sort = suppliersByItemSortLabel(view.sortField, controller.fieldLabel);
+  final direction = suppliersByItemDirectionLabel(
+    view.sortField,
+    view.sortDirection,
+  );
+  final arrow = view.sortDirection == SuppliersByItemSortDirection.asc
+      ? '↑'
+      : '↓';
+  final caption = view.group == SuppliersByItemGroup.template
+      ? '$sort $arrow'
+      : '$group · $sort $arrow';
+  final value = '$group, $sort, $direction';
+
+  return MeasuredHeaderChip(
+    key: const ValueKey('supplier-view-slot'),
+    measure: (context, maxWidth) =>
+        HeaderQuickChip.measureCaption(context, caption, maxWidth),
+    builder: (context, _) => _ViewChip(
+      controller: controller,
+      caption: caption,
+      value: value,
+    ),
+  );
+}
+
 class _ViewChip extends StatefulWidget {
-  const _ViewChip({required this.controller});
+  const _ViewChip({
+    required this.controller,
+    required this.caption,
+    required this.value,
+  });
 
   final SuppliersByItemController controller;
+  final String caption;
+  final String value;
 
   @override
   State<_ViewChip> createState() => _ViewChipState();
 }
 
 class _ViewChipState extends State<_ViewChip> {
-  final _focus = FocusNode();
+  final _focus = FocusNode(debugLabel: 'View');
 
   @override
   void dispose() {
@@ -504,61 +537,33 @@ class _ViewChipState extends State<_ViewChip> {
   }
 
   Future<void> _open() async {
+    final route = ModalRoute.of(context);
+    final originalFocus = FocusManager.instance.primaryFocus;
     await showSuppliersByItemView(context, widget.controller);
-    if (mounted) _focus.requestFocus();
+    if (!mounted || route?.isCurrent == false || !_focus.canRequestFocus) return;
+    final current = FocusManager.instance.primaryFocus;
+    if (current == originalFocus || current == _focus || current is FocusScopeNode) {
+      _focus.requestFocus();
+    }
   }
 
   @override
-  Widget build(BuildContext context) => Obx(() {
-    final view = widget.controller.view.value;
-    final group = suppliersByItemGroupLabel(view.group);
-    final sort = suppliersByItemSortLabel(
-      view.sortField,
-      widget.controller.fieldLabel,
-    );
-    final direction = suppliersByItemDirectionLabel(
-      view.sortField,
-      view.sortDirection,
-    );
-    final arrow = view.sortDirection == SuppliersByItemSortDirection.asc
-        ? '↑'
-        : '↓';
-    final caption = view.group == SuppliersByItemGroup.template
-        ? '$sort $arrow'
-        : '$group · $sort $arrow';
-    final saving = widget.controller.viewSaving.value;
-    return Tooltip(
-      message: 'View',
-      excludeFromSemantics: true,
-      child: ActionChip(
+  Widget build(BuildContext context) => Tooltip(
+    message: 'View',
+    excludeFromSemantics: true,
+    child: Obx(
+      () => HeaderQuickChip(
         key: const ValueKey('suppliers-by-item-view'),
-        focusNode: _focus,
-        visualDensity: VisualDensity.compact,
-        padding: MediaQuery.textScalerOf(context).scale(12) > 12
-            ? const EdgeInsets.symmetric(horizontal: 8, vertical: 2)
-            : null,
+        caption: widget.caption,
+        label: 'View',
+        value: widget.value,
+        role: HeaderQuickRole.command,
+        saving: widget.controller.viewSaving.value,
         onPressed: _open,
-        label: Semantics(
-          label: 'View',
-          value: '$group, $sort, $direction',
-          excludeSemantics: true,
-          child: Text(caption),
-        ),
-        avatar: saving
-            ? Semantics(
-                label: 'Saving View',
-                liveRegion: true,
-                child: const Center(
-                  child: SizedBox.square(
-                    dimension: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              )
-            : null,
+        focusNode: _focus,
       ),
-    );
-  });
+    ),
+  );
 }
 
 class _ReportState extends StatelessWidget {
@@ -1267,8 +1272,10 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
           .dy;
     }
 
-    final toolbarBottom =
-        DocTypeListHeader.extentInViewport(widget.toolbarKey, viewport) ?? 0.0;
+    final toolbarBottom = math.max(
+      0.0,
+      DocTypeListHeader.extentInViewport(widget.toolbarKey, viewport) ?? 0.0,
+    );
     final searchSliver = widget.searchHeaderKey.currentContext
         ?.findRenderObject();
     final base = searchSliver is _RenderResultsHeader && searchSliver.pinned

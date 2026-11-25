@@ -12,7 +12,6 @@ import 'package:multimax/app/modules/global_widgets/count_badge.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
-import 'package:multimax/app/modules/global_widgets/list_header_accessibility.dart';
 import 'package:multimax/main.dart' show buildAppTheme;
 
 SemanticsNode _action(WidgetTester tester, String name) =>
@@ -426,33 +425,35 @@ void main() {
 
         final firstChip = find.byKey(const ValueKey('a'));
         final secondChip = find.byKey(const ValueKey('b'));
-        final pill = find.descendant(
-          of: firstChip,
-          matching: find.byType(HeaderPill),
+        final add = tester.getRect(find.byType(AddFilterChip));
+        final band = tester.getRect(
+          find.byKey(const ValueKey('list-header-chip-band')),
+        );
+        final first = tester.getRect(firstChip);
+        final second = tester.getRect(secondChip);
+        expect(trailingGap(add, first), 6);
+        if (second.top == first.top) {
+          expect(trailingGap(first, second), 6);
+        } else {
+          expect(second.top - first.bottom, 4);
+        }
+        expect(
+          direction == TextDirection.ltr
+              ? add.left - band.left
+              : band.right - add.right,
+          12,
         );
         expect(
-          trailingGap(tester.getRect(pill), tester.getRect(secondChip)),
-          6,
-        );
-        final add = tester.getRect(find.byType(AddFilterChip));
-        final bulk = tester.getRect(
-          find.widgetWithText(TextButton, 'Reset filters'),
-        );
-        expect(trailingGap(add, bulk), 6);
-        final divider = find.descendant(
-          of: find.byWidgetPredicate(
-            (widget) =>
-                widget is Container &&
-                widget.margin ==
-                    const EdgeInsetsDirectional.only(start: 2, end: 8),
+          find.descendant(
+            of: find.byKey(const ValueKey('list-header-chip-band')),
+            matching: find.byType(Scrollable),
           ),
-          matching: find.byType(ColoredBox),
+          findsNothing,
         );
-        final dividerBounds = tester.getRect(divider);
-        final quick = tester.getRect(find.byType(ChoiceChip));
-        expect(dividerBounds.size, const Size(1, 20));
-        expect(trailingGap(bulk, dividerBounds), 2);
-        expect(trailingGap(dividerBounds, quick), 8);
+        expect(
+          tester.getRect(find.byType(ChoiceChip)).top,
+          greaterThanOrEqualTo(second.bottom + 4),
+        );
 
         final order = [
           'Open navigation menu',
@@ -460,13 +461,13 @@ void main() {
           'Filters, 1 active',
           'Search Item, current query: bolts',
           'Bottom control',
+          'Add filter',
           'Edit Status: Draft',
           'Reset Status: Draft',
           'Edit Warehouse: Main',
           'Reset Warehouse: Main',
-          'Add filter',
-          'Reset filters',
           'View by item',
+          'Reset filters',
         ];
         for (final label in order) {
           await _key(tester, LogicalKeyboardKey.tab);
@@ -479,7 +480,7 @@ void main() {
         }
         final verticalOffset = fixture.scroll.offset;
         await _key(tester, LogicalKeyboardKey.space);
-        expect(fixture.operations, ['View']);
+        expect(fixture.operations, ['Bulk']);
         expect(fixture.scroll.offset, verticalOffset);
 
         await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
@@ -488,12 +489,12 @@ void main() {
         expect(
           _action(
             tester,
-            'Reset filters',
+            'View by item',
           ).getSemanticsData().flagsCollection.isFocused,
           Tristate.isTrue,
         );
         await _key(tester, LogicalKeyboardKey.enter);
-        expect(fixture.operations, ['View', 'Bulk']);
+        expect(fixture.operations, ['Bulk', 'View']);
       },
     );
   }
@@ -694,7 +695,7 @@ void main() {
         fixture.host(Brightness.light, hasAdd: false, hasQuick: false),
       );
       await tester.pumpAndSettle();
-      final row = find.byType(SingleChildScrollView);
+      final row = find.byKey(const ValueKey('list-header-chip-band'));
       expect(row, findsOneWidget);
 
       final reset = find.ancestor(

@@ -11,6 +11,7 @@ import 'package:multimax/app/data/models/warehouse_stock_line.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
+import 'package:multimax/app/modules/global_widgets/list_header_accessibility.dart';
 import 'package:multimax/app/modules/global_widgets/recent_search_suggestions.dart';
 import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
 import 'package:multimax/app/modules/global_widgets/voice_search_sheet.dart';
@@ -318,32 +319,27 @@ class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
     void Function(GlobalSearchTarget?) onSelect,
   ) {
     final scheme = context.scheme;
+    final targetHeight = choiceTargetHeight(context, [
+      'All',
+      for (final target in targets) target.label,
+    ]);
     return Material(
       color: scheme.bg,
       child: SizedBox(
-        height: 48,
-        child: ListView(
+        height: targetHeight + 12,
+        child: ListView.separated(
           scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: SelectableFilterChip(
-                label: 'All',
-                selected: selected == null,
-                onSelected: (_) => onSelect(null),
-              ),
-            ),
-            for (final t in targets)
-              Padding(
-                padding: const EdgeInsets.only(right: 6),
-                child: SelectableFilterChip(
-                  label: t.label,
-                  selected: selected?.doctype == t.doctype,
-                  onSelected: (_) => onSelect(t),
-                ),
-              ),
-          ],
+          padding: const EdgeInsetsDirectional.fromSTEB(12, 6, 12, 6),
+          itemCount: targets.length + 1,
+          separatorBuilder: (_, _) => const SizedBox(width: 6),
+          itemBuilder: (context, index) {
+            final target = index == 0 ? null : targets[index - 1];
+            return SelectableFilterChip(
+              label: target?.label ?? 'All',
+              selected: selected?.doctype == target?.doctype,
+              onSelected: (_) => onSelect(target),
+            );
+          },
         ),
       ),
     );

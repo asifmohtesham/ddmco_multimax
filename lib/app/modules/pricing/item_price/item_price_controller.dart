@@ -26,6 +26,8 @@ class ItemPriceController extends GetxController {
 
   /// '' = all lists.
   final selectedPriceList = ''.obs;
+  final _priceListRequests = 0.obs;
+  bool get isPriceListLoading => _priceListRequests.value > 0;
 
   /// Filter-sheet state for DocTypeListHeader: 'validity' → Active|Upcoming|
   /// Expired; 'scoped' / 'batch' / 'zero' → true.
@@ -170,10 +172,15 @@ class ItemPriceController extends GetxController {
     }
   }
 
-  void selectPriceList(String name) {
+  Future<void> selectPriceList(String name) async {
     if (selectedPriceList.value == name) return;
     selectedPriceList.value = name;
-    fetchPrices();
+    _priceListRequests.value++;
+    try {
+      await fetchPrices();
+    } finally {
+      _priceListRequests.value--;
+    }
   }
 
   void onSearchChanged(String query) {

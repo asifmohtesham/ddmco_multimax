@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/services/attendance_notify_scheduler.dart';
 import 'package:multimax/app/data/services/digest_scheduler.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
 import 'package:multimax/app/modules/notification_settings/notification_settings_controller.dart';
 import 'package:multimax/app/modules/notification_settings/notification_settings_screen.dart';
 
@@ -110,6 +111,48 @@ void main() {
       home: const NotificationSettingsScreen(),
     ));
     expect(find.text('Scheduled digest'), findsOneWidget);
+  });
+
+  testWidgets('weekday choices wrap in RTL and can be selected independently', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(360, 720);
+    addTearDown(tester.view.reset);
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    try {
+      await tester.pumpWidget(GetMaterialApp(
+        home: const Directionality(
+          textDirection: TextDirection.rtl,
+          child: NotificationSettingsScreen(),
+        ),
+      ));
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+      final monday = find.widgetWithText(SelectableFilterChip, 'Mon');
+      final tuesday = find.widgetWithText(SelectableFilterChip, 'Tue');
+      final sunday = find.widgetWithText(SelectableFilterChip, 'Sun');
+      expect(tester.getTopLeft(monday).dx,
+          greaterThan(tester.getTopLeft(tuesday).dx));
+      expect(tester.getTopLeft(sunday).dy,
+          greaterThan(tester.getTopLeft(monday).dy));
+      final mondayWasSelected =
+          tester.widget<SelectableFilterChip>(monday).selected;
+      final tuesdayWasSelected =
+          tester.widget<SelectableFilterChip>(tuesday).selected;
+      await tester.ensureVisible(monday);
+      await tester.tap(monday);
+      await tester.pumpAndSettle();
+      expect(tester.widget<SelectableFilterChip>(monday).selected,
+          !mondayWasSelected);
+      expect(tester.widget<SelectableFilterChip>(tuesday).selected,
+          tuesdayWasSelected);
+      await tester.ensureVisible(sunday);
+      expect(tester.getSize(sunday).height, greaterThanOrEqualTo(48));
+      expect(tester.takeException(), isNull);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 
   testWidgets('Android: shows Documents + alert-style segments',

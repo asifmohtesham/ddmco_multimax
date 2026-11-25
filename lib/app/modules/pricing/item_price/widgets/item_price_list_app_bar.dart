@@ -4,20 +4,21 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
-import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
+import 'package:multimax/app/modules/global_widgets/header_choice_row.dart';
 import 'package:multimax/app/modules/pricing/item_price/item_price_controller.dart';
 import 'package:multimax/app/modules/pricing/item_price/widgets/item_price_filter_sheet.dart';
 
 class ItemPriceListAppBar extends StatelessWidget {
-  const ItemPriceListAppBar({super.key});
+  const ItemPriceListAppBar({super.key, this.sliverKey});
+
+  final GlobalKey? sliverKey;
 
   /// [focusKey] opens the sheet on that filter, ready to edit.
   void _openFilters({String? focusKey}) => Get.bottomSheet(
-        FilterFocusScope.wrap(const ItemPriceFilterSheet(),
-            focusKey: focusKey),
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-      );
+    FilterFocusScope.wrap(const ItemPriceFilterSheet(), focusKey: focusKey),
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+  );
 
   List<Widget> _chips(ItemPriceController c) {
     final af = c.activeFilters;
@@ -25,28 +26,28 @@ class ItemPriceListAppBar extends StatelessWidget {
       if (af['validity'] != null)
         FilterChipWidget(
           icon: Icons.event_outlined,
-          label: '${af['validity']}',
+          label: 'Validity: ${af['validity']}',
           onDeleted: () => c.removeFilter('validity'),
           onTap: () => _openFilters(focusKey: 'validity'),
         ),
       if (af['scoped'] == true)
         FilterChipWidget(
           icon: Icons.person_outline,
-          label: 'Has customer or supplier',
+          label: 'Has customer or supplier: On',
           onDeleted: () => c.removeFilter('scoped'),
           onTap: () => _openFilters(focusKey: 'scoped'),
         ),
       if (af['batch'] == true)
         FilterChipWidget(
           icon: Icons.tag,
-          label: 'Has batch',
+          label: 'Has batch: On',
           onDeleted: () => c.removeFilter('batch'),
           onTap: () => _openFilters(focusKey: 'batch'),
         ),
       if (af['zero'] == true)
         FilterChipWidget(
           icon: Icons.exposure_zero,
-          label: 'Zero rate',
+          label: 'Zero rate: On',
           onDeleted: () => c.removeFilter('zero'),
           onTap: () => _openFilters(focusKey: 'zero'),
         ),
@@ -57,6 +58,7 @@ class ItemPriceListAppBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = Get.find<ItemPriceController>();
     return DocTypeListHeader(
+      sliverKey: sliverKey,
       title: 'Item Price',
       automaticallyImplyLeading: false,
       searchDoctype: 'Item Price',
@@ -68,33 +70,36 @@ class ItemPriceListAppBar extends StatelessWidget {
       onFilterTap: () => _openFilters(),
       filterChipsBuilder: (_) => _chips(c),
       onClearAllFilters: c.clearFilters,
-      // Own Obx: the sliver header does not repaint on content-only changes.
-      bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(52),
-        child: SizedBox(
-          height: 52,
-          child: Obx(
-            () => ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-              children: [
-                _chip(c, '', 'All'),
-                for (final l in c.priceLists) _chip(c, l.name, l.name),
-              ],
-            ),
-          ),
-        ),
+      measuredBottomBuilder: (_) => HeaderChoiceRow(
+        options: [
+          _choice(c, '', 'All'),
+          for (final list in c.priceLists) _choice(c, list.name, list.name),
+        ],
+        solidSelection: true,
+        busy: _busy(c),
       ),
     );
   }
 
-  Widget _chip(ItemPriceController c, String value, String label) => Padding(
-        padding: const EdgeInsets.only(right: 6),
-        child: SelectableFilterChip(
-          label: label,
-          count: c.listCounts[value],
-          selected: c.selectedPriceList.value == value,
-          onSelected: (_) => c.selectPriceList(value),
-        ),
-      );
+  bool _busy(ItemPriceController c) =>
+      c.isPriceListLoading || c.isLoading.value || c.isFetchingMore.value;
+
+  HeaderChoiceOption _choice(
+    ItemPriceController c,
+    String value,
+    String label,
+  ) {
+    final count = c.listCounts[value];
+    final caption = count == null ? label : '$label ($count)';
+    return HeaderChoiceOption(
+      id: 'price-list:$value',
+      groupId: 'price-list',
+      label: caption,
+      semanticLabel: caption,
+      selected: c.selectedPriceList.value == value,
+      onPressed: () {
+        if (!_busy(c)) c.selectPriceList(value);
+      },
+    );
+  }
 }

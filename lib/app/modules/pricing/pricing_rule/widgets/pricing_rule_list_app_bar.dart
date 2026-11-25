@@ -3,8 +3,8 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/header_choice_row.dart';
 import 'package:multimax/app/modules/global_widgets/option_picker_sheet.dart';
-import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/pricing/pricing_rule/pricing_rule_controller.dart';
 
@@ -17,6 +17,7 @@ class PricingRuleListAppBar extends StatelessWidget {
         context,
         title: 'Side',
         options: const ['All sides', 'Selling', 'Buying'],
+        paintOptionsOnMaterial: true,
         selected: c.side.isEmpty ? 'All sides' : c.side,
         onSelected: (v) => c.setSide(v == 'All sides' ? '' : v),
       );
@@ -38,41 +39,50 @@ class PricingRuleListAppBar extends StatelessWidget {
         if (c.side.isNotEmpty)
           FilterChipWidget(
             icon: Icons.storefront_outlined,
-            label: c.side,
+            label: 'Side: ${c.side}',
             onDeleted: () => c.setSide(''),
             onTap: () => _pickSide(context, c),
           ),
       ],
       onClearAllFilters: c.clearFilters,
-      // Own Obx wrapped in a SizedBox: ListView inside PreferredSize has
-      // unbounded height otherwise (Tasks 5/6 gotcha).
-      bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(52),
-        child: SizedBox(
-          height: 52,
-          child: Obx(
-            () => ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-              children: [
-                _chip(c, '', 'All'),
-                for (final s in PricingRuleController.statuses) _chip(c, s, s),
-              ],
-            ),
-          ),
-        ),
-      ),
+      measuredBottomBuilder: (_) {
+        final busy = _busy(c);
+        return HeaderChoiceRow(
+          options: [
+            _choice(c, '', 'All'),
+            for (final status in PricingRuleController.statuses)
+              _choice(c, status, status),
+          ],
+          solidSelection: true,
+          busy: busy,
+          busyLabel: busy && c.rules.isNotEmpty
+              ? 'Updating pricing rules'
+              : null,
+        );
+      },
     );
   }
 
-  Widget _chip(PricingRuleController c, String value, String label) => Padding(
-        padding: const EdgeInsets.only(right: 6),
-        child: SelectableFilterChip(
-          label: label,
-          count: c.statusCounts[value],
-          dotColor: value.isEmpty ? null : StatusPill.dotColorForStatus(value),
-          selected: c.status.value == value,
-          onSelected: (_) => c.selectStatus(value),
-        ),
-      );
+  bool _busy(PricingRuleController c) =>
+      c.isLoading.value || c.isFetchingMore.value;
+
+  HeaderChoiceOption _choice(
+    PricingRuleController c,
+    String value,
+    String label,
+  ) {
+    final count = c.statusCounts[value];
+    final caption = count == null ? label : '$label ($count)';
+    return HeaderChoiceOption(
+      id: 'rule-status:$value',
+      groupId: 'rule-status',
+      label: caption,
+      semanticLabel: caption,
+      dotColor: value.isEmpty ? null : StatusPill.dotColorForStatus(value),
+      selected: c.status.value == value,
+      onPressed: () {
+        if (!_busy(c)) c.selectStatus(value);
+      },
+    );
+  }
 }

@@ -3,10 +3,12 @@ import 'dart:ui' show PointerDeviceKind, SemanticsAction, Tristate;
 // ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
+import 'package:multimax/app/modules/global_widgets/header_chip_band.dart';
 import 'package:multimax/app/modules/global_widgets/list_header_accessibility.dart';
 import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
 import 'package:multimax/app/modules/stock/reports/stock_ageing/stock_ageing_cache.dart';
@@ -15,11 +17,18 @@ import 'package:multimax/app/modules/stock/reports/stock_ageing/stock_ageing_scr
 import 'package:multimax/main.dart' show buildAppTheme;
 
 class _ReportCache extends StockAgeingCache {
+  _ReportCache({this.populate = false});
+
+  final bool populate;
+
   @override
   Future<StockAgeingSnapshot?> read() async => StockAgeingSnapshot(
     fetchedAt: DateTime.now(),
     columns: const [],
-    rows: const [],
+    rows: [
+      if (populate)
+        for (var i = 0; i < 30; i++) {'item_code': 'Stock item $i', 'qty': i},
+    ],
     defaults: const {},
   );
 }
@@ -35,6 +44,19 @@ ShapeDecoration _decoration(WidgetTester tester, Finder chip) =>
 
 BorderSide _side(WidgetTester tester, Finder chip) =>
     (_decoration(tester, chip).shape as OutlinedBorder).side;
+
+Finder _headerChip(String label) => find.byWidgetPredicate(
+  (widget) => widget is HeaderChipButton && widget.label == label,
+);
+
+Iterable<SemanticsNode> _semanticsInTraversalOrder(SemanticsNode node) sync* {
+  yield node;
+  for (final child in node.debugListChildrenInOrder(
+    DebugSemanticsDumpOrder.traversalOrder,
+  )) {
+    yield* _semanticsInTraversalOrder(child);
+  }
+}
 
 Future<void> _tapEdges(
   WidgetTester tester,
@@ -60,7 +82,14 @@ Future<void> _tapEdges(
 }
 
 void main() {
-  testWidgets('native Stock Ageing sort chip redirects top and bottom taps', (
+  const stockFont = 'StockHeaderInter';
+  setUpAll(() async {
+    final inter = FontLoader(stockFont)
+      ..addFont(rootBundle.load('lib/assets/fonts/Inter-Regular.ttf'))
+      ..addFont(rootBundle.load('lib/assets/fonts/Inter-Medium.ttf'));
+    await inter.load();
+  });
+  testWidgets('all four Stock Ageing sorts respond at both vertical edges', (
     tester,
   ) async {
     final controller = Get.put(
@@ -84,25 +113,469 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final quantity = find.widgetWithText(ChoiceChip, 'Quantity');
-    expect(controller.sort.value, 'age');
-    await _tapEdges(
+    for (final id in ['age', 'qty', 'old', 'code']) {
+      final quick = find.byKey(ValueKey(id));
+      final action = find.descendant(
+        of: quick,
+        matching: find.byType(TextButton),
+      );
+      expect(
+        tester.widget<HeaderQuickChip>(quick).role,
+        HeaderQuickRole.choice,
+      );
+      for (final top in [true, false]) {
+        controller.setSort(id == 'age' ? 'qty' : 'age');
+        await tester.pump();
+        final rect = tester.getRect(action);
+        final node = tester.getSemantics(action);
+        expect(rect.width, greaterThanOrEqualTo(48));
+        expect(rect.height, 48);
+        expect(node.rect.height, rect.height);
+        expect(node.rect.width, rect.width);
+        expect(
+          node.getSemanticsData().flagsCollection.isSelected,
+          Tristate.isFalse,
+        );
+        await tester.tapAt(
+          Offset(rect.center.dx, top ? rect.top + 1 : rect.bottom - 1),
+        );
+        await tester.pump();
+        expect(controller.sort.value, id);
+        expect(tester.getRect(action), rect);
+        expect(
+          tester
+              .getSemantics(action)
+              .getSemanticsData()
+              .flagsCollection
+              .isSelected,
+          Tristate.isTrue,
+        );
+      }
+    }
+  });
+
+  testWidgets(
+    'Stock Ageing puts the Oldest check above its scaled caption in a narrow RTL pane',
+    (tester) async {
+      addTearDown(Get.reset);
+      final controller = Get.put(
+        StockAgeingController(
+          cache: _ReportCache(),
+          run: ({filters}) => throw StateError('Unexpected report fetch'),
+          loadCardFields: () => null,
+          company: () => '',
+        ),
+      );
+      final theme = buildAppTheme(AppScheme.light, Brightness.light);
+      final stockTheme = theme.copyWith(
+        textTheme: theme.textTheme.apply(fontFamily: stockFont),
+      );
+      await tester.pumpWidget(
+        MaterialApp(theme: stockTheme, home: const StockAgeingScreen()),
+      );
+      await tester.pumpAndSettle();
+
+      final oldest = find.byKey(const ValueKey('age'));
+      final choice = tester.widget<HeaderQuickChip>(oldest);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: stockTheme,
+          home: Builder(
+            builder: (context) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: const TextScaler.linear(2)),
+              child: Directionality(
+                textDirection: TextDirection.rtl,
+                child: Scaffold(
+                  body: Align(
+                    alignment: Alignment.topLeft,
+                    child: SizedBox(
+                      width: 84,
+                      child: CustomScrollView(
+                        slivers: [
+                          DocTypeListHeader(title: 'A', quickChips: [choice]),
+                          const SliverToBoxAdapter(
+                            child: SizedBox(height: 1000),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final tick = find.descendant(
+        of: oldest,
+        matching: find.byIcon(Icons.check),
+      );
+      final caption = find.descendant(
+        of: oldest,
+        matching: find.text('Oldest'),
+      );
+      expect(controller.sort.value, 'age');
+      expect(tick, findsOneWidget);
+      expect(caption, findsOneWidget);
+      final text = tester.renderObject<RenderParagraph>(caption);
+      expect(text.didExceedMaxLines, isFalse);
+      expect(
+        tester.getRect(tick).bottom,
+        lessThanOrEqualTo(tester.getRect(caption).top),
+      );
+      expect(
+        tester.getRect(oldest).contains(tester.getRect(caption).center),
+        isTrue,
+      );
+    },
+  );
+
+  testWidgets('Stock Ageing moves the tooltip with directional Edit focus', (
+    tester,
+  ) async {
+    addTearDown(Get.reset);
+    await tester.binding.setSurfaceSize(const Size(320, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final focus = FocusManager.instance;
+    final highlightStrategy = focus.highlightStrategy;
+    focus.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
+    addTearDown(() => focus.highlightStrategy = highlightStrategy);
+    final controller = Get.put(
+      StockAgeingController(
+        cache: _ReportCache(populate: true),
+        run: ({filters}) => throw StateError('Unexpected report fetch'),
+        loadCardFields: () => null,
+        company: () => '',
+        baseUrl: () => '',
+      ),
+    );
+    final theme = buildAppTheme(AppScheme.light, Brightness.light);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: theme.copyWith(
+          textTheme: theme.textTheme.apply(fontFamily: stockFont),
+        ),
+        home: const StockAgeingScreen(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    const item = 'Item: 100';
+    const warehouse = 'Warehouse-wise: off';
+    controller.activeFilters.assignAll({
+      'item_code': item,
+      'show_warehouse_wise_stock': warehouse,
+    });
+    await tester.pumpAndSettle();
+
+    FocusNode editFocus(String caption) => tester
+        .widget<HeaderChipButton>(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is HeaderChipButton && widget.label == 'Edit $caption',
+          ),
+        )
+        .focusNode!;
+    Finder overlayCaption(String caption) => find.byWidgetPredicate(
+      (widget) => widget is RichText && widget.text.toPlainText() == caption,
+    );
+
+    final itemEdit = editFocus(item);
+    final warehouseEdit = editFocus(warehouse);
+    itemEdit.requestFocus();
+    await tester.pumpAndSettle();
+    expect(focus.primaryFocus, same(itemEdit));
+    expect(overlayCaption(item), findsNWidgets(2));
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    expect(focus.primaryFocus, same(warehouseEdit));
+    expect(overlayCaption(item), findsOneWidget);
+    expect(overlayCaption(warehouse), findsNWidgets(2));
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pumpAndSettle();
+    expect(focus.primaryFocus, same(itemEdit));
+    expect(overlayCaption(item), findsNWidgets(2));
+    expect(overlayCaption(warehouse), findsOneWidget);
+  });
+
+  for (final scale in [.85, 1.0, 1.3]) {
+    testWidgets('Stock Ageing exposes all wraps before gestures at ${scale}x', (
       tester,
-      quantity,
-      afterTop: () {
-        expect(controller.sort.value, 'qty');
-        controller.setSort('age');
-      },
-      afterBottom: () => expect(controller.sort.value, 'qty'),
+    ) async {
+      const dpr = 2.625;
+      tester.view.devicePixelRatio = dpr;
+      tester.view.physicalSize = const Size(411 * dpr, 914 * dpr);
+      tester.platformDispatcher.textScaleFactorTestValue = scale;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      addTearDown(Get.reset);
+      final controller = Get.put(
+        StockAgeingController(
+          cache: _ReportCache(populate: true),
+          run: ({filters}) => throw StateError('Unexpected report fetch'),
+          loadCardFields: () => null,
+          company: () => '',
+          baseUrl: () => '',
+        ),
+      );
+      final theme = buildAppTheme(AppScheme.light, Brightness.light);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: theme.copyWith(
+            textTheme: theme.textTheme.apply(fontFamily: stockFont),
+          ),
+          home: const StockAgeingScreen(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final sliverFinder = find.byType(SliverPersistentHeader);
+      final band = find.byKey(const ValueKey('list-header-chip-band'));
+      final scrollable = find.descendant(
+        of: find.byType(CustomScrollView),
+        matching: find.byType(Scrollable),
+      );
+      final scroll = tester.state<ScrollableState>(scrollable.first).position;
+      final all = <String, String>{
+        'item_code': 'Item: 1002890',
+        'show_warehouse_wise_stock': 'Warehouse-wise: off',
+      };
+      for (final count in [0, 1, 2]) {
+        scroll.jumpTo(0);
+        controller.activeFilters.assignAll(
+          Map.fromEntries(all.entries.take(count)),
+        );
+        await tester.pump();
+        final header = tester.widget<SliverPersistentHeader>(sliverFinder);
+        expect(header.pinned, isTrue);
+        final height = tester.getSize(band).height;
+        expect(height, greaterThanOrEqualTo(100));
+        if (count == 2 && scale == 1) {
+          expect(height, 204);
+          expect(header.delegate.maxExtent, 356);
+          expect(header.delegate.minExtent, 260);
+        }
+        for (final offset in [0.0, 35.0, 120.0]) {
+          scroll.jumpTo(offset);
+          await tester.pump();
+          final bounds = tester.getRect(band);
+          final sliver = tester.renderObject<RenderSliverPersistentHeader>(
+            sliverFinder,
+          );
+          expect(
+            bounds.bottom,
+            closeTo(
+              sliver.child!
+                  .localToGlobal(Offset(0, sliver.child!.size.height))
+                  .dy,
+              .01,
+            ),
+          );
+          expect(
+            find.descendant(of: band, matching: find.byType(Scrollable)),
+            findsNothing,
+          );
+          final buttons = find.descendant(
+            of: band,
+            matching: find.byType(TextButton),
+          );
+          expect(buttons, findsNWidgets(5 + 2 * count + (count == 2 ? 1 : 0)));
+          for (final action in buttons.evaluate()) {
+            final target = find.byElementPredicate(
+              (element) => identical(element, action),
+            );
+            final rect = tester.getRect(target);
+            expect(rect.width, greaterThanOrEqualTo(48));
+            expect(rect.height, greaterThanOrEqualTo(48));
+            expect(rect.left, greaterThanOrEqualTo(bounds.left + 12 - .01));
+            expect(rect.right, lessThanOrEqualTo(bounds.right - 12 + .01));
+            expect(bounds.inflate(.01).contains(rect.bottomRight), isTrue);
+            expect(target.hitTestable(), findsOneWidget);
+            final semanticRect = tester.getSemantics(target).rect;
+            expect(semanticRect.size, rect.size);
+          }
+          for (final caption in [
+            'Oldest',
+            'Quantity',
+            'Oldest bucket',
+            'Item code',
+            ...all.values.take(count),
+          ]) {
+            final text = find.descendant(
+              of: band,
+              matching: find.text(caption),
+            );
+            expect(text.hitTestable(), findsOneWidget);
+            expect(
+              tester.renderObject<RenderParagraph>(text).didExceedMaxLines,
+              isFalse,
+            );
+          }
+        }
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  Future<StockAgeingController> pumpStock(
+    WidgetTester tester, {
+    required Size size,
+    double scale = 1,
+    TextDirection direction = TextDirection.ltr,
+  }) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = size;
+    tester.platformDispatcher.textScaleFactorTestValue = scale;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    addTearDown(Get.reset);
+    final controller = Get.put(
+      StockAgeingController(
+        cache: _ReportCache(populate: true),
+        run: ({filters}) => throw StateError('Unexpected report fetch'),
+        loadCardFields: () => null,
+        company: () => '',
+        baseUrl: () => '',
+      ),
     );
-    expect(
-      tester
-          .getSemantics(_raw(quantity))
-          .getSemanticsData()
-          .flagsCollection
-          .isSelected,
-      Tristate.isTrue,
+    final theme = buildAppTheme(AppScheme.light, Brightness.light);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: theme.copyWith(
+          textTheme: theme.textTheme.apply(fontFamily: stockFont),
+        ),
+        home: Directionality(
+          textDirection: direction,
+          child: const StockAgeingScreen(),
+        ),
+      ),
     );
+    await tester.pumpAndSettle();
+    return controller;
+  }
+
+  testWidgets('Stock Ageing reveals wrapped focus in both Tab directions', (
+    tester,
+  ) async {
+    await pumpStock(tester, size: const Size(320, 230), scale: 2);
+    final quantity = find.widgetWithText(TextButton, 'Quantity');
+    final oldestBucket = find.widgetWithText(TextButton, 'Oldest bucket');
+    final itemCode = find.widgetWithText(TextButton, 'Item code');
+    final scrollable = Scrollable.of(
+      tester.element(quantity),
+      axis: Axis.vertical,
+    );
+    final scroll = scrollable.position;
+    final viewport = tester.getRect(find.byWidget(scrollable.widget));
+    // Arrange keyboard traversal from Quantity at the bottom of the viewport.
+    final quantityFocus = Focus.of(
+      tester.element(
+        find.descendant(of: quantity, matching: find.text('Quantity')),
+      ),
+    );
+    quantityFocus.requestFocus();
+    scroll.jumpTo(
+      scroll.pixels + tester.getRect(quantity).bottom - viewport.bottom,
+    );
+    await tester.pumpAndSettle();
+
+    void expectVisible(Finder action) {
+      final focus = Focus.of(
+        tester.element(
+          find.descendant(of: action, matching: find.byType(Text)),
+        ),
+      );
+      expect(focus.hasPrimaryFocus, isTrue);
+      final rect = tester.getRect(action);
+      expect(rect.top, greaterThanOrEqualTo(viewport.top - .01));
+      expect(rect.bottom, lessThanOrEqualTo(viewport.bottom + .01));
+    }
+
+    expectVisible(quantity);
+    for (final action in [oldestBucket, itemCode]) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pumpAndSettle();
+      expectVisible(action);
+    }
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    for (final action in [oldestBucket, quantity]) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pumpAndSettle();
+      expectVisible(action);
+    }
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+  });
+
+  for (final direction in TextDirection.values) {
+    testWidgets('Stock Ageing exports band order in ${direction.name}', (
+      tester,
+    ) async {
+      final controller = await pumpStock(
+        tester,
+        size: const Size(411, 800),
+        direction: direction,
+      );
+      final root = tester
+          .binding
+          .renderViews
+          .single
+          .owner!
+          .semanticsOwner!
+          .rootSemanticsNode!;
+      List<String> labels(List<String> expected) => _semanticsInTraversalOrder(
+        root,
+      ).map((node) => node.label).where(expected.contains).toList();
+      const sorts = [
+        'Sort by Oldest',
+        'Sort by Quantity',
+        'Sort by Oldest bucket',
+        'Sort by Item code',
+      ];
+      expect(labels(sorts), sorts);
+
+      tester.view.physicalSize = const Size(320, 800);
+      tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+      controller.activeFilters['item_code'] = 'Item: 1002890';
+      await tester.pumpAndSettle();
+      const split = ['Add filter', 'Edit Item: 1002890', 'Reset Item: 1002890'];
+      expect(labels([...split, ...sorts]), [...split, ...sorts]);
+    });
+  }
+
+  testWidgets('Stock Ageing tabs into a filter inserted after Add', (
+    tester,
+  ) async {
+    final controller = await pumpStock(tester, size: const Size(411, 800));
+    final add = tester
+        .widget<HeaderChipButton>(_headerChip('Add filter'))
+        .focusNode!;
+    add.requestFocus();
+    await tester.pumpAndSettle();
+    controller.activeFilters['item_code'] = 'Item: 1002890';
+    await tester.pumpAndSettle();
+    final edit = tester
+        .widget<HeaderChipButton>(_headerChip('Edit Item: 1002890'))
+        .focusNode!;
+    final reset = tester
+        .widget<HeaderChipButton>(_headerChip('Reset Item: 1002890'))
+        .focusNode!;
+    expect(add.hasPrimaryFocus, isTrue);
+    for (final node in [edit, reset]) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pumpAndSettle();
+      expect(node.hasPrimaryFocus, isTrue, reason: node.debugLabel);
+    }
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    for (final node in [edit, add]) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pumpAndSettle();
+      expect(node.hasPrimaryFocus, isTrue, reason: node.debugLabel);
+    }
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
   });
 
   for (final accent in [AppAccent.purple, AppAccent.brand]) {
@@ -274,7 +747,7 @@ void main() {
   }
 
   testWidgets(
-    'pricing bottom selectable chips use the header interaction theme',
+    'pricing bottom and form selectable chips share the focus contour',
     (tester) async {
       const pricingKey = ValueKey('pricing');
       const formKey = ValueKey('form');
@@ -288,7 +761,7 @@ void main() {
                 DocTypeListHeader(
                   title: 'Pricing',
                   bottom: PreferredSize(
-                    preferredSize: const Size.fromHeight(40),
+                    preferredSize: const Size.fromHeight(48),
                     child: Center(
                       child: SelectableFilterChip(
                         key: pricingKey,
@@ -316,17 +789,13 @@ void main() {
       );
       final pricing = find.byKey(pricingKey);
       final form = find.byKey(formKey);
-      final pricedTheme = Theme.of(tester.element(_raw(pricing)));
-      final formTheme = Theme.of(tester.element(_raw(form)));
-      expect(
-        pricedTheme.highlightColor,
-        HeaderPalette(theme).quickPressedLayer,
-      );
-      expect(pricedTheme.focusColor, Colors.transparent);
-      expect(_side(tester, pricing).color, AppScheme.dark.textMuted);
-      expect(tester.getSize(_raw(pricing)).height, lessThanOrEqualTo(40));
-      expect(formTheme.highlightColor, theme.highlightColor);
-      expect(formTheme.focusColor, theme.focusColor);
+      for (final chip in [pricing, form]) {
+        final scoped = Theme.of(tester.element(_raw(chip)));
+        expect(scoped.highlightColor, HeaderPalette(theme).quickPressedLayer);
+        expect(scoped.focusColor, Colors.transparent);
+        expect(_side(tester, chip).color, AppScheme.dark.textMuted);
+        expect(tester.getSize(_raw(chip)).height, 48);
+      }
     },
   );
 }

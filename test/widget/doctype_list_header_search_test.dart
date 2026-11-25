@@ -14,6 +14,7 @@ import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
+import 'package:multimax/app/modules/global_widgets/header_choice_row.dart';
 import 'package:multimax/app/shared/image_scan/image_scan_result.dart';
 import 'package:multimax/main.dart' show buildAppTheme;
 
@@ -115,6 +116,79 @@ void main() {
       ..addFont(rootBundle.load('lib/assets/fonts/Inter-Regular.ttf'));
     await loader.load();
   });
+
+  testWidgets(
+    'Search keeps primary focus when wrapped counts unpin the header',
+    (tester) async {
+      _sizeView(tester, 320, height: 520);
+      final counted = ValueNotifier(false);
+      addTearDown(counted.dispose);
+      final query = ''.obs;
+      const names = [
+        'Retail',
+        'Trade',
+        'Gulf',
+        'Export',
+        'UAE',
+        'Qatar',
+        'Oman',
+        'Bahrain',
+        'Europe',
+        'Local',
+        'Special',
+        'Staff',
+      ];
+      await tester.pumpWidget(
+        _searchApp(
+          brightness: Brightness.light,
+          scale: 1,
+          home: Scaffold(
+            body: ValueListenableBuilder<bool>(
+              valueListenable: counted,
+              builder: (context, hasCounts, _) => CustomScrollView(
+                slivers: [
+                  DocTypeListHeader(
+                    title: 'Item Price',
+                    searchDoctype: 'Item Price',
+                    searchQuery: query,
+                    onFilterTap: () {},
+                    bottom: HeaderChoiceRow(
+                      options: [
+                        for (final name in names)
+                          HeaderChoiceOption(
+                            id: name,
+                            groupId: 'price-list',
+                            label: hasCounts ? '$name (1234)' : name,
+                            semanticLabel: name,
+                            selected: false,
+                            onPressed: () {},
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 900)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final header = find.byType(SliverPersistentHeader);
+      final search = find.byIcon(Icons.search);
+      expect(tester.widget<SliverPersistentHeader>(header).pinned, isTrue);
+      final focus = Focus.of(tester.element(search));
+      focus.requestFocus();
+      await tester.pumpAndSettle();
+      expect(focus.hasPrimaryFocus, isTrue);
+
+      counted.value = true;
+      await tester.pumpAndSettle();
+      expect(tester.widget<SliverPersistentHeader>(header).pinned, isFalse);
+      expect(Focus.of(tester.element(search)), same(focus));
+      expect(focus.hasPrimaryFocus, isTrue);
+    },
+  );
 
   for (final (doctype, height, keyboard, camera) in [
     ('Item', 380.0, 260.0, true),

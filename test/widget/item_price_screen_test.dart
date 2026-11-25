@@ -8,7 +8,7 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/item_price_provider.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
-import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
+import 'package:multimax/app/modules/global_widgets/header_choice_row.dart';
 import 'package:multimax/app/modules/pricing/item_price/item_price_controller.dart';
 import 'package:multimax/app/modules/pricing/item_price/item_price_screen.dart';
 
@@ -116,9 +116,10 @@ void main() {
     tester.platformDispatcher.textScaleFactorTestValue = 2;
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     await pump(tester, rows: const [], grant: false);
-    final chip = find.byType(SelectableFilterChip).first;
+    final chip = find.byType(HeaderChoiceButton).first;
+    final caption = find.descendant(of: chip, matching: find.byType(Text));
     final paragraph = tester.renderObject<RenderParagraph>(
-      find.descendant(of: chip, matching: find.byType(RichText)),
+      find.descendant(of: caption, matching: find.byType(RichText)),
     );
     expect(paragraph.textScaler.scale(14), 28);
     final line = paragraph.getDryLayout(

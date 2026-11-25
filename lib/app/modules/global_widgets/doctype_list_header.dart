@@ -10,6 +10,7 @@ import 'package:multimax/app/modules/global_widgets/add_filter_chip.dart';
 import 'package:multimax/app/modules/global_widgets/count_badge.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
+import 'package:multimax/app/modules/global_widgets/header_chip_band.dart';
 import 'package:multimax/app/modules/global_widgets/list_header_accessibility.dart';
 import 'package:multimax/app/modules/global_widgets/recent_search_suggestions.dart';
 import 'package:multimax/app/modules/theme/theme_controller.dart';
@@ -18,6 +19,8 @@ import 'package:multimax/app/shared/image_scan/image_scan_result.dart';
 const double _target = 48;
 const double _expandedBand = 96;
 const double _middleSpacing = 8;
+// Room for the result count and the start of the first card.
+const double _resultsSpace = 88;
 
 /// The shared, scalable persistent header for DocType list screens.
 class DocTypeListHeader extends StatefulWidget {
@@ -71,7 +74,7 @@ class DocTypeListHeader extends StatefulWidget {
   // ── Chip row ──────────────────────────────────────────────────────────
   /// Builder that returns the list of chip widgets to display.
   ///
-  /// Active chips scroll horizontally. A bulk action is offered when more
+  /// Active chips wrap. A bulk action is offered when more
   /// than one chip is displayed and [onClearAllFilters] is supplied.
   final List<Widget> Function(BuildContext context)? filterChipsBuilder;
   final VoidCallback? onClearAllFilters;
@@ -95,6 +98,10 @@ class DocTypeListHeader extends StatefulWidget {
   /// Its preferred height reserves space in both extents. The slot can grow
   /// when its incoming text scaler needs more room for captions.
   final PreferredSizeWidget? bottom;
+
+  /// Builds a measured bottom under the header's effective text scaler.
+  /// The legacy [bottom] keeps its incoming text scaler.
+  final PreferredSizeWidget Function(BuildContext)? measuredBottomBuilder;
 
   /// Additional invalidation key for opaque toolbar actions.
   final Object? extraActionsKey;
@@ -123,6 +130,7 @@ class DocTypeListHeader extends StatefulWidget {
     this.quickChipsKey,
     this.onImageScanResult,
     this.bottom,
+    this.measuredBottomBuilder,
     this.extraActionsKey,
   });
 
@@ -134,11 +142,29 @@ enum _LeadingAction { menu, back }
 
 class _DocTypeListHeaderState extends State<DocTypeListHeader> {
   final _funnelFocus = FocusNode(debugLabel: 'Filters');
+  final _searchFocus = FocusNode(debugLabel: 'Search');
   final _titleFocus = FocusNode(debugLabel: 'Show full title');
+  final _bandKey = GlobalKey(debugLabel: 'list-header-filter-row');
+  final _bottomKey = GlobalKey(debugLabel: 'list-header-measured-bottom');
+  final _toolbarKey = GlobalKey(debugLabel: 'list-header-toolbar');
+  final _rowsKey = GlobalKey(debugLabel: 'list-header-rows');
+
+  @override
+  void initState() {
+    super.initState();
+    PaintingBinding.instance.systemFonts.addListener(_fontsChanged);
+  }
+
+  void _fontsChanged() {
+    // Recreate the sliver's measurement when the font metrics change.
+    setState(() {});
+  }
 
   @override
   void dispose() {
+    PaintingBinding.instance.systemFonts.removeListener(_fontsChanged);
     _funnelFocus.dispose();
+    _searchFocus.dispose();
     _titleFocus.dispose();
     super.dispose();
   }
@@ -182,6 +208,11 @@ class _DocTypeListHeaderState extends State<DocTypeListHeader> {
     );
     final header = widget;
     final textScaler = MediaQuery.textScalerOf(context);
+    final bottom = header.measuredBottomBuilder?.call(context) ?? header.bottom;
+    final measuredBottom =
+        header.measuredBottomBuilder != null ||
+        bottom is MeasuredListHeaderBottom;
+    final slotScaler = measuredBottom ? textScaler : bottomScaler;
     final direction = Directionality.of(context);
     final locale = Localizations.maybeLocaleOf(context);
     final bold = MediaQuery.boldTextOf(context);
@@ -197,6 +228,23 @@ class _DocTypeListHeaderState extends State<DocTypeListHeader> {
         // Scroll-offset changes do not affect the measured geometry.
         if (viewport == measuredViewport) return sliver!;
         measuredViewport = viewport;
+        final plan = planHeaderBand(context, viewport.width, [
+          if (hasAdd) AddFilterChip.measureInBand,
+          ...applied.map(_chipMeasure),
+          ...quick.map(_chipMeasure),
+          if (hasBulk)
+            (context, width) => measureBandChip(
+              context,
+              header.clearAllLabel,
+              maxWidth: width,
+              insets: 40,
+            ),
+        ], hasSplit: applied.any((chip) => chip is FilterChipWidget));
+        final bottomHeight = bottom is MeasuredListHeaderBottom
+            ? bottom.heightFor(context, viewport.width)
+            : measuredBottom
+            ? bottom?.preferredSize.height ?? 0
+            : _bottomHeight(context, bottom, slotScaler);
         final geometry = _HeaderGeometryCalculator.measure(
           context,
           viewport: viewport,
@@ -206,11 +254,9 @@ class _DocTypeListHeaderState extends State<DocTypeListHeader> {
           hasFunnel: hasAdd,
           hasSearch: hasSearch,
           badgeCount: filters.length,
-          bottomHeight: _bottomHeight(context, header.bottom, bottomScaler),
-          applied: applied,
-          quick: quick,
-          hasBulk: hasBulk,
-          bulkLabel: header.clearAllLabel,
+          bottomHeight: bottomHeight,
+          row: plan.height,
+          capExpanded: measuredBottom,
         );
         return sliver = SliverPersistentHeader(
           key: header.sliverKey,
@@ -220,7 +266,13 @@ class _DocTypeListHeaderState extends State<DocTypeListHeader> {
             header: header,
             theme: theme,
             textScaler: textScaler,
-            bottomScaler: bottomScaler,
+            bottomScaler: slotScaler,
+            bottom: bottom,
+            bottomKey: measuredBottom ? _bottomKey : null,
+            bandKey: _bandKey,
+            toolbarKey: _toolbarKey,
+            rowsKey: _rowsKey,
+            plan: plan,
             direction: direction,
             locale: locale,
             bold: bold,
@@ -236,6 +288,7 @@ class _DocTypeListHeaderState extends State<DocTypeListHeader> {
             hasBulk: hasBulk,
             geometry: geometry,
             funnelFocus: _funnelFocus,
+            searchFocus: _searchFocus,
             titleFocus: _titleFocus,
           ),
         );
@@ -252,6 +305,25 @@ class _DocTypeListHeaderState extends State<DocTypeListHeader> {
     return hasDrawer ? _LeadingAction.menu : null;
   }
 }
+
+HeaderChipMeasure _chipMeasure(Widget chip) => switch (chip) {
+  FilterChipWidget() => chip.measureInBand,
+  HeaderQuickChip() => chip.measure,
+  MeasuredHeaderChip() => chip.measure,
+  _ => (context, maxWidth) {
+    final style = headerBandLabelStyle(context);
+    final line = measureHeaderText(context, 'Ag', style).size.height;
+    return (
+      width: maxWidth,
+      height: math.max(_target, line.ceil() + 16.0),
+      paintHeight: 34,
+      stackedReset: false,
+      stackedChoice: false,
+      maxLines: null,
+      ellipsized: false,
+    );
+  },
+};
 
 Object? _freezeFilterValue(Object? value) => switch (value) {
   Map() => Map.unmodifiable(
@@ -306,7 +378,6 @@ typedef _HeaderGeometry = ({
   double toolbar,
   double bottom,
   double row,
-  double bulkPaint,
   double largeTitle,
   double expanded,
   double compact,
@@ -318,14 +389,15 @@ typedef _HeaderGeometry = ({
   bool overflowFunnel,
   double middleSpacing,
   bool disclose,
-  double minimumLimit,
+  double extentLimit,
+  bool capExpanded,
   TextStyle largeStyle,
   TextStyle compactStyle,
 });
 
 extension on _HeaderGeometry {
   double get fixedExtent => status + toolbar + bottom + row;
-  bool get canPin => fixedExtent <= minimumLimit;
+  bool get canPin => fixedExtent <= extentLimit;
 }
 
 abstract final class _HeaderGeometryCalculator {
@@ -339,10 +411,8 @@ abstract final class _HeaderGeometryCalculator {
     required bool hasSearch,
     required int badgeCount,
     required double bottomHeight,
-    required List<Widget> applied,
-    required List<Widget> quick,
-    required bool hasBulk,
-    required String bulkLabel,
+    required double row,
+    required bool capExpanded,
   }) {
     final status = MediaQuery.paddingOf(context).top;
     final size = hasFunnel && badgeCount > 0
@@ -363,34 +433,6 @@ abstract final class _HeaderGeometryCalculator {
         ? math.max(kToolbarHeight, funnel.height)
         : kToolbarHeight;
     final theme = Theme.of(context);
-    final labelStyle =
-        theme.textTheme.labelLarge ?? const TextStyle(fontSize: 14);
-    final bulkPaint = hasBulk
-        ? math.max(
-            34.0,
-            measureHeaderText(
-                  context,
-                  bulkLabel,
-                  labelStyle,
-                ).size.height.ceilToDouble() +
-                2,
-          )
-        : 0.0;
-    double row = 0;
-    if (hasFunnel || hasBulk || applied.isNotEmpty || quick.isNotEmpty) {
-      row = math.max(_target, bulkPaint);
-      if (hasFunnel) {
-        row = math.max(row, AddFilterChip.requiredHeight(context));
-      }
-      for (final chip in applied.whereType<FilterChipWidget>()) {
-        row = math.max(row, chip.requiredHeight(context));
-      }
-      if (quick.isNotEmpty) {
-        final line = measureHeaderText(context, 'Ag', labelStyle).size.height;
-        row = math.max(row, line.ceilToDouble() + 16);
-      }
-    }
-
     final largeStyle = _largeTitleStyle(context);
     final compactStyle =
         (theme.textTheme.titleLarge ?? const TextStyle(fontSize: 22)).copyWith(
@@ -434,11 +476,13 @@ abstract final class _HeaderGeometryCalculator {
             compactStyle,
             maxWidth: bandWidth,
           ).size.height.ceilToDouble();
-    final minimumLimit =
-        viewport.height - math.min(_target, viewport.height / 2);
-    final disclose =
-        compact > 0 &&
-        status + toolbar + bottomHeight + row + compact > minimumLimit;
+    final minimumReserve = math.min(_target, viewport.height / 2);
+    final resultReserve = capExpanded
+        ? math.max(minimumReserve, math.min(_resultsSpace, viewport.height / 3))
+        : minimumReserve;
+    final extentLimit = viewport.height - resultReserve;
+    final fixed = status + toolbar + bottomHeight + row;
+    final disclose = compact > 0 && fixed + compact > extentLimit;
     var overflowSearch = false;
     var overflowFunnel = false;
     var middleSpacing = _middleSpacing;
@@ -468,15 +512,23 @@ abstract final class _HeaderGeometryCalculator {
         _middleSpacing,
       );
     }
+    final fullTitleBand = math.max(
+      _expandedBand,
+      math.max(largeTitle, compact),
+    );
+    final titleSpace = capExpanded
+        ? math.min(fullTitleBand, extentLimit - fixed)
+        : fullTitleBand;
     return (
       width: viewport.width,
       status: status,
       toolbar: toolbar,
       bottom: bottomHeight,
       row: row,
-      bulkPaint: bulkPaint,
       largeTitle: largeTitle,
-      expanded: math.max(_expandedBand, math.max(largeTitle, compact)),
+      expanded: titleSpace >= largeTitle
+          ? math.max(titleSpace, compact)
+          : compact,
       compact: compact,
       badge: size,
       funnel: funnel,
@@ -486,7 +538,8 @@ abstract final class _HeaderGeometryCalculator {
       overflowFunnel: overflowFunnel,
       middleSpacing: middleSpacing,
       disclose: disclose,
-      minimumLimit: minimumLimit,
+      extentLimit: extentLimit,
+      capExpanded: capExpanded,
       largeStyle: largeStyle,
       compactStyle: compactStyle,
     );
@@ -499,6 +552,12 @@ class _ListHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.theme,
     required this.textScaler,
     required this.bottomScaler,
+    required this.bottom,
+    required this.bottomKey,
+    required GlobalKey bandKey,
+    required this.toolbarKey,
+    required this.rowsKey,
+    required this.plan,
     required this.direction,
     required this.locale,
     required this.bold,
@@ -514,14 +573,14 @@ class _ListHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.hasBulk,
     required this.geometry,
     required this.funnelFocus,
+    required this.searchFocus,
     required this.titleFocus,
   }) : _filterRow = _FilterRow(
-         key: const ValueKey('list-header-filter-row'),
+         key: bandKey,
          applied: applied,
          quick: quick,
          query: query,
-         height: geometry.row,
-         bulkPaint: geometry.bulkPaint,
+         plan: plan,
          enabled: header.filtersEnabled,
          add: header.onFilterTap,
          bulk: hasBulk ? header.onClearAllFilters : null,
@@ -533,6 +592,11 @@ class _ListHeaderDelegate extends SliverPersistentHeaderDelegate {
   final ThemeData theme;
   final TextScaler textScaler;
   final TextScaler bottomScaler;
+  final PreferredSizeWidget? bottom;
+  final GlobalKey? bottomKey;
+  final GlobalKey toolbarKey;
+  final GlobalKey rowsKey;
+  final HeaderBandPlan plan;
   final TextDirection direction;
   final Locale? locale;
   final bool bold;
@@ -548,15 +612,21 @@ class _ListHeaderDelegate extends SliverPersistentHeaderDelegate {
   final bool hasBulk;
   final _HeaderGeometry geometry;
   final FocusNode funnelFocus;
+  final FocusNode searchFocus;
   final FocusNode titleFocus;
   final _FilterRow _filterRow;
 
   @override
   double get minExtent =>
-      math.min(geometry.fixedExtent + geometry.compact, geometry.minimumLimit);
+      math.min(geometry.fixedExtent + geometry.compact, geometry.extentLimit);
 
   @override
-  double get maxExtent => geometry.fixedExtent + geometry.expanded;
+  double get maxExtent {
+    final extent = geometry.fixedExtent + geometry.expanded;
+    return geometry.capExpanded
+        ? math.min(extent, geometry.extentLimit)
+        : extent;
+  }
 
   @override
   Widget build(
@@ -571,6 +641,49 @@ class _ListHeaderDelegate extends SliverPersistentHeaderDelegate {
     final large = travel > 0 && offset < travel / 2 && band >= g.largeTitle;
     final surface = context.scheme.fg;
     final lightSurface = surface.computeLuminance() > 0.5;
+    final measuredBottom = bottomKey != null;
+    // The stateful bottom can attach after the band when it moves between
+    // slivers. Keep traversal in the header's visual order.
+    Widget inOrder(double order, Widget child) => measuredBottom
+        ? FocusTraversalOrder(order: NumericFocusOrder(order), child: child)
+        : child;
+
+    // Keep the toolbar and rows mounted when changing sliver or scroll layout.
+    final toolbar = KeyedSubtree(
+      key: toolbarKey,
+      child: inOrder(1, _toolbar(context, showTitle: !large && g.compact == 0)),
+    );
+    final rows = Column(
+      key: rowsKey,
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (bottom case final bottom?)
+          inOrder(
+            2,
+            SizedBox(
+              height: g.bottom,
+              child: MediaQuery(
+                data: MediaQuery.of(context).copyWith(textScaler: bottomScaler),
+                child: KeyedSubtree(key: bottomKey, child: bottom),
+              ),
+            ),
+          ),
+        inOrder(3, _filterRow),
+      ],
+    );
+    final scrollRows = g.capExpanded && !g.canPin;
+    final status = scrollRows
+        ? math.min(g.status, g.extentLimit / 2)
+        : g.status;
+    final controlsSpace = g.extentLimit - status;
+    final rowsSpace = controlsSpace - g.toolbar;
+    final scrollToolbar =
+        scrollRows && rowsSpace < math.min(_target, g.bottom + g.row);
+    Widget scrollControls(double height, Widget child) => SizedBox(
+      height: height,
+      child: SingleChildScrollView(primary: false, child: child),
+    );
 
     final contents = AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle(
@@ -588,11 +701,13 @@ class _ListHeaderDelegate extends SliverPersistentHeaderDelegate {
         surfaceTintColor: Colors.transparent,
         elevation: overlapsContent ? 1 : 0,
         child: FocusTraversalGroup(
-          policy: WidgetOrderTraversalPolicy(),
+          policy: measuredBottom
+              ? OrderedTraversalPolicy(secondary: WidgetOrderTraversalPolicy())
+              : WidgetOrderTraversalPolicy(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SizedBox(height: g.status),
+              SizedBox(height: status),
               SizedBox(
                 height: band,
                 child: large || g.compact > 0
@@ -612,33 +727,37 @@ class _ListHeaderDelegate extends SliverPersistentHeaderDelegate {
                       )
                     : null,
               ),
-              _toolbar(context, showTitle: !large && g.compact == 0),
-              if (header.bottom case final bottom?)
-                SizedBox(
-                  height: g.bottom,
-                  child: MediaQuery(
-                    data: MediaQuery.of(
-                      context,
-                    ).copyWith(textScaler: bottomScaler),
-                    child: ListHeaderBottomScope(child: bottom),
+              if (scrollToolbar)
+                scrollControls(
+                  controlsSpace,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [toolbar, rows],
                   ),
-                ),
-              _filterRow,
+                )
+              else ...[
+                toolbar,
+                if (scrollRows) scrollControls(rowsSpace, rows) else rows,
+              ],
             ],
           ),
         ),
       ),
     );
-    if (g.canPin) return contents;
-    // If even the controls cannot fit while pinned, let them scroll away.
-    return ClipRect(
-      child: OverflowBox(
-        alignment: Alignment.bottomCenter,
-        minHeight: g.fixedExtent + band,
-        maxHeight: g.fixedExtent + band,
-        child: contents,
-      ),
-    );
+    // Report headers keep their sliver scroll extent for sticky row alignment.
+    final body = !g.capExpanded && !g.canPin
+        ? ClipRect(
+            child: OverflowBox(
+              alignment: Alignment.bottomCenter,
+              minHeight: g.fixedExtent + band,
+              maxHeight: g.fixedExtent + band,
+              child: contents,
+            ),
+          )
+        : contents;
+    return header.sliverKey == null
+        ? body
+        : SizeChangedLayoutNotifier(child: body);
   }
 
   Widget _heading(TextStyle style) => Semantics(
@@ -814,6 +933,7 @@ class _ListHeaderDelegate extends SliverPersistentHeaderDelegate {
         : 'Search $doctype';
     return HeaderIconAction(
       tooltip: query.isEmpty ? label : '$label, current query: $query',
+      focusNode: searchFocus,
       onPressed: () => showListSearch(
         context,
         query: query,
@@ -854,6 +974,10 @@ class _ListHeaderDelegate extends SliverPersistentHeaderDelegate {
   bool shouldRebuild(covariant _ListHeaderDelegate old) {
     const widgetEquality = ListEquality<Widget>();
     return geometry != old.geometry ||
+        !const ListEquality<HeaderBandSlot>().equals(
+          plan.slots,
+          old.plan.slots,
+        ) ||
         theme != old.theme ||
         textScaler != old.textScaler ||
         bottomScaler != old.bottomScaler ||
@@ -886,7 +1010,7 @@ class _ListHeaderDelegate extends SliverPersistentHeaderDelegate {
         header.onClearAllFilters != old.header.onClearAllFilters ||
         header.filtersEnabled != old.header.filtersEnabled ||
         header.clearAllLabel != old.header.clearAllLabel ||
-        header.bottom != old.header.bottom;
+        bottom != old.bottom;
   }
 }
 
@@ -985,8 +1109,7 @@ class _FilterRow extends StatefulWidget {
     required this.applied,
     required this.quick,
     required this.query,
-    required this.height,
-    required this.bulkPaint,
+    required this.plan,
     required this.enabled,
     required this.add,
     required this.bulk,
@@ -997,8 +1120,7 @@ class _FilterRow extends StatefulWidget {
   final List<Widget> applied;
   final List<Widget> quick;
   final String query;
-  final double height;
-  final double bulkPaint;
+  final HeaderBandPlan plan;
   final bool enabled;
   final VoidCallback? add;
   final VoidCallback? bulk;
@@ -1050,6 +1172,7 @@ class _FilterRowState extends State<_FilterRow> {
   @override
   void dispose() {
     FocusManager.instance.removeListener(_focusChanged);
+    _traversal.dispose();
     _addFocus.dispose();
     _bulkFocus.dispose();
     for (final nodes in [..._nodes.values, ..._retired]) {
@@ -1134,11 +1257,16 @@ class _FilterRowState extends State<_FilterRow> {
   }
 
   void _focusChanged() {
+    final focus = FocusManager.instance.primaryFocus;
     final pending = _pending;
-    if (pending != null &&
-        FocusManager.instance.primaryFocus != pending.focus) {
+    if (pending != null && focus != pending.focus) {
       _pending = null;
     }
+    if (focus == null ||
+        focus.context?.findAncestorStateOfType<_FilterRowState>() != this) {
+      return;
+    }
+    revealHeaderBandFocus(context, focus);
   }
 
   void _beforeReset(_ChipIdentity? id, FocusNode focus) {
@@ -1197,35 +1325,7 @@ class _FilterRowState extends State<_FilterRow> {
           ).findFirstFocus(scope, ignoreCurrentFocus: true);
       if (candidate == null || candidate is FocusScopeNode) return;
       candidate.requestFocus();
-      final focusContext = candidate.context;
-      if (focusContext == null) return;
-      final scroll = Scrollable.maybeOf(focusContext, axis: Axis.horizontal);
-      final render = focusContext.findRenderObject();
-      if (scroll != null && render != null && render.attached) {
-        scroll.position.ensureVisible(
-          render,
-          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
-        );
-        scroll.position.ensureVisible(
-          render,
-          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart,
-        );
-      }
     });
-  }
-
-  List<Widget> _appliedSlots() {
-    final ids = _chips.keys.iterator;
-    return [
-      for (final chip in widget.applied)
-        if (chip is FilterChipWidget && ids.moveNext())
-          _focusSlot(ids.current, chip)
-        else
-          Padding(
-            padding: const EdgeInsetsDirectional.only(end: 6),
-            child: chip,
-          ),
-    ];
   }
 
   Widget _focusSlot(_ChipIdentity id, FilterChipWidget chip) {
@@ -1241,72 +1341,125 @@ class _FilterRowState extends State<_FilterRow> {
     );
   }
 
+  Widget _legacyChip(Widget chip, HeaderChipSize size) =>
+      ListHeaderQuickChipTheme(
+        child: Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minWidth: _target,
+              minHeight: size.height,
+            ),
+            child: chip,
+          ),
+        ),
+      );
+
+  Widget _bulkChip(HeaderChipSize size, VoidCallback bulk) {
+    final palette = HeaderPalette.of(context);
+    return HeaderChipButton(
+      label: widget.bulkLabel,
+      focusNode: _bulkFocus,
+      onPressed: widget.enabled
+          ? () {
+              _beforeReset(null, _bulkFocus);
+              bulk();
+            }
+          : null,
+      width: size.width,
+      height: size.height,
+      paintedHeight: size.paintHeight,
+      paint: HeaderChipPaint.bulk,
+      bandBulkOutline: true,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(
+        children: [
+          const Icon(Icons.clear_all, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: HeaderBandCaption(
+              widget.bulkLabel,
+              size: size,
+              color: widget.enabled ? palette.error : palette.muted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  late final _traversal = HeaderBandTraversalPolicy(
+    (node) => node.context?.findAncestorStateOfType<_FilterRowState>() == this,
+  );
+
   @override
   Widget build(BuildContext context) {
-    if (widget.height == 0) return const SizedBox.shrink();
+    final plan = widget.plan;
+    if (plan.height == 0) return const SizedBox.shrink();
+    final ids = _chips.keys.iterator;
+    final slots = <Widget>[];
+
+    void addSlot(Object id, Widget Function(HeaderChipSize size) builder) {
+      final index = slots.length;
+      final slot = plan.slots[index];
+      slots.add(
+        Positioned(
+          key: ValueKey(id),
+          left: slot.x,
+          top: slot.y,
+          width: slot.size.width,
+          height: slot.size.height,
+          child: Semantics(
+            container: true,
+            sortKey: OrdinalSortKey(index.toDouble()),
+            child: FocusTraversalOrder(
+              order: NumericFocusOrder(2.0 * index),
+              child: HeaderChipSizeScope(
+                size: slot.size,
+                child: builder(slot.size),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (widget.add case final add?) {
+      addSlot(#add, (_) => AddFilterChip(onTap: add, focusNode: _addFocus));
+    }
+    for (final (i, chip) in widget.applied.indexed) {
+      if (chip is FilterChipWidget) {
+        ids.moveNext();
+        final id = ids.current;
+        addSlot(id, (_) => _focusSlot(id, chip));
+      } else {
+        addSlot((#applied, chip.key ?? i), (size) => _legacyChip(chip, size));
+      }
+    }
+    for (final (i, chip) in widget.quick.indexed) {
+      addSlot(
+        (#quick, chip.key ?? i),
+        (size) => chip is HeaderQuickChip || chip is MeasuredHeaderChip
+            ? chip
+            : _legacyChip(chip, size),
+      );
+    }
+    if (widget.bulk case final bulk?) {
+      addSlot(#bulk, (size) => _bulkChip(size, bulk));
+    }
     return ListHeaderFilterScope(
       enabled: widget.enabled,
-      child: SizedBox(
-        height: widget.height,
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ..._appliedSlots(),
-              if (widget.add case final add?)
-                Padding(
-                  padding: const EdgeInsetsDirectional.only(end: 6),
-                  child: AddFilterChip(onTap: add, focusNode: _addFocus),
-                ),
-              if (widget.bulk case final bulk?)
-                HeaderChipButton(
-                  label: widget.bulkLabel,
-                  focusNode: _bulkFocus,
-                  onPressed: widget.enabled
-                      ? () {
-                          _beforeReset(null, _bulkFocus);
-                          bulk();
-                        }
-                      : null,
-                  paintedHeight: widget.bulkPaint,
-                  paint: HeaderChipPaint.bulk,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.clear_all, size: 16),
-                      const SizedBox(width: 8),
-                      Text(widget.bulkLabel),
-                    ],
-                  ),
-                ),
-              if (widget.quick.isNotEmpty &&
-                  (widget.add != null || widget.applied.isNotEmpty))
-                ExcludeSemantics(
-                  child: Container(
-                    width: 1,
-                    height: 20,
-                    margin: const EdgeInsetsDirectional.only(start: 2, end: 8),
-                    color: Theme.of(context).colorScheme.outlineVariant,
-                  ),
-                ),
-              for (final chip in widget.quick)
-                Padding(
-                  padding: const EdgeInsetsDirectional.only(end: 6),
-                  child: ListHeaderQuickChipTheme(
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minWidth: _target,
-                        minHeight: widget.height,
-                        maxHeight: widget.height,
-                      ),
-                      child: chip,
-                    ),
-                  ),
-                ),
-            ],
+      child: FocusTraversalGroup(
+        policy: _traversal,
+        child: Semantics(
+          container: true,
+          explicitChildNodes: true,
+          child: SizedBox(
+            height: plan.height,
+            child: Stack(
+              key: const ValueKey('list-header-chip-band'),
+              children: slots,
+            ),
           ),
         ),
       ),

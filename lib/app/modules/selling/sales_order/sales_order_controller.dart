@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:collection/collection.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/sales_order_model.dart';
 import 'package:multimax/app/data/models/user_model.dart';
@@ -22,6 +25,12 @@ class SalesOrderController extends GetxController {
   final scope = ActionableScope.everyone.obs;
   static const _limit = 20;
   int _page = 0;
+  int _generation = 0;
+  _SalesOrderCriteria? _committedCriteria;
+  _SalesOrderCriteria? _requestedCriteria;
+  Completer<void>? _fullLoad;
+  bool _quickChanging = false;
+  Timer? _searchDebounce;
 
   // Owner picker — lazily loaded from the filter sheet's initState, not here,
   // so the list doesn't pay for the fetch up front.
@@ -50,8 +59,13 @@ class SalesOrderController extends GetxController {
       if (r.mine) scope.value = ActionableScope.mine;
     }
     fetch(clear: true);
-    debounce(searchQuery, (_) => fetch(clear: true),
-        time: const Duration(milliseconds: 500));
+  }
+
+  @override
+  void onClose() {
+    _generation++;
+    _searchDebounce?.cancel();
+    super.onClose();
   }
 
   String? get _email {
@@ -78,22 +92,55 @@ class SalesOrderController extends GetxController {
     }
   }
 
-  void onSearchChanged(String v) => searchQuery.value = v;
+  void onSearchChanged(String value) {
+    if (isClosed) return;
+    if (value.trim() != searchQuery.value.trim()) {
+      // The visible query changes now, so ownership must change before the
+      // debounced replacement request starts.
+      _generation++;
+      _fullLoad = null;
+      isLoading.value = true;
+      isFetchingMore.value = false;
+      _discardRows();
+      _searchDebounce?.cancel();
+      _searchDebounce = Timer(
+        const Duration(milliseconds: 500),
+        () => fetch(clear: true),
+      );
+    }
+    searchQuery.value = value;
+  }
+
+  void clearSearch() {
+    onSearchChanged('');
+    fetch(clear: true);
+  }
 
   void setScope(ActionableScope s) {
     if (scope.value == s) return;
-    scope.value = s;
-    fetch(clear: true);
+    _applyQuick(() => scope.value = s);
   }
 
   /// Single-select quick chip; tapping the active chip clears it.
   void setStatusChip(String? status) {
-    if (status == null || activeFilters['status'] == status) {
-      activeFilters.remove('status');
-    } else {
-      activeFilters['status'] = status;
+    _applyQuick(() {
+      if (status == null || activeFilters['status'] == status) {
+        activeFilters.remove('status');
+      } else {
+        activeFilters['status'] = status;
+      }
+    });
+  }
+
+  void _applyQuick(void Function() change) {
+    if (isClosed || isLoading.value || _quickChanging) return;
+    _quickChanging = true;
+    try {
+      change();
+      fetch(clear: true);
+    } finally {
+      _quickChanging = false;
     }
-    fetch(clear: true);
   }
 
   void applyFilters(Map<String, dynamic> f) {
@@ -108,68 +155,168 @@ class SalesOrderController extends GetxController {
 
   void clearFilters() {
     activeFilters.clear();
-    if (searchQuery.value.isEmpty) {
-      fetch(clear: true);
-    } else {
-      searchQuery.value = '';
-    }
+    clearSearch();
   }
 
-  Future<void> fetch({bool isLoadMore = false, bool clear = false}) async {
-    if (isLoadMore) {
-      if (isFetchingMore.value || !hasMore.value) return;
-      isFetchingMore.value = true;
-    } else {
-      isLoading.value = true;
-      if (clear) {
-        _page = 0;
-        hasMore.value = true;
-      }
+  _SalesOrderCriteria get _criteria {
+    final filters = Map<String, dynamic>.from(activeFilters);
+    final email = _email;
+    if (scope.value == ActionableScope.mine &&
+        !filters.containsKey('owner') &&
+        email != null &&
+        email.isNotEmpty) {
+      filters['owner'] = email;
     }
-    try {
-      final f = Map<String, dynamic>.from(activeFilters);
-      final email = _email;
-      if (scope.value == ActionableScope.mine &&
-          !f.containsKey('owner') && email != null && email.isNotEmpty) {
-        f['owner'] = email;
+    return _SalesOrderCriteria(
+      searchQuery.value.trim(),
+      _freezeFilters(filters),
+    );
+  }
+
+  Future<void> fetch({bool isLoadMore = false, bool clear = false}) {
+    if (isClosed) return Future.value();
+    final criteria = _criteria;
+    if (isLoadMore) {
+      if (isLoading.value ||
+          isFetchingMore.value ||
+          !hasMore.value ||
+          criteria != _committedCriteria) {
+        return Future.value();
       }
-      final q = searchQuery.value.trim();
+      isFetchingMore.value = true;
+      return _fetchPage(criteria, _generation, _page, append: true);
+    }
+
+    _searchDebounce?.cancel();
+    final pending = _fullLoad;
+    if (pending != null && criteria == _requestedCriteria) {
+      return pending.future;
+    }
+    final load = Completer<void>();
+    final generation = ++_generation;
+    _fullLoad = load;
+    _requestedCriteria = criteria;
+    isLoading.value = true;
+    isFetchingMore.value = false;
+    if (criteria != _committedCriteria) _discardRows();
+    load.complete(_fetchPage(criteria, generation, 0, append: false));
+    return load.future;
+  }
+
+  void _discardRows() {
+    _page = 0;
+    _committedCriteria = null;
+    hasMore.value = true;
+    orders.clear();
+  }
+
+  bool _ownsPage(int generation, int page, bool append) =>
+      !isClosed && generation == _generation && (!append || page == _page);
+
+  Future<void> _fetchPage(
+    _SalesOrderCriteria criteria,
+    int generation,
+    int page, {
+    required bool append,
+  }) async {
+    try {
+      final q = criteria.query;
       final res = await _provider.getSalesOrders(
-          limit: _limit,
-          limitStart: _page * _limit,
-          filters: f,
-          orFilters: q.isEmpty
-              ? null
-              : {'name': ['like', '%$q%'], 'customer_name': ['like', '%$q%']});
+        limit: _limit,
+        limitStart: page * _limit,
+        filters: criteria.filters,
+        orFilters: q.isEmpty
+            ? null
+            : {
+                'name': ['like', '%$q%'],
+                'customer_name': ['like', '%$q%'],
+              },
+      );
+      if (!_ownsPage(generation, page, append)) return;
       final data = (res.data is Map) ? res.data['data'] : null;
       if (res.statusCode == 200 && data is List) {
         final rows = data
             .map((e) => SalesOrder.fromJson(Map<String, dynamic>.from(e)))
             .toList();
-        if (rows.length < _limit) hasMore.value = false;
-        isLoadMore ? orders.addAll(rows) : orders.assignAll(rows);
-        _page++;
+        _page = page + 1;
+        _committedCriteria = criteria;
+        hasMore.value = rows.length >= _limit;
+        append ? orders.addAll(rows) : orders.assignAll(rows);
       } else {
-        _error(isLoadMore, clear);
+        _error(criteria, generation, page, append);
       }
     } catch (e) {
-      _error(isLoadMore, clear, e.toString());
+      if (_ownsPage(generation, page, append)) {
+        _error(criteria, generation, page, append, e.toString());
+      }
     } finally {
-      isLoadMore ? isFetchingMore.value = false : isLoading.value = false;
+      if (!isClosed && generation == _generation) {
+        if (append) {
+          isFetchingMore.value = false;
+        } else {
+          _fullLoad = null;
+          isLoading.value = false;
+        }
+      }
     }
   }
 
-  void _error(bool more, bool clear, [String? msg]) => GlobalDialog.showError(
-        title: 'Could not load Sales Orders',
-        message: msg ??
-            'The server returned an unexpected response. '
-                'Check your connection and try again.',
-        onRetry: () => fetch(isLoadMore: more, clear: clear),
-      );
+  void _error(
+    _SalesOrderCriteria criteria,
+    int generation,
+    int page,
+    bool append, [
+    String? msg,
+  ]) {
+    if (criteria != _criteria) return;
+    GlobalDialog.showError(
+      title: 'Could not load Sales Orders',
+      message:
+          msg ??
+          'The server returned an unexpected response. '
+              'Check your connection and try again.',
+      onRetry: () {
+        if (_ownsPage(generation, page, append) && criteria == _criteria) {
+          fetch(isLoadMore: append, clear: !append);
+        }
+      },
+    );
+  }
 
   void openCreate() => Get.toNamed(AppRoutes.SALES_ORDER_FORM,
       arguments: {'name': '', 'mode': 'new'});
 
   void open(SalesOrder so) => Get.toNamed(AppRoutes.SALES_ORDER_FORM,
       arguments: {'name': so.name, 'mode': so.docstatus == 0 ? 'edit' : 'view'});
+}
+
+Map<String, dynamic> _freezeFilters(Map<String, dynamic> filters) =>
+    Map.unmodifiable(
+      filters.map((key, value) => MapEntry(key, _freeze(value))),
+    );
+
+Object? _freeze(Object? value) => switch (value) {
+  List<Object?>() => List<Object?>.unmodifiable(value.map(_freeze)),
+  Map<Object?, Object?>() => Map<Object?, Object?>.unmodifiable(
+    value.map((k, v) => MapEntry(k, _freeze(v))),
+  ),
+  _ => value,
+};
+
+class _SalesOrderCriteria {
+  const _SalesOrderCriteria(this.query, this.filters);
+
+  static const _equality = DeepCollectionEquality();
+
+  final String query;
+  final Map<String, dynamic> filters;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _SalesOrderCriteria &&
+      query == other.query &&
+      _equality.equals(filters, other.filters);
+
+  @override
+  int get hashCode => Object.hash(query, _equality.hash(filters));
 }

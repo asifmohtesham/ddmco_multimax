@@ -1,18 +1,10 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'list_header_accessibility.dart';
 
-/// A selectable (toggle) filter chip for *in-screen* segmentation — e.g. the
-/// All / Pending / Completed item filters on form Items tabs, or a single-select
-/// warehouse picker.
-///
-/// Distinct from [FilterChipWidget], which is the read-only *applied-filter*
-/// chip (maroon pill with a trailing ×) rendered in the list-header chip row.
-///
-/// Consolidates the private `_buildFilterChip` helpers (bare [ChoiceChip]s) in
-/// Delivery Note, Packing Slip and Purchase Receipt, plus the hand-styled
-/// warehouse [FilterChip]s in the Item form. Styling is delegated to the global
-/// `chipTheme` so every selectable filter chip looks identical.
+/// A native choice with shared selection and focus styling for in-screen
+/// filters such as item status, document scope and warehouse.
 class SelectableFilterChip extends StatelessWidget {
   const SelectableFilterChip({
     super.key,
@@ -21,6 +13,8 @@ class SelectableFilterChip extends StatelessWidget {
     required this.onSelected,
     this.count,
     this.dotColor,
+    this.focusNode,
+    this.semanticLabel,
   });
 
   final String label;
@@ -28,42 +22,121 @@ class SelectableFilterChip extends StatelessWidget {
   /// When non-null, rendered as `label (count)`.
   final int? count;
 
-  /// When non-null, a small leading dot in this colour — e.g. the
-  /// [StatusPill] dot colour for a status facet chip. Lives inside the
-  /// label (not [ChoiceChip.avatar]) so it stays visible when the
-  /// selected-state checkmark is shown.
+  /// Leading status dot that remains visible with the selection check.
   final Color? dotColor;
 
   final bool selected;
-  final ValueChanged<bool> onSelected;
+  final ValueChanged<bool>? onSelected;
+  final FocusNode? focusNode;
+
+  /// The full spoken option name when the caller uses a shorter visual name.
+  final String? semanticLabel;
+
+  String get caption => _captionFor(label);
+
+  String _captionFor(String name) => count == null ? name : '$name ($count)';
 
   @override
   Widget build(BuildContext context) {
-    final text = Text(count != null ? '$label ($count)' : label);
-    final chip = ChoiceChip(
-      label: dotColor == null
+    final palette = HeaderPalette.of(context);
+    final enabled = onSelected != null;
+    final fill = WidgetStatePropertyAll(palette.choiceFill(selected, enabled));
+    final ink = palette.choiceInk(selected, enabled);
+    final style = choiceLabelStyle(context).copyWith(color: ink);
+    const padding = EdgeInsets.all(8);
+    const labelPadding = EdgeInsets.symmetric(horizontal: 8);
+    const density = VisualDensity.standard;
+    const tapTarget = MaterialTapTargetSize.padded;
+    final name = semanticLabel;
+    final spokenCaption = name == null ? null : _captionFor(name);
+    final text = Text(
+      caption,
+      semanticsLabel: spokenCaption,
+      maxLines: 1,
+      softWrap: false,
+    );
+    final body = ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 16),
+      child: dotColor == null
           ? text
           : Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  width: 7,
-                  height: 7,
-                  decoration: BoxDecoration(
-                    color: dotColor,
-                    shape: BoxShape.circle,
+                ExcludeSemantics(
+                  child: Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: dotColor,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: ink),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 6),
                 text,
               ],
             ),
-      selected: selected,
-      onSelected: onSelected,
-      visualDensity: VisualDensity.compact,
     );
-    return ListHeaderBottomScope.contains(context)
-        ? ListHeaderQuickChipTheme(child: chip)
-        : chip;
+    final Widget chip;
+    if (enabled) {
+      chip = ChoiceChip(
+        label: body,
+        labelStyle: style,
+        selected: selected,
+        onSelected: onSelected,
+        focusNode: focusNode,
+        showCheckmark: true,
+        checkmarkColor: ink,
+        color: fill,
+        padding: padding,
+        labelPadding: labelPadding,
+        pressElevation: 0,
+        visualDensity: density,
+        materialTapTargetSize: tapTarget,
+      );
+    } else {
+      // Render the disabled palette at full opacity and exclude the inert
+      // chip's native semantics in favour of a single named disabled node.
+      chip = Semantics(
+        container: true,
+        excludeSemantics: true,
+        button: true,
+        enabled: false,
+        selected: kIsWeb ? null : selected,
+        checked: kIsWeb ? selected : null,
+        label: spokenCaption ?? caption,
+        child: ExcludeFocus(
+          child: RawChip(
+            tapEnabled: false,
+            isEnabled: true,
+            label: body,
+            labelStyle: style,
+            selected: selected,
+            showCheckmark: true,
+            checkmarkColor: ink,
+            color: fill,
+            side: BorderSide(
+              color: selected ? Colors.transparent : palette.muted,
+            ),
+            padding: padding,
+            labelPadding: labelPadding,
+            elevation: 0,
+            pressElevation: 0,
+            visualDensity: density,
+            materialTapTargetSize: tapTarget,
+          ),
+        ),
+      );
+    }
+    return ListHeaderQuickChipTheme(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          minWidth: 48,
+          minHeight: choiceTargetHeight(context, [caption]),
+        ),
+        child: chip,
+      ),
+    );
   }
 }

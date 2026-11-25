@@ -279,30 +279,22 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
                   const SizedBox(height: 6),
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
+                    padding:
+                        const EdgeInsetsDirectional.symmetric(horizontal: 4),
                     child: Row(
+                      spacing: 8,
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: SelectableFilterChip(
-                            label: 'All',
-                            selected: selected == null,
-                            onSelected: (_) =>
-                                controller.clearWarehouseFilter(),
-                          ),
+                        SelectableFilterChip(
+                          label: 'All',
+                          selected: selected == null,
+                          onSelected: (_) => controller.clearWarehouseFilter(),
                         ),
                         ...warehouses.map((wh) {
                           final isActive = selected == wh;
-                          final label = wh.contains(' - ')
-                              ? wh.split(' - ').first.trim()
-                              : wh;
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: SelectableFilterChip(
-                              label: label,
-                              selected: isActive,
-                              onSelected: (_) =>
-                                  controller.onWarehouseChanged(wh),
-                            ),
+                          return SelectableFilterChip(
+                            label: wh,
+                            selected: isActive,
+                            onSelected: (_) => controller.onWarehouseChanged(wh),
                           );
                         }),
                       ],

@@ -6,6 +6,7 @@ import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/header_chip_band.dart';
 import 'package:multimax/app/modules/global_widgets/item_image.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
@@ -75,6 +76,7 @@ class StockAgeingScreen extends GetView<StockAgeingController> {
   List<Widget> _buildFilterChips(BuildContext context) => [
     for (final e in controller.activeFilters.entries)
       FilterChipWidget(
+        key: ValueKey(e.key),
         icon: Icons.filter_alt_outlined,
         label: e.value,
         onDeleted: () => controller.clearFilter(e.key),
@@ -143,18 +145,15 @@ class StockAgeingScreen extends GetView<StockAgeingController> {
                     ],
                     quickChips: [
                       for (final e in sorts.entries)
-                        ChoiceChip(
-                          label: Text(e.value),
-                          selected: sort == e.key,
-                          visualDensity: VisualDensity.compact,
-                          onSelected: (_) => controller.setSort(e.key),
+                        HeaderQuickChip(
+                          key: ValueKey(e.key),
+                          caption: e.value,
+                          label: 'Sort by ${e.value}',
+                          role: HeaderQuickRole.choice,
+                          active: sort == e.key,
+                          onPressed: () => controller.setSort(e.key),
                         ),
                     ],
-                    quickChipsKey: (
-                      sort,
-                      sorts.values.join('|'),
-                      controller.activeFilters.values.join('|'),
-                    ),
                   ),
                 ),
                 SliverToBoxAdapter(

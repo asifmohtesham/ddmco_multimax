@@ -917,4 +917,93 @@ class _StockFieldsApi extends ApiProvider {
     imageRequests++;
     return await imageGate?.future ?? {};
   }
+
+  testWidgets('warehouse pills reuse row height across selection changes', (
+    tester,
+  ) async {
+    const warehouseCount = 500;
+    const firstWarehouse = 'Branch Warehouse 1';
+    var selected = 'ALL';
+    var lastWarehouse = 'Branch Warehouse $warehouseCount';
+    var scaleCalls = 0;
+    void recordScale() => scaleCalls++;
+    var scaler = _CountingTextScaler(1, recordScale);
+    final theme = ThemeData();
+
+    Future<void> pumpPills() => tester.pumpWidget(
+      MaterialApp(
+        theme: theme,
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(textScaler: scaler),
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: SizedBox(
+                  width: 320,
+                  child: buildStockBalanceWarehouseChipsForTest(
+                    warehouses: List.generate(
+                      warehouseCount,
+                      (i) => i == warehouseCount - 1
+                          ? lastWarehouse
+                          : 'Branch Warehouse ${i + 1}',
+                    ),
+                    selected: selected,
+                    onSelected: (value) => setState(() => selected = value),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await pumpPills();
+    final originalHeight = tester.getSize(find.byType(ListView)).height;
+    expect(scaleCalls, greaterThanOrEqualTo(warehouseCount));
+
+    await tester.tap(find.text(firstWarehouse));
+    scaleCalls = 0;
+    await tester.pumpAndSettle();
+    expect(selected, firstWarehouse);
+    expect(tester.getSize(find.byType(ListView)).height, originalHeight);
+    // Only the lazily built visible pills need to measure on selection.
+    expect(scaleCalls, lessThan(warehouseCount));
+
+    scaleCalls = 0;
+    lastWarehouse = 'New Warehouse';
+    await pumpPills();
+    expect(scaleCalls, greaterThanOrEqualTo(warehouseCount));
+
+    scaleCalls = 0;
+    scaler = _CountingTextScaler(2, recordScale);
+    await pumpPills();
+    expect(scaleCalls, greaterThanOrEqualTo(warehouseCount));
+    expect(
+      tester.getSize(find.byType(ListView)).height,
+      greaterThan(originalHeight),
+    );
+
+    scaleCalls = 0;
+    await tester.binding.handleSystemMessage({'type': 'fontsChange'});
+    await tester.pump();
+    expect(scaleCalls, greaterThanOrEqualTo(warehouseCount));
+  });
+}
+
+class _CountingTextScaler extends TextScaler {
+  const _CountingTextScaler(this.factor, this.recordScale);
+
+  final double factor;
+  final VoidCallback recordScale;
+
+  @override
+  double scale(double fontSize) {
+    recordScale();
+    return fontSize * factor;
+  }
+
+  @override
+  double get textScaleFactor => factor;
 }

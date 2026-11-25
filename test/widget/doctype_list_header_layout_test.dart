@@ -209,7 +209,7 @@ void main() {
         expect(config.floating, floating);
 
         final toolbar = tester.getRect(find.byType(NavigationToolbar));
-        final row = find.byType(SingleChildScrollView);
+        final row = find.byKey(const ValueKey('list-header-chip-band'));
         final rowHeight = index == 0 ? 0.0 : tester.getSize(row).height;
         expect(row, index == 0 ? findsNothing : findsOneWidget);
         expect(rowHeight >= 48, index != 0);
@@ -452,7 +452,7 @@ void main() {
     final delegate = tester
         .widget<SliverPersistentHeader>(find.byType(SliverPersistentHeader))
         .delegate;
-    final row = find.byType(SingleChildScrollView);
+    final row = find.byKey(const ValueKey('list-header-chip-band'));
     expect(
       delegate.minExtent,
       tester.getSize(toolbar).height + tester.getSize(row).height,

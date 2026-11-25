@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
+import 'package:multimax/app/modules/global_widgets/list_header_accessibility.dart';
 import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/pos_upload/pos_upload_controller.dart';
@@ -27,13 +28,13 @@ class PosUploadStatusFilterBar extends StatelessWidget {
         border: Border(bottom: BorderSide(color: cs.outlineVariant)),
       ),
       child: SizedBox(
-        height: 36,
+        height: choiceTargetHeight(context, ['All', ...PosUpload.statusOptions]),
         child: Obx(() {
           final active = controller.activeFilters['status'] as String?;
           final items = <String?>[null, ...PosUpload.statusOptions];
           return ListView.separated(
             scrollDirection: Axis.horizontal,
-            padding: EdgeInsets.zero,
+            padding: const EdgeInsetsDirectional.symmetric(horizontal: 4),
             itemCount: items.length,
             separatorBuilder: (_, __) => const SizedBox(width: 6),
             itemBuilder: (context, i) {

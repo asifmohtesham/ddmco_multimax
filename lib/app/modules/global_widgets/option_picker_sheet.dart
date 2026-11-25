@@ -10,7 +10,22 @@ void showOptionPickerSheet(
   required List<String> options,
   required String selected,
   required ValueChanged<String> onSelected,
+  bool paintOptionsOnMaterial = false,
 }) {
+  final optionList = Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      for (final option in options)
+        ListTile(
+          title: Text(option),
+          trailing: option == selected ? const Icon(Icons.check) : null,
+          onTap: () {
+            Navigator.of(context).pop();
+            onSelected(option);
+          },
+        ),
+    ],
+  );
   Get.bottomSheet(
     // Uncapped: one row per option, so a long list would run under the status
     // bar. Callers that nest the shell in a DraggableScrollableSheet are
@@ -20,20 +35,9 @@ void showOptionPickerSheet(
         child: OptionPickerSheetShell(
           title: title,
           mainAxisSize: MainAxisSize.min,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final option in options)
-                ListTile(
-                  title: Text(option),
-                  trailing: option == selected ? const Icon(Icons.check) : null,
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    onSelected(option);
-                  },
-                ),
-            ],
-          ),
+          child: paintOptionsOnMaterial
+              ? Material(type: MaterialType.transparency, child: optionList)
+              : optionList,
         ),
       ),
     ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
+import 'package:multimax/app/modules/global_widgets/header_choice_row.dart';
 import 'package:multimax/app/modules/global_widgets/list_header_accessibility.dart';
 import 'package:multimax/main.dart' show buildAppTheme;
 
@@ -14,7 +15,89 @@ double contrast(Color a, Color b) {
 }
 
 void main() {
+  for (final accent in AppAccent.all) {
+    for (final brightness in Brightness.values) {
+      test(
+        'wrapped report controls resolve contrasting ink in every state [${brightness.name}, ${accent.name}]',
+        () {
+          final theme = buildAppTheme(
+            AppScheme.of(brightness),
+            brightness,
+            accent: accent,
+          );
+          final palette = HeaderPalette(theme);
+          const interactions = [
+            WidgetState.hovered,
+            WidgetState.focused,
+            WidgetState.pressed,
+          ];
+          for (var pattern = 0; pattern < 8; pattern++) {
+            for (final enabled in [true, false]) {
+              final states = <WidgetState>{
+                if (!enabled) WidgetState.disabled,
+                for (final (i, interaction) in interactions.indexed)
+                  if (pattern & (1 << i) != 0) interaction,
+              };
+              for (final (active, command) in [
+                (false, false),
+                (true, false),
+                (false, true),
+              ]) {
+                final quickFill = palette.quickFill(states, selected: active);
+                final quickInk = palette.quickInk(
+                  selected: active,
+                  enabled: enabled,
+                  command: command,
+                );
+                expect(
+                  contrast(quickInk, quickFill),
+                  greaterThanOrEqualTo(4.5),
+                );
+                expect(
+                  contrast(palette.muted, quickFill),
+                  greaterThanOrEqualTo(3),
+                );
+                if (!enabled) expect(quickFill, palette.surface);
+              }
+              final addFill = palette.addFill(states);
+              final bulkFill = palette.bulkFill(states);
+              final appliedFill = palette.appliedFillFor(enabled);
+              expect(
+                contrast(palette.muted, addFill),
+                greaterThanOrEqualTo(4.5),
+              );
+              expect(
+                contrast(enabled ? palette.error : palette.muted, bulkFill),
+                greaterThanOrEqualTo(4.5),
+              );
+              expect(
+                contrast(palette.muted, bulkFill),
+                greaterThanOrEqualTo(3),
+              );
+              expect(
+                contrast(palette.appliedInkFor(enabled), appliedFill),
+                greaterThanOrEqualTo(4.5),
+              );
+              final perimeter = palette.appliedPerimeterFor(enabled);
+              expect(contrast(perimeter, appliedFill), greaterThanOrEqualTo(3));
+              expect(
+                contrast(perimeter, palette.surface),
+                greaterThanOrEqualTo(3),
+              );
+              expect(
+                contrast(palette.muted, palette.surface),
+                greaterThanOrEqualTo(3),
+              );
+              if (!enabled) expect(headerContourWidth(states), 0);
+            }
+          }
+        },
+      );
+    }
+  }
+
   _headerContrast();
+  _headerChoiceContrast();
   group('AppAccent contrast', () {
     for (final accent in AppAccent.all) {
       test('${accent.name}: onPrimary vs primary passes AA (4.5) in light', () {
@@ -85,6 +168,90 @@ void main() {
       });
     }
   });
+}
+
+void _headerChoiceContrast() {
+  const variables = [
+    WidgetState.hovered,
+    WidgetState.focused,
+    WidgetState.pressed,
+    WidgetState.disabled,
+  ];
+  for (final brightness in Brightness.values) {
+    for (final accent in AppAccent.all) {
+      final palette = HeaderPalette(
+        buildAppTheme(AppScheme.of(brightness), brightness, accent: accent),
+      );
+      test(
+        'header selectable choices meet text, edge, check and focus contrast '
+        '[${brightness.name} ${accent.name}]',
+        () {
+          for (final selected in [false, true]) {
+            for (var mask = 0; mask < 1 << variables.length; mask++) {
+              final states = {
+                for (final (bit, state) in variables.indexed)
+                  if (mask & (1 << bit) != 0) state,
+              };
+              final paint = resolveHeaderChoicePaint(
+                palette,
+                states,
+                selected: selected,
+              );
+              final disabled = states.contains(WidgetState.disabled);
+              final applied = selected && !disabled;
+              final pointer =
+                  states.contains(WidgetState.hovered) ||
+                  states.contains(WidgetState.pressed);
+              final reason = 'selected $selected, states $states';
+              final expectedFill = applied
+                  ? palette.appliedFill
+                  : pointer && !disabled
+                  ? Color.alphaBlend(
+                      palette.colors.onSurface.withAlpha(20),
+                      palette.surface,
+                    )
+                  : palette.surface;
+              expect(paint.fill, expectedFill, reason: reason);
+              expect(paint.dashed, disabled, reason: reason);
+              expect(
+                paint.check,
+                applied ? palette.ink : palette.muted,
+                reason: reason,
+              );
+              expect(paint.caption.a, 1, reason: reason);
+              expect(paint.check.a, 1, reason: reason);
+              expect(
+                contrast(paint.caption, paint.fill),
+                greaterThanOrEqualTo(4.5),
+                reason: reason,
+              );
+              expect(
+                contrast(paint.check, paint.fill),
+                greaterThanOrEqualTo(3),
+                reason: reason,
+              );
+              expect(
+                contrast(paint.perimeter, paint.fill),
+                greaterThanOrEqualTo(3),
+                reason: reason,
+              );
+              expect(
+                contrast(paint.perimeter, palette.surface),
+                greaterThanOrEqualTo(3),
+                reason: reason,
+              );
+              expect(paint.contour, headerContourWidth(states), reason: reason);
+              if (disabled) expect(paint.contour, 0, reason: reason);
+            }
+          }
+          expect(
+            contrast(palette.muted, palette.surface),
+            greaterThanOrEqualTo(3),
+          );
+        },
+      );
+    }
+  }
 }
 
 void _headerContrast() {
@@ -275,6 +442,121 @@ void _headerContrast() {
               'unselected outer perimeter $state',
             );
           }
+        },
+      );
+
+      test(
+        'native and wrapped selectable chip paints pass contrast in every state [$label]',
+        () {
+          final native = ListHeaderQuickChipTheme.resolve(theme);
+          const focusAndPress = {WidgetState.focused, WidgetState.pressed};
+          for (final selected in [false, true]) {
+            for (final enabled in [false, true]) {
+              for (final input in [
+                rest,
+                hover,
+                focus,
+                press,
+                focusAndPress,
+                combined,
+              ]) {
+                final states = {
+                  ...input,
+                  if (selected) WidgetState.selected,
+                  if (!enabled) WidgetState.disabled,
+                };
+                final base = palette.choiceFill(selected, enabled);
+                final ink = palette.choiceInk(selected, enabled);
+                final fill = enabled && states.contains(WidgetState.pressed)
+                    ? Color.alphaBlend(native.highlightColor, base)
+                    : base;
+                final side = WidgetStateProperty.resolveAs<BorderSide?>(
+                  native.chipTheme.side,
+                  states,
+                );
+                final width = headerContourWidth(states);
+                final wrapped = resolveHeaderChoicePaint(
+                  palette,
+                  states,
+                  selected: selected,
+                  solidSelection: true,
+                );
+                expect(wrapped.fill, fill);
+                expect(wrapped.caption, ink);
+                expect(wrapped.check, ink);
+                expect(wrapped.perimeter, selected ? fill : palette.muted);
+                expect(wrapped.contour, width);
+                expect(base.a, 1.0);
+                expect(ink.a, 1.0);
+                passes(ink, fill, 4.5, 'selectable caption $states');
+                passes(
+                  ink,
+                  fill,
+                  3,
+                  'selectable check and status dot rim $states',
+                );
+
+                if (!enabled) {
+                  expect(width, 0);
+                  expect(side, isNull);
+                  expect(fill, base);
+                } else if (width > 0) {
+                  expect(side?.width, width);
+                  expect(side?.color, palette.muted);
+                  passes(
+                    side!.color,
+                    surface,
+                    3,
+                    'selectable separator $states',
+                  );
+                } else if (selected) {
+                  expect(side, isNull);
+                } else {
+                  expect(side?.width, 1);
+                  expect(side?.color, palette.muted);
+                }
+
+                for (final host in [surface, scheme.bg, scheme.subtle]) {
+                  passes(
+                    wrapped.perimeter,
+                    host,
+                    3,
+                    'wrapped choice outer boundary $states',
+                  );
+                  if (selected) {
+                    passes(
+                      fill,
+                      host,
+                      3,
+                      'selectable selected boundary $states',
+                    );
+                  } else {
+                    passes(
+                      palette.muted,
+                      host,
+                      3,
+                      'selectable outer border $states',
+                    );
+                    passes(
+                      palette.muted,
+                      fill,
+                      3,
+                      'selectable inner border $states',
+                    );
+                  }
+                  if (width > 0) {
+                    passes(
+                      side!.color,
+                      host,
+                      3,
+                      'selectable outer contour $states',
+                    );
+                  }
+                }
+              }
+            }
+          }
+          passes(palette.ink, surface, 3, 'selectable strip progress');
         },
       );
 

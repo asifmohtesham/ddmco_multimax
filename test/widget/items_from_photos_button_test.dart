@@ -10,6 +10,7 @@ import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/list_header_accessibility.dart';
 import 'package:multimax/app/modules/item/item_controller.dart';
 import 'package:multimax/app/modules/item/widgets/item_list_app_bar.dart';
@@ -48,7 +49,12 @@ class _EmptyItemProvider extends ItemProvider {
 }
 
 void main() {
-  setUpAll(() {
+  const itemFont = 'ItemHeaderInter';
+  setUpAll(() async {
+    final font = FontLoader(itemFont)
+      ..addFont(rootBundle.load('lib/assets/fonts/Inter-Regular.ttf'))
+      ..addFont(rootBundle.load('lib/assets/fonts/Inter-Medium.ttf'));
+    await font.load();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),
@@ -122,6 +128,60 @@ void main() {
       ),
     );
     expect(find.byKey(const Key('extra')), findsOneWidget);
+  });
+
+  testWidgets('Item list keeps full indexed conditions in the wrapped band', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(411, 900);
+    addTearDown(tester.view.reset);
+    Get.put<PermissionService>(_StubPermissionService(false));
+    Get.put<ItemProvider>(_EmptyItemProvider());
+    final controller = Get.put(ItemController());
+    final theme = buildAppTheme(AppScheme.light, Brightness.light);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: theme.copyWith(
+          textTheme: theme.textTheme.apply(fontFamily: itemFont),
+        ),
+        home: const Scaffold(
+          body: CustomScrollView(
+            slivers: [
+              ItemListAppBar(),
+              SliverToBoxAdapter(child: SizedBox(height: 1000)),
+            ],
+          ),
+        ),
+      ),
+    );
+    final first = FilterRow(
+      field: 'item_name',
+      label: 'Item Name',
+      value: 'STRAPS',
+    );
+    controller.activeFilters.add(first);
+    await tester.pumpAndSettle();
+    final band = find.byKey(const ValueKey('list-header-chip-band'));
+    final sliver = tester.widget<SliverPersistentHeader>(
+      find.descendant(
+        of: find.byType(DocTypeListHeader),
+        matching: find.byType(SliverPersistentHeader),
+      ),
+    );
+    expect(sliver.delegate.maxExtent, 200);
+    expect(tester.getSize(band).height, 48);
+    controller.activeFilters.add(
+      FilterRow(field: 'item_code', label: 'Item Code', value: '1002890'),
+    );
+    await tester.pump();
+    expect(find.text('Item Name: STRAPS').hitTestable(), findsOneWidget);
+    expect(find.text('Item Code: 1002890').hitTestable(), findsOneWidget);
+    expect(find.text('Reset filters').hitTestable(), findsOneWidget);
+    expect(
+      find.descendant(of: band, matching: find.byType(Scrollable)),
+      findsNothing,
+    );
   });
 
   for (final (brightness, accent) in [

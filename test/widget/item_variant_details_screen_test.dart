@@ -18,6 +18,7 @@ import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_
 import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_store.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_controller.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_fields.dart';
+import 'package:multimax/app/modules/global_widgets/header_chip_band.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_screen.dart';
 import 'package:multimax/app/modules/theme/theme_controller.dart';
@@ -417,9 +418,9 @@ void main() {
         builder: headerScale == null
             ? null
             : (context, child) => MediaQuery(
-                data: MediaQuery.of(context).copyWith(
-                  textScaler: TextScaler.noScaling,
-                ),
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.noScaling),
                 child: child!,
               ),
         home: const Scaffold(),
@@ -996,10 +997,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.pump(const Duration(milliseconds: 50));
 
-    Finder card(String code) => find.ancestor(
-      of: find.text(code),
-      matching: find.byType(Card),
-    );
+    Finder card(String code) =>
+        find.ancestor(of: find.text(code), matching: find.byType(Card));
     final first = card('Row 0');
     final next = card('Row 1');
     await cacheImage(
@@ -1189,7 +1188,7 @@ void main() {
         scheme.onSurfaceVariant,
       );
       expect(find.text('1 variant'), findsOneWidget);
-      final stock = find.widgetWithText(FilterChip, 'In stock');
+      final stock = find.byKey(const ValueKey('variant-in-stock'));
       await tester.ensureVisible(stock);
       await tester.pumpAndSettle();
       final stockBounds = tester.getRect(stock);
@@ -1200,12 +1199,12 @@ void main() {
       }
       await tester.tapAt(Offset(stockBounds.center.dx, stockBounds.top + 1));
       await tester.pumpAndSettle();
-      expect(tester.widget<FilterChip>(stock).selected, isTrue);
+      expect(tester.widget<HeaderQuickChip>(stock).active, isTrue);
       expect(find.text('1 of 2 · Current Stock 3 Nos'), findsOneWidget);
       expect(tester.getSize(heading).height, 52);
       await tester.tapAt(Offset(stockBounds.center.dx, stockBounds.bottom - 1));
       await tester.pumpAndSettle();
-      expect(tester.widget<FilterChip>(stock).selected, isFalse);
+      expect(tester.widget<HeaderQuickChip>(stock).active, isFalse);
     },
   );
 
@@ -1351,13 +1350,14 @@ void main() {
           : (background + 0.05) / (foreground + 0.05);
       expect(ratio, greaterThanOrEqualTo(4.5));
 
-      await tester.tap(
-        find.text(
-          mode == ThemeMode.dark
-              ? 'Check Stock Across Warehouses'
-              : 'Check Stock',
-        ),
+      final checkStock = find.text(
+        mode == ThemeMode.dark
+            ? 'Check Stock Across Warehouses'
+            : 'Check Stock',
       );
+      await tester.ensureVisible(checkStock);
+      await tester.pumpAndSettle();
+      await tester.tap(checkStock);
       await tester.pumpAndSettle();
       expect(api.stockRequests.single.itemCode, '2002492');
       expect(api.stockRequests.single.warehouses, warehouses);
@@ -1800,11 +1800,71 @@ void main() {
     expect(groupTop, greaterThanOrEqualTo(headerBottom));
   });
 
+  for (final size in [2, 30]) {
+    testWidgets('short viewport keeps variants reachable with $size groups', (
+      tester,
+    ) async {
+      await open(
+        tester,
+        preset: 'ITM-1',
+        mode: ThemeMode.light,
+        width: 320,
+        fontFamily: reportFont,
+        headerScale: 1,
+      );
+      final controller = Get.find<ItemVariantDetailsController>();
+      controller.filterControllers['warehouse']!.text = 'Warehouse 1';
+      api.report.complete((
+        columns: <Map<String, dynamic>>[],
+        rows: [
+          for (var g = 0; g < size; g++) ...[
+            {'variant_name': 'Template $g', 'indent': 0},
+            for (var v = 0; v < 15; v++)
+              {'variant_name': 'Variant $g/$v', 'indent': 1},
+          ],
+        ],
+      ));
+      await tester.tap(find.text('Run Report'));
+      await tester.pumpAndSettle();
+      controller.setAllExpanded(true);
+      await tester.pumpAndSettle();
+
+      final header = tester.widget<SliverPersistentHeader>(
+        find.descendant(
+          of: find.byType(DocTypeListHeader),
+          matching: find.byType(SliverPersistentHeader),
+        ),
+      );
+      await tester.binding.setSurfaceSize(
+        Size(320, header.delegate.minExtent + 50),
+      );
+      await tester.pumpAndSettle();
+
+      for (var offset = 200.0; offset <= 310; offset += 10) {
+        controller.scrollController.jumpTo(offset);
+        await tester.pump();
+        expect(tester.takeException(), isNull, reason: 'Scroll offset $offset');
+      }
+      controller.scrollController.jumpTo(1050);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(controller.stickyHeading.value, isNull);
+      expect(find.text('Template 0').hitTestable(), findsNothing);
+      expect(find.textContaining('Variant 0/').hitTestable(), findsWidgets);
+    });
+  }
+
   for (final size in [2, 205]) {
     testWidgets('sticky heading switches in a $size-group report', (
       tester,
     ) async {
-      await open(tester, preset: 'ACP-25', fontFamily: reportFont);
+      await open(
+        tester,
+        preset: 'ACP-25',
+        fontFamily: reportFont,
+        width: 411,
+        headerScale: 1,
+      );
       api.report.complete((
         columns: <Map<String, dynamic>>[],
         rows: [
@@ -1846,6 +1906,27 @@ void main() {
       final scroll = Get.find<ItemVariantDetailsController>().scrollController;
       scroll.jumpTo(460);
       await tester.pumpAndSettle();
+      final band = find.byKey(const ValueKey('list-header-chip-band'));
+      final shortBand = tester.getSize(band).height;
+      await tester.binding.setSurfaceSize(const Size(320, 850));
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      await tester.pump();
+      expect(tester.getSize(band).height, greaterThan(shortBand));
+      expect(
+        tester.getRect(band).bottom,
+        closeTo(listHeaderBottom(tester), .01),
+      );
+      await tester.pumpAndSettle();
+      if (size > 24) {
+        final sticky =
+            Get.find<ItemVariantDetailsController>().stickyHeading.value;
+        expect(sticky?.headerBottom, closeTo(listHeaderBottom(tester), .5));
+      }
+      expect(
+        find.byKey(const ValueKey('variant-in-stock')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(find.byTooltip('Fields').hitTestable(), findsOneWidget);
       final toolbar = listHeaderBottom(tester);
       final first = tester.getCenter(find.text('Template 0').hitTestable());
       expect(first.dy, inInclusiveRange(toolbar, toolbar + 75));
