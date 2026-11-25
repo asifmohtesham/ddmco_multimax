@@ -1,1 +1,1 @@
-Every report now has a Fields button. Choose which details each report shows, and your choice is kept for your account on this server. Report labels now match the ERPNext column headers.
+Easier to use with larger text and screen readers: list and report headers have bigger buttons, clearer contrast and spoken labels. Filter chips and the Sales Order, Item Price and Pricing Rule quick filters now wrap onto more lines instead of scrolling sideways.
