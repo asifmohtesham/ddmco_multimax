@@ -45,16 +45,17 @@ List<String> _extractRoutes(List<Widget> widgets) {
 class AppNavDrawerController extends GetxController {
   final expandedGroups  = <String, bool>{}.obs;
 
-  /// Module groups, laid out by the user's Frappe workspaces. Starts as (and
-  /// falls back to) the built-in layout until [loadFor] succeeds.
-  final groups = buildWorkspaceMenu(const [], const {}).obs;
+  /// Module groups for DocTypes and Reports. Starts with the catalog until
+  /// [loadFor] restores or refreshes the menu.
+  final groups = buildWorkspaceMenu(const []).obs;
   final _reportAccess = Rxn<({String user, Set<String> names})>();
   String? _loadedFor;
+  String? _layoutFor;
   DateTime? _loadedAt;
   Object? _activeLoad;
   AppLifecycleListener? _lifecycle;
 
-  /// Workspace edits made in Desk show up on the next resume after this.
+  /// Server navigation and module edits show up on the next resume after this.
   static const _staleAfter = Duration(minutes: 30);
 
   @override
@@ -64,8 +65,7 @@ class AppNavDrawerController extends GetxController {
       final user = _loadedFor, at = _loadedAt;
       if (user == null || at == null) return;
       if (DateTime.now().difference(at) < _staleAfter) return;
-      _loadedFor = null;
-      loadFor(user);
+      loadFor(user, refresh: true);
     });
   }
 
@@ -95,7 +95,7 @@ class AppNavDrawerController extends GetxController {
   ///
   /// Frappe 16.56 whitelists neither endpoint (the first is gone, the second
   /// answers 403), but Desk's boot data carries the same rows — [desk] is
-  /// that boot data, already being fetched for the drawer's grouping. Throws
+  /// that boot data, already being fetched for report visibility. Throws
   /// when no source yields pages, so the caller keeps the current menu.
   Future<List<Map<String, dynamic>>> _fetchPages(
       ApiProvider api, Future<DeskBoot> desk) async {
@@ -119,52 +119,41 @@ class AppNavDrawerController extends GetxController {
     return pages;
   }
 
-  /// What Desk's breadcrumbs are built from, read from the boot data Desk
-  /// embeds in its page (every Desk user can load it; v16 sidebars exist only
-  /// there). If that fails, v15's module → workspace map from the Workspace
-  /// list (readable by Workspace Managers on v15, every Desk User on v16).
-  /// Empty on failure: the drawer then falls back to sidebar order.
+  /// The workspace page fallback and exact-name report allowlist from Desk.
   Future<DeskBoot> _fetchDeskBoot(ApiProvider api) async {
     try {
       final html = await api.getDeskHtml();
-      final boot = html == null ? null : deskBootFromHtml(html);
-      if (boot != null) return boot;
-    } catch (_) {}
-    try {
-      final r = await api.callMethod('frappe.client.get_list', params: {
-        'doctype': 'Workspace',
-        'fields': jsonEncode(['name', 'module']),
-        'filters': jsonEncode({'for_user': '', 'public': 1}),
-        'order_by': 'creation asc',
-        'limit_page_length': 0,
-      });
-      return DeskBoot(
-          moduleWorkspaces:
-              moduleWorkspacesFromRows(r.data['message'] as List? ?? const []));
+      return (html == null ? null : deskBootFromHtml(html)) ?? const DeskBoot();
     } catch (_) {
       return const DeskBoot();
     }
   }
 
-  /// Loads workspaces and report visibility for the Frappe User document
-  /// named [user]. Failure keeps the current layout and retries on the next
-  /// call.
-  Future<void> loadFor(String? user) async {
-    if (user == null || user == _loadedFor) return;
+  /// Loads modules and Desk navigation for the Frappe User document named
+  /// [user]. A workspace failure keeps the cached group order, applies any
+  /// fresh modules, and retries on the next call.
+  Future<void> loadFor(String? user, {bool refresh = false}) async {
+    if (user == null ||
+        (user == _loadedFor && (!refresh || _activeLoad != null))) {
+      return;
+    }
     final load = _activeLoad = Object();
     _loadedFor = user;
     _reportAccess.value = null;
     final storage =
         Get.isRegistered<StorageService>() ? Get.find<StorageService>() : null;
-    // Last session's layout first, so the drawer never reshuffles on start
-    // (or offline); the fetch below refreshes it.
-    groups.value = menuFromJson(storage?.getNavMenu(user)) ??
-        buildWorkspaceMenu(const [], const {});
-    Future<DeskBoot>? bootLoad;
+    final cachedMenu = storage?.getNavMenu(user);
+    final repeatLoad = _layoutFor == user;
+    if (!repeatLoad) {
+      groups.value = menuFromJson(cachedMenu) ??
+          buildWorkspaceMenu(const []);
+      _layoutFor = user;
+    }
+    final modules = <String, String>{};
+    var layoutBuilt = false;
     try {
       final api = Get.find<ApiProvider>();
-      // Started once: it is both the grouping data and, on Frappe 16.56,
-      // the only place the pages can be read from.
+      // Boot supplies the report allowlist and, on Frappe 16.56, the pages.
       final deskBoot = _fetchDeskBoot(api).then((boot) {
         final names = boot.allowedReports;
         if (_activeLoad == load && boot.userId == user && names != null) {
@@ -172,78 +161,85 @@ class AppNavDrawerController extends GetxController {
         }
         return boot;
       });
-      bootLoad = deskBoot;
-      final pages = (await _fetchPages(api, deskBoot))
-          .where((p) => p['is_hidden'] != 1)
-          .toList();
-      final desktop = <String, Map<String, dynamic>>{};
-      final modules = <String, String>{};
-      var desk = const DeskBoot();
-      await Future.wait([
-        () async {
-          desk = await deskBoot;
-        }(),
-        ...pages.map((p) async {
-          try {
-            final r = await api.callMethod('frappe.desk.desktop.get_desktop_page',
-                params: {
-                  'page': jsonEncode(
-                      {'name': p['name'], 'title': p['title'], 'public': p['public']})
-                });
-            final m = r.data['message'];
-            if (m is Map) desktop[p['name'] as String] = Map<String, dynamic>.from(m);
-          } catch (_) {
-            // One broken workspace mustn't blank the rest; its screens fall
-            // back to their default group.
-          }
+      var pages = const <Map<String, dynamic>>[];
+      await Future.wait<void>([
+        _fetchPages(api, deskBoot).then((result) {
+          pages = result;
         }),
-        // Each screen's module picks its native workspace. DocType records
-        // are System-Manager-only, so DocTypes go through getdoctype (shared
-        // with the permission checks); Report is readable by every Desk User,
-        // so one list call. Unknown module → first workspace that lists it.
-        ...kNavCatalog.where((l) => l.showInDrawer && l.linkType == 'DocType').map((l) async {
-          final m = await Get.find<PermissionService>().moduleOf(l.linkTo);
-          if (m != null) modules[l.key] = m;
-        }),
-        () async {
-          try {
-            final byName = {
-              for (final l in kNavCatalog.where((l) => l.showInDrawer && l.linkType == 'Report'))
-                l.linkTo: l.key
-            };
-            final r = await api.callMethod('frappe.client.get_list', params: {
-              'doctype': 'Report',
-              'fields': jsonEncode(['name', 'module']),
-              'filters': jsonEncode([
-                ['name', 'in', byName.keys.toList()]
-              ]),
-              'limit_page_length': 0,
-            });
-            for (final row in (r.data['message'] as List? ?? const [])) {
-              final key = byName[row['name']];
-              if (key != null && row['module'] is String) {
-                modules[key] = row['module'] as String;
-              }
-            }
-          } catch (_) {}
-        }(),
+        deskBoot.then<void>((_) {}),
+        _fetchDocTypeModules(refresh: repeatLoad).then(modules.addAll),
+        _fetchReportModules(api).then(modules.addAll),
       ]);
       if (_activeLoad == load) {
-        groups.value = buildWorkspaceMenu(pages, desktop, modules, desk);
+        groups.value = buildWorkspaceMenu(pages, modules);
+        layoutBuilt = true;
         _loadedAt = DateTime.now();
-        await storage?.saveNavMenu(user, menuToJson(groups));
+        await storage?.saveNavMenu(user, menuToJson(groups, modules));
       }
     } catch (e) {
-      // Desk can supply report permissions even if workspace layout failed.
-      if (bootLoad != null) await bootLoad;
+      if (_activeLoad == load && !layoutBuilt) {
+        groups.value = menuFromJson(cachedMenu, modules) ??
+            buildWorkspaceMenu(const [], modules);
+      }
       if (_activeLoad == load) _loadedFor = null;
       debugPrint('AppNavDrawer: workspace load failed — $e');
+    } finally {
+      if (_activeLoad == load) _activeLoad = null;
     }
+  }
+
+  /// Frappe v15 and v16 grant Desk User read access to Report records.
+  /// These rows supply placement metadata. Report visibility comes from Desk
+  /// and the existing permission guards.
+  Future<Map<String, String>> _fetchReportModules(ApiProvider api) async {
+    final byName = {
+      for (final link in kNavCatalog)
+        if (link.showInDrawer && link.linkType == 'Report') link.linkTo: link.key,
+    };
+    try {
+      final response = await api.callMethod('frappe.client.get_list', params: {
+        'doctype': 'Report',
+        'fields': jsonEncode(['name', 'module']),
+        'filters': jsonEncode([
+          ['name', 'in', byName.keys.toList()],
+        ]),
+        'limit_page_length': 0,
+      });
+      final rows = response.data['message'];
+      return {
+        if (rows is List)
+          for (final row in rows)
+            if (row is Map &&
+                byName.containsKey(row['name']) &&
+                row['module'] is String)
+              byName[row['name']]!: row['module'] as String,
+      };
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<Map<String, String>> _fetchDocTypeModules({
+    required bool refresh,
+  }) async {
+    if (!Get.isRegistered<PermissionService>()) return {};
+    final permissions = Get.find<PermissionService>();
+    final links = kNavCatalog.where(
+      (l) => l.showInDrawer && l.linkType == 'DocType',
+    );
+    final entries = await Future.wait(
+      links.map((link) async => (
+        link.key,
+        await permissions.moduleOf(link.linkTo, refresh: refresh),
+      )),
+    );
+    return {for (final (key, module) in entries) if (module != null) key: module};
   }
 
   void clearSession() {
     _activeLoad = null;
     _loadedFor = null;
+    _layoutFor = null;
     _loadedAt = null;
     _reportAccess.value = null;
   }
@@ -653,8 +649,6 @@ class _NavSubheading extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 10, 16, 2),
       child: Row(
         children: [
-          // Card label as Frappe Desk shows it (e.g. "Serial No and Batch"),
-          // not upper-cased.
           Text(
             label,
             style: TextStyle(

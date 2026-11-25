@@ -82,8 +82,8 @@ The same `{pages: [...]}` is in the boot object Desk embeds in its page, as
 **Fix:** `AppNavDrawerController` tries the v15 endpoint, then the v16 one, then
 takes the pages from the boot data. A server whose endpoints answered "no" is
 remembered so later loads skip them; a timeout rules nothing out.
-`deskBootFromHtml` reads the older boot keys where present and `module_sidebars`
-otherwise, so `resolveDeskSidebar` and `sidebarSpot` are unchanged.
+The 25 November drawer update uses those pages for group order and reads
+the exact-name Report allowlist from Desk boot.
 
 ### N2 — Roles are unreadable for users who are not System Managers
 
@@ -276,6 +276,26 @@ lead to a permission message.
 [Frappe v15 report execution](https://github.com/frappe/frappe/blob/version-15/frappe/desk/query_report.py#L248-L268),
 [Frappe v16 report execution](https://github.com/frappe/frappe/blob/v16.60.0/frappe/desk/query_report.py#L262-L283).
 
+### Drawer DocType and Report placement (25 November 2026)
+
+Each visible DocType and Report appears once under its own server module on
+v15 and v16. DocTypes use `frappe.desk.form.load.getdoctype` metadata. Reports
+use the `module` field from `frappe.client.get_list` on Report, which the
+standard Desk User role can read. The catalog supplies the group when the
+module is unknown and supplies every subheading. When restoring a layout,
+the drawer uses any saved server Report module and the catalog fallback for
+legacy layouts. A refresh picks up module changes on the server.
+
+The catalog assigns Purchase Receipt and Item Price to Stock, Pricing Rule
+to Accounts, and ToDo to Desk. Item appears at the top level of Stock for
+users with Item read access, including users whose Desk blocks Stock. The
+Report catalog now assigns BOM Search and POS & DN Item Rate to Stock.
+Shift Attendance appears under HR → Reports for users who can see it.
+To put POS & DN Item Rate under Selling, an administrator can set that custom
+Report's `module` to `Selling` in Desk. The app follows that value on refresh.
+Report visibility still uses the exact-name Desk allowlist and permission
+guards.
+
 ## How both versions are served
 
 No fix depends on knowing the server version. Each one either uses a form both
@@ -403,7 +423,8 @@ Required by the app and not part of upstream:
 Sign in as a user who is **not** a System Manager; an administrator's roles come
 from the User document and bypass the fallbacks.
 
-1. Open the drawer: screens are grouped under the server's workspaces.
+1. Open the drawer and verify that DocTypes and Reports are grouped by their
+   server modules. Reports appear under the Reports subheading.
 2. Open the profile: the role list is filled in.
 3. Open a POS Upload: the Status field is enabled for a user with level-1 write.
 4. Run Item Variant Details for a template: one heading on v16, then its

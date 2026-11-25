@@ -8,9 +8,8 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 Map<String, dynamic> _defaultArgsFor(String id) => {'name': id, 'mode': 'view'};
 
 /// A screen the app can open, keyed by what a Frappe Workspace links to
-/// (`DocType` / `Report` + name). The workspace decides WHERE it shows;
-/// [group] / [section] are only used when no workspace places it (or the
-/// workspace fetch failed), so every screen stays reachable.
+/// (`DocType` / `Report` + name). Each screen uses its server module or
+/// [group], with [section] as its subheading.
 ///
 /// This is the **single source of truth** for both drawer navigation and
 /// search routing. Adding a DocType here (with a [formRoute]) automatically
@@ -23,6 +22,8 @@ class NavLink {
   final IconData icon;
   final String route;
   final PermEntry guard;
+
+  /// Fallback drawer group. Match the server's `module` value.
   final String group;
   final String? section;
 
@@ -100,7 +101,8 @@ Map<String, dynamic> _nameEdit(String id) => {'name': id, 'mode': 'edit'};
 Map<String, dynamic> _batchArgs(String id) => {'name': id, 'mode': 'edit'};
 
 /// Every app screen — drawer destinations AND search-only screens.
-/// Order = fallback drawer order; search targets are derived automatically.
+/// Without a workspace or cached layout, groups follow their first drawer entry.
+/// Search targets are derived automatically in catalog order.
 ///
 /// To add a new DocType to both the drawer AND search, provide a [formRoute].
 /// To add a search-only screen (not shown in the drawer), set
@@ -125,10 +127,10 @@ final List<NavLink> kNavCatalog = [
   NavLink('Report', 'Stock Ageing - Custom', 'Stock Ageing', Icons.hourglass_bottom_rounded, AppRoutes.STOCK_AGEING, _rep('Item'), 'Stock', 'Reports'),
   NavLink('DocType', 'Landed Cost Voucher', 'Landed Cost Voucher', Icons.flight_land_rounded, AppRoutes.LANDED_COST_VOUCHER, _r('Landed Cost Voucher'), 'Stock',
       'Tools', AppRoutes.LANDED_COST_VOUCHER_FORM, Colors.brown),
-  // ── Buying ──
+  // ── Purchasing ──
   NavLink('DocType', 'Purchase Order', 'Purchase Order', Icons.description_rounded, AppRoutes.PURCHASE_ORDER, _r('Purchase Order'), 'Buying',
       null, AppRoutes.PURCHASE_ORDER_FORM, Colors.brown),
-  NavLink('DocType', 'Purchase Receipt', 'Purchase Receipt', Icons.receipt_long_rounded, AppRoutes.PURCHASE_RECEIPT, _r('Purchase Receipt'), 'Buying',
+  NavLink('DocType', 'Purchase Receipt', 'Purchase Receipt', Icons.receipt_long_rounded, AppRoutes.PURCHASE_RECEIPT, _r('Purchase Receipt'), 'Stock',
       null, AppRoutes.PURCHASE_RECEIPT_FORM, Colors.green),
 
   // ── Manufacturing ──
@@ -138,20 +140,20 @@ final List<NavLink> kNavCatalog = [
       null, AppRoutes.WORK_ORDER_FORM, Colors.indigo),
   NavLink('DocType', 'Job Card', 'Job Card', Icons.assignment_ind_rounded, AppRoutes.JOB_CARD, _r('Job Card'), 'Manufacturing',
       null, AppRoutes.JOB_CARD_FORM, Colors.deepOrange, null, _nameOnly),
-  NavLink('Report', 'BOM Search', 'BOM Search', Icons.manage_search_rounded, AppRoutes.BOM_SEARCH, _rep('BOM'), 'Manufacturing', 'Reports'),
+  NavLink('Report', 'BOM Search', 'BOM Search', Icons.manage_search_rounded, AppRoutes.BOM_SEARCH, _rep('BOM'), 'Stock', 'Reports'),
   NavLink('Report', 'Job Card Summary', 'Job Card Summary', Icons.summarize_outlined, AppRoutes.JOB_CARD_SUMMARY, _rep('Job Card'), 'Manufacturing', 'Reports'),
   NavLink('Report', 'BOM Stock with Customer Code', 'BOM Stock with Customer Code', Icons.inventory_2_outlined, AppRoutes.BOM_STOCK_CUSTOMER_CODE, _rep('BOM'), 'Manufacturing', 'Reports'),
 
-  // ── Selling ──
+  // ── Sales and pricing ──
   NavLink('DocType', 'POS Upload', 'POS Upload', Icons.cloud_upload_rounded, AppRoutes.POS_UPLOAD, _r('POS Upload'), 'Selling',
       null, AppRoutes.POS_UPLOAD_FORM, Colors.deepPurple),
   NavLink('DocType', 'Sales Order', 'Sales Order', Icons.request_quote_rounded, AppRoutes.SALES_ORDER, _r('Sales Order'), 'Selling',
       null, AppRoutes.SALES_ORDER_FORM, Colors.teal),
-  NavLink('DocType', 'Item Price', 'Item Price', Icons.sell_outlined, AppRoutes.ITEM_PRICE, _r('Item Price'), 'Selling',
+  NavLink('DocType', 'Item Price', 'Item Price', Icons.sell_outlined, AppRoutes.ITEM_PRICE, _r('Item Price'), 'Stock',
       'Pricing', AppRoutes.ITEM_PRICE_FORM, Colors.indigo, null, _nameEdit, false),
-  NavLink('DocType', 'Pricing Rule', 'Pricing Rule', Icons.discount_outlined, AppRoutes.PRICING_RULE, _r('Pricing Rule'), 'Selling',
+  NavLink('DocType', 'Pricing Rule', 'Pricing Rule', Icons.discount_outlined, AppRoutes.PRICING_RULE, _r('Pricing Rule'), 'Accounts',
       'Pricing', AppRoutes.PRICING_RULE_FORM, Colors.deepOrange, null, _nameEdit),
-  NavLink('Report', 'POS and Delivery Note Item Rate', 'POS & DN Item Rate', Icons.price_change_outlined, AppRoutes.POS_DN_ITEM_RATE, _rep('POS Upload'), 'Selling', 'Reports'),
+  NavLink('Report', 'POS and Delivery Note Item Rate', 'POS & DN Item Rate', Icons.price_change_outlined, AppRoutes.POS_DN_ITEM_RATE, _rep('POS Upload'), 'Stock', 'Reports'),
 
   // ── HR ──
   NavLink('DocType', 'Attendance', 'Attendance', Icons.how_to_reg_rounded, AppRoutes.ATTENDANCE, _r('Attendance'), 'HR'),
@@ -159,8 +161,8 @@ final List<NavLink> kNavCatalog = [
   NavLink('Report', 'Shift Attendance', 'Shift Attendance', Icons.schedule_rounded, AppRoutes.SHIFT_ATTENDANCE, _rep('Attendance'), 'HR', 'Reports'),
   NavLink('Report', 'Employee Hours Utilization Based On Timesheet', 'Employee Hours Utilisation', Icons.timelapse_rounded, AppRoutes.EMPLOYEE_HOURS_UTILIZATION, _rep('Timesheet'), 'HR', 'Reports'),
 
-  // ── Search-only (not shown in drawer) ──
-  NavLink('DocType', 'ToDo', 'ToDo', Icons.check_circle_outline, AppRoutes.TODO, _r('ToDo'), 'Tools',
+  // ── Desk (search-only catalog entries) ──
+  NavLink('DocType', 'ToDo', 'ToDo', Icons.check_circle_outline, AppRoutes.TODO, _r('ToDo'), 'Desk',
       null, AppRoutes.TODO_FORM, Colors.cyan, 'ToDos', _defaultArgsFor, true, false),
 ];
 
@@ -169,65 +171,17 @@ const Map<String, IconData> _groupIcons = {
   'Buying': Icons.shopping_bag_rounded,
   'Manufacturing': Icons.precision_manufacturing_rounded,
   'Selling': Icons.storefront_rounded,
+  'Accounts': Icons.account_balance_rounded,
   'HR': Icons.badge_rounded,
+  'Desk': Icons.desktop_windows_rounded,
 };
 
 IconData _groupIcon(String title) =>
     _groupIcons[title] ?? Icons.workspaces_outlined;
 
-/// Names of the cards and shortcuts actually placed on a workspace page.
-/// Frappe Desk renders only blocks in the page's `content` (Editor.js JSON);
-/// the links/shortcuts tables can hold more. `null` = no usable layout, so
-/// nothing is filtered.
-({Set<String> cards, Set<String> shortcuts})? _placedBlocks(dynamic content) {
-  try {
-    final blocks = content is String ? jsonDecode(content) : content;
-    if (blocks is! List || blocks.isEmpty) return null;
-    final cards = <String>{}, shortcuts = <String>{};
-    for (final b in blocks) {
-      final data = b is Map ? b['data'] : null;
-      if (data is! Map) continue;
-      if (b['type'] == 'card' && data['card_name'] is String) {
-        cards.add(data['card_name'] as String);
-      } else if (b['type'] == 'shortcut' && data['shortcut_name'] is String) {
-        shortcuts.add(data['shortcut_name'] as String);
-      }
-    }
-    return (cards: cards, shortcuts: shortcuts);
-  } catch (_) {
-    return null;
-  }
-}
-
-/// Desk's module → workspaces map (`frappe.boot.module_wise_workspaces`)
-/// from Workspace rows `{name, module}` that are already public, not
-/// per-user, and oldest first.
-Map<String, List<String>> moduleWorkspacesFromRows(List<dynamic> rows) {
-  final out = <String, List<String>>{};
-  for (final r in rows) {
-    if (r is! Map) continue;
-    final module = r['module'], name = r['name'];
-    if (module is String && module.isNotEmpty && name is String) {
-      out.putIfAbsent(module, () => []).add(name);
-    }
-  }
-  return out;
-}
-
-/// The parts of Desk's boot data (`frappe.boot`) used for drawer layout and
-/// report visibility.
+/// The parts of Desk's boot data (`frappe.boot`) used for group order and
+/// visibility.
 class DeskBoot {
-  /// `module_wise_workspaces`: module → public workspaces, oldest first.
-  /// The v15 breadcrumb takes the first one.
-  final Map<String, List<String>> moduleWorkspaces;
-
-  /// v16 `workspace_sidebar_item`: lower-cased sidebar title →
-  /// `{label, app, items: [{link_to, …}]}`, in Desk's order. Empty on v15.
-  final Map<String, Map<String, dynamic>> sidebars;
-
-  /// v16 `module_app`: module scrubbed (`lower_snake`) → app name.
-  final Map<String, String> moduleApp;
-
   /// `workspaces.pages`: the session user's workspace pages, the same rows
   /// `get_workspace_sidebar_items` / `get_workspaces` return. Frappe 16.56
   /// whitelists neither, so there this is the only source. Empty when the
@@ -247,9 +201,6 @@ class DeskBoot {
   final Set<String>? allowedReports;
 
   const DeskBoot({
-    this.moduleWorkspaces = const {},
-    this.sidebars = const {},
-    this.moduleApp = const {},
     this.pages = const [],
     this.userId,
     this.roles = const [],
@@ -306,45 +257,6 @@ List<Map<String, dynamic>> workspacePagesOf(dynamic pages) => [
           if (p is Map) Map<String, dynamic>.from(p),
     ];
 
-/// Sidebars by lower-cased title. `workspace_sidebar_item` (up to Frappe
-/// 16.26) is already keyed that way; 16.56 replaced it with
-/// `module_sidebars`, keyed by module name, whose entries carry the same
-/// `{label, app, items}`.
-Map<String, Map<String, dynamic>> _bootSidebars(Map boot) {
-  final legacy = boot['workspace_sidebar_item'];
-  final source = legacy is Map ? legacy : boot['module_sidebars'];
-  return {
-    if (source is Map)
-      for (final e in source.entries)
-        if (e.key is String && e.value is Map)
-          (legacy is Map ? e.key as String : (e.key as String).toLowerCase()):
-              Map<String, dynamic>.from(e.value as Map),
-  };
-}
-
-/// Module → its workspaces. `module_wise_workspaces` where Desk still
-/// sends it, else each 16.56 module sidebar's own `workspaces` list.
-Map<String, List<String>> _bootModuleWorkspaces(Map boot) {
-  final legacy = boot['module_wise_workspaces'];
-  if (legacy is Map) {
-    return {
-      for (final e in legacy.entries)
-        if (e.key is String && e.value is List)
-          e.key as String: [for (final n in e.value as List) if (n is String) n],
-    };
-  }
-  final sidebars = boot['module_sidebars'];
-  return {
-    if (sidebars is Map)
-      for (final e in sidebars.entries)
-        if (e.key is String && e.value is Map && (e.value as Map)['workspaces'] is List)
-          e.key as String: [
-            for (final n in (e.value as Map)['workspaces'] as List)
-              if (n is String) n,
-          ],
-  }..removeWhere((_, v) => v.isEmpty);
-}
-
 Set<String>? _reportNames(dynamic reports) {
   if (reports is! Map) return null;
   final names = <String>{};
@@ -362,17 +274,9 @@ DeskBoot? deskBootFromHtml(String html) {
   try {
     final boot = _bootFromHtml(html);
     if (boot is! Map) return null;
-    final ma = boot['module_app'];
     final user = boot['user'];
     final workspaces = boot['workspaces'];
     return DeskBoot(
-      moduleWorkspaces: _bootModuleWorkspaces(boot),
-      sidebars: _bootSidebars(boot),
-      moduleApp: {
-        if (ma is Map)
-          for (final e in ma.entries)
-            if (e.key is String && e.value is String) e.key as String: e.value as String,
-      },
       pages: workspacePagesOf(workspaces is Map ? workspaces['pages'] : null),
       userId: user is Map && user['name'] is String ? user['name'] as String : null,
       roles: [
@@ -389,219 +293,62 @@ DeskBoot? deskBootFromHtml(String html) {
   }
 }
 
-/// The v16 sidebar Desk opens for [entity] (a DocType or Report name) of
-/// [module] — `resolve_sidebar()` in Desk's `sidebar.js`, minus its
-/// history (current sidebar, last sidebar used for it): sidebars linking
-/// [entity], narrowed to the module's app; one left → it; several → the
-/// one named like the module; none → the module's own sidebar; still
-/// nothing → the first linking sidebar. `null` when no sidebar fits.
-String? resolveDeskSidebar(String entity, String? module, DeskBoot desk) {
-  var linking = <String>[
-    for (final e in desk.sidebars.entries)
-      if ((e.value['items'] as List? ?? const [])
-          .any((i) => i is Map && i['link_to'] == entity))
-        (e.value['label'] as String?) ?? e.key,
-  ];
-  String? pick;
-  if (module != null) {
-    final app = desk.moduleApp[module.toLowerCase().replaceAll(RegExp('[ -]'), '_')];
-    linking = <String>{
-      for (final s in linking)
-        if (desk.sidebars[s.toLowerCase()]?['app'] == app) s,
-    }.toList();
-  }
-  if (linking.length == 1) {
-    pick = linking.first;
-  } else if (linking.length > 1) {
-    pick = linking.where((s) => s.toLowerCase() == module?.toLowerCase()).firstOrNull;
-  } else if (module != null) {
-    final own = desk.sidebars[module.toLowerCase()];
-    if (own != null) pick = (own['label'] as String?) ?? module;
-  }
-  return pick ?? linking.firstOrNull;
-}
-
-/// Where [entity] sits in v16 [sidebar]: the label of the section break it
-/// is nested under (`null` above the first one, or for a top-level link
-/// after it) and its position. `null` when the sidebar doesn't link it.
-/// Mirrors Desk's nesting: a `child` link belongs to the last section break.
-({String? section, int index})? sidebarSpot(
-    String sidebar, String entity, DeskBoot desk) {
-  final items = desk.sidebars[sidebar.toLowerCase()]?['items'] as List? ?? const [];
-  String? section;
-  for (var i = 0; i < items.length; i++) {
-    final item = items[i];
-    if (item is! Map) continue;
-    if (item['type'] == 'Section Break') {
-      section = item['label'] as String?;
-    } else if (item['link_to'] == entity) {
-      return (section: item['child'] == 1 ? section : null, index: i);
-    }
-  }
-  return null;
-}
-
-/// Maps Frappe v15/v16 workspaces onto the app's screens.
-///
-/// [pages] is `get_workspace_sidebar_items().pages` (already filtered by the
-/// server for module blocks, roles and domains, in sidebar order).
-/// [desktop] maps page name → `get_desktop_page(page)` (links already
-/// permission-filtered). [modules] maps [NavLink.key] → the DocType's /
-/// Report's Frappe module. [desk] is what Desk's breadcrumb is built from.
-/// Child workspaces fold into their top-level parent.
-///
-/// Each screen appears ONCE, in its native group — the one Desk's
-/// breadcrumb names: on v16 the sidebar [resolveDeskSidebar] picks, on v15
-/// (or with no fitting sidebar) the module's oldest public workspace, else
-/// the first sidebar workspace of that module — at the card/shortcut that
-/// group's workspace gives it (on v16: the sidebar's section break, in
-/// sidebar order), else at the top of that group.
-/// With no native workspace it goes where the first workspace lists it,
-/// else to its default group. Links to screens the app doesn't have are
-/// dropped. With no pages this yields the plain fallback menu.
+/// Places each screen under its server module or catalog fallback. The
+/// workspace pages supply the order for matching group titles, folding child
+/// workspaces into their top-level parent.
 List<NavGroup> buildWorkspaceMenu(
-  List<Map<String, dynamic>> pages,
-  Map<String, Map<String, dynamic>> desktop, [
+  List<Map<String, dynamic>> pages, [
   Map<String, String> modules = const {},
-  DeskBoot desk = const DeskBoot(),
 ]) {
-  final drawerLinks = kNavCatalog.where((l) => l.showInDrawer);
-  final byKey = {for (final l in drawerLinks) l.key: l};
-  final visible = pages.where((p) => p['is_hidden'] != 1).toList();
+  final visible = pages.where((p) => p['is_hidden'] != 1);
   final byName = {for (final p in visible) p['name'] as String: p};
 
-  String rootTitle(Map<String, dynamic> p) {
+  String rootTitle(Map<String, dynamic> page) {
     final seen = <String>{};
-    var cur = p;
+    var current = page;
     while (true) {
-      final parent = cur['parent_page'] as String?;
-      final next = (parent == null || parent.isEmpty) ? null : byName[parent];
-      if (next == null || !seen.add(parent!)) break;
-      cur = next;
+      final parent = current['parent_page'] as String?;
+      if (parent == null || parent.isEmpty) break;
+      final next = byName[parent];
+      if (next == null || !seen.add(parent)) break;
+      current = next;
     }
-    return (cur['title'] ?? cur['name']) as String;
+    return (current['title'] ?? current['name']) as String;
   }
 
-  // group → section label → links; seeded in sidebar/card order so the
-  // layout follows the workspaces even though links are placed later.
-  final groups = <String, Map<String?, List<NavLink>>>{};
-  final nativeGroup = <String, String>{}; // module → group
-  final listed = <(String key, String group, String? section)>[];
-
-  for (final p in visible) {
-    final group = rootTitle(p);
-    final sections = groups.putIfAbsent(group, () => {null: []});
-    final module = p['module'];
-    if (module is String && module.isNotEmpty) {
-      nativeGroup.putIfAbsent(module, () => group);
-    }
-    final page = desktop[p['name']];
-    if (page == null) continue;
-    var shortcuts = page['shortcuts']?['items'] as List? ?? const [];
-    var cards = page['cards']?['items'] as List? ?? const [];
-    final placed = _placedBlocks(p['content']);
-    if (placed != null) {
-      final s = [
-        for (final x in shortcuts)
-          if (placed.shortcuts.contains(x['label']) ||
-              placed.shortcuts.contains(x['link_to']))
-            x
-      ];
-      final c = [
-        for (final x in cards)
-          if (placed.cards.contains(x['label'])) x
-      ];
-      // Labels arrive translated but `content` names don't: if nothing
-      // matches, the layout can't be trusted — keep everything.
-      if (s.isNotEmpty || c.isNotEmpty) {
-        shortcuts = s;
-        cards = c;
-      }
-    }
-    for (final s in shortcuts) {
-      final key = '${(s['type'] ?? '').toString().toLowerCase()}:${s['link_to']}';
-      if (byKey.containsKey(key)) listed.add((key, group, null));
-    }
-    for (final card in cards) {
-      final label = card['label'] as String?;
-      for (final s in (card['links'] as List? ?? const [])) {
-        final key = '${(s['link_type'] ?? '').toString().toLowerCase()}:${s['link_to']}';
-        if (!byKey.containsKey(key)) continue;
-        // v16 sections come from sidebars; seeding card labels would
-        // order them by the workspace page instead.
-        if (desk.sidebars.isEmpty) sections.putIfAbsent(label, () => []);
-        listed.add((key, group, label));
-      }
-    }
-  }
-
-  // Desk's breadcrumb rule wins over sidebar order: a module's home is its
-  // oldest public workspace, even one this user's sidebar doesn't show.
-  if (visible.isNotEmpty) {
-    for (final e in desk.moduleWorkspaces.entries) {
-      if (e.value.isEmpty) continue;
-      final ws = e.value.first;
-      final p = byName[ws];
-      nativeGroup[e.key] = p != null ? rootTitle(p) : ws;
-    }
-  }
-
-  // One home per screen.
-  final home = <String, (String, String?)>{};
-  final sidebarIndex = <String, int>{};
-  for (final l in byKey.values) {
-    final module = modules[l.key];
-    // Desk's route meta carries a module only for DocTypes.
-    final sidebar = visible.isEmpty
-        ? null
-        : resolveDeskSidebar(
-            l.linkTo, l.linkType == 'DocType' ? module : null, desk);
-    if (sidebar != null) {
-      final spot = sidebarSpot(sidebar, l.linkTo, desk);
-      home[l.key] = (sidebar, spot?.section);
-      if (spot != null) sidebarIndex[l.key] = spot.index;
-      continue;
-    }
-    final native = nativeGroup[module];
-    final spots = listed.where((e) => e.$1 == l.key);
-    final inNative = spots.where((e) => e.$2 == native);
-    home[l.key] = native != null
-        ? (inNative.isEmpty ? (native, null) : (native, inNative.first.$3))
-        : spots.isNotEmpty
-            ? (spots.first.$2, spots.first.$3)
-            : (l.group, l.section);
-  }
-
-  // Screens in sidebar order, then at their workspace spot in workspace
-  // order, then the rest in catalog order.
-  final order = [
-    ...(sidebarIndex.keys.toList()
-      ..sort((a, b) => sidebarIndex[a]!.compareTo(sidebarIndex[b]!))),
-    for (final e in listed)
-      if (home[e.$1] == (e.$2, e.$3)) e.$1,
-    for (final l in byKey.values) l.key,
-  ];
-  final done = <String>{};
-  for (final key in order) {
-    if (!done.add(key)) continue;
-    final (group, section) = home[key]!;
-    groups
-        .putIfAbsent(group, () => {null: []})
-        .putIfAbsent(section, () => [])
-        .add(byKey[key]!);
-  }
-
-  return _toGroups(groups);
+  return _placeLinks(visible.map(rootTitle), modules);
 }
 
-List<NavGroup> _toGroups(Map<String, Map<String?, List<NavLink>>> groups) => [
-      for (final e in groups.entries)
-        if (e.value.values.any((links) => links.isNotEmpty))
-          NavGroup(e.key, _groupIcon(e.key), [
-            for (final s in e.value.entries)
-              if (s.value.isNotEmpty) NavSection(s.key, s.value),
-          ]),
-    ];
+List<NavGroup> _placeLinks(
+  Iterable<String> groupTitles,
+  Map<String, String> modules,
+) {
+  final groups = <String, Map<String?, List<NavLink>>>{
+    for (final title in groupTitles) title: {null: []},
+  };
+  final seen = <String>{};
+  for (final type in const ['DocType', 'Report']) {
+    for (final link in kNavCatalog) {
+      if (link.linkType != type || !link.showInDrawer || !seen.add(link.key)) {
+        continue;
+      }
+      final module = modules[link.key];
+      final group = module == null || module.trim().isEmpty ? link.group : module;
+      groups
+          .putIfAbsent(group, () => {null: []})
+          .putIfAbsent(link.section, () => [])
+          .add(link);
+    }
+  }
+  return [
+    for (final e in groups.entries)
+      if (e.value.values.any((links) => links.isNotEmpty))
+        NavGroup(e.key, _groupIcon(e.key), [
+          for (final s in e.value.entries)
+            if (s.value.isNotEmpty) NavSection(s.key, s.value),
+        ]),
+  ];
+}
 
 /// Applies Desk's per-report permissions to the layout for the current session.
 List<NavGroup> filterWorkspaceReports(
@@ -625,46 +372,63 @@ List<NavGroup> filterWorkspaceReports(
   return visible;
 }
 
-/// Compact, storable form of a menu: `[{t: title, s: [{l: label, k: [keys]}]}]`.
-List<Map<String, dynamic>> menuToJson(List<NavGroup> menu) => [
-      for (final g in menu)
-        {
-          't': g.title,
-          's': [
-            for (final s in g.sections)
-              {'l': s.label, 'k': [for (final l in s.links) l.key]}
-          ],
-        }
-    ];
+/// Compact, storable menu with an optional `m` map of server Report modules
+/// keyed by link within each group.
+List<Map<String, dynamic>> menuToJson(
+  List<NavGroup> menu, [
+  Map<String, String> modules = const {},
+]) {
+  final json = <Map<String, dynamic>>[];
+  for (final group in menu) {
+    final reportModules = <String, String>{};
+    for (final link in group.links) {
+      final module = modules[link.key];
+      if (link.linkType == 'Report' &&
+          module != null &&
+          module.trim().isNotEmpty) {
+        reportModules[link.key] = module;
+      }
+    }
+    json.add({
+      't': group.title,
+      's': [
+        for (final s in group.sections)
+          {'l': s.label, 'k': [for (final l in s.links) l.key]},
+      ],
+      if (reportModules.isNotEmpty) 'm': reportModules,
+    });
+  }
+  return json;
+}
 
-/// Restores [menuToJson] output against the CURRENT catalog: keys the app
-/// no longer has are dropped, screens added since go to their default group.
+/// Restores group order and re-places links using the current catalog. When
+/// provided, [modules] supplies current server metadata. Otherwise the
+/// restore uses saved server Report modules and falls back to catalog groups.
 /// Returns `null` for unreadable input.
-List<NavGroup>? menuFromJson(List<dynamic>? json) {
+List<NavGroup>? menuFromJson(
+  List<dynamic>? json, [
+  Map<String, String>? modules,
+]) {
   if (json == null) return null;
   try {
-    final drawerLinks = kNavCatalog.where((l) => l.showInDrawer);
-    final byKey = {for (final l in drawerLinks) l.key: l};
-    final groups = <String, Map<String?, List<NavLink>>>{};
-    final seen = <String>{};
-    for (final g in json) {
-      final sections = groups.putIfAbsent(g['t'] as String, () => {null: []});
-      for (final s in g['s'] as List) {
-        for (final k in s['k'] as List) {
-          final l = byKey[k];
-          if (l == null || !seen.add(l.key)) continue;
-          sections.putIfAbsent(s['l'] as String?, () => []).add(l);
+    final titles = <String>[];
+    final savedModules = <String, String>{};
+    for (final group in json) {
+      titles.add(group['t'] as String);
+      final saved = group['m'];
+      for (final section in group['s'] as List) {
+        for (final key in section['k'] as List) {
+          if (modules == null &&
+              key is String &&
+              key.startsWith('report:') &&
+              saved is Map &&
+              saved[key] is String) {
+            savedModules[key] = saved[key] as String;
+          }
         }
       }
     }
-    for (final l in byKey.values) {
-      if (!seen.add(l.key)) continue;
-      groups
-          .putIfAbsent(l.group, () => {null: []})
-          .putIfAbsent(l.section, () => [])
-          .add(l);
-    }
-    return _toGroups(groups);
+    return _placeLinks(titles, modules ?? savedModules);
   } catch (_) {
     return null;
   }
