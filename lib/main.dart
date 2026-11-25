@@ -5,8 +5,10 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/routes/app_pages.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/services/app_update_service.dart';
 import 'package:multimax/app/data/services/digest_worker.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
+import 'package:multimax/app/modules/global_widgets/app_update_prompts.dart';
 import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_store.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/modules/theme/theme_controller.dart';
@@ -104,6 +106,13 @@ Future<void> main() async {
   Get.put<StorageService>(StorageService(), permanent: true);
 
   Get.put<AuthenticationController>(AuthenticationController(), permanent: true);
+  Get.put<AppUpdateService>(
+    AppUpdateService(
+      prompts: AppUpdatePrompts(),
+      isAuthenticated: Get.find<AuthenticationController>().isAuthenticated,
+    ),
+    permanent: true,
+  );
   Get.put<ReportOwnerSource>(
     StorageReportOwnerSource(
       auth: Get.find<AuthenticationController>(),
@@ -258,6 +267,9 @@ class MultimaxApp extends StatelessWidget {
     final themeController = Get.isRegistered<ThemeController>()
         ? Get.find<ThemeController>()
         : Get.put(ThemeController());
+    final updatePrompts = Get.isRegistered<AppUpdateService>()
+        ? Get.find<AppUpdateService>().prompts
+        : null;
 
     // Source of truth for the active theme is this Obx binding on
     // themeController's themeMode/accentKey/textSize; ThemeController also calls
@@ -270,6 +282,10 @@ class MultimaxApp extends StatelessWidget {
         title: 'Multimax',
         initialRoute: initialRoute,
         getPages: AppPages.routes,
+        scaffoldMessengerKey: updatePrompts?.messengerKey,
+        navigatorObservers: [
+          if (updatePrompts != null) updatePrompts.navigatorObserver,
+        ],
         theme: buildAppTheme(AppScheme.light, Brightness.light, accent: accent),
         darkTheme: buildAppTheme(AppScheme.dark, Brightness.dark, accent: accent),
         themeMode: themeController.themeMode.value,

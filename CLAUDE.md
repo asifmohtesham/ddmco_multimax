@@ -147,6 +147,7 @@ git log --pretty='%s' "$LAST..HEAD" && git diff --stat "$LAST..HEAD"
 The `docs/` folder contains important design and architecture notes:
 
 - `docs/versioning_conventions.md` — semver bump procedure (diff-driven; MAJOR/MINOR/PATCH + build-number rules)
+- `docs/app_update_prompt.md` — Google Play and App Store update prompts, installer gating, throttling and store testing
 - `docs/erpnext_v16_compatibility_audit.md` — live v16 audit (15 November 2026): what broke, how each fix serves v15 and v16, what was verified, what was not, and the smoke test for a new server version
 - `docs/app_bar_conventions.md` — AppBar/header standards for list vs. form screens
 - `docs/recent_searches.md` — Search overlay history, per-user storage, and screen scoping

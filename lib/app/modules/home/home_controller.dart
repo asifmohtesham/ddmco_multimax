@@ -35,6 +35,7 @@ import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/providers/packing_slip_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
+import 'package:multimax/app/data/services/app_update_service.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/services/scan_constants.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
@@ -493,6 +494,14 @@ class HomeController extends GetxController {
       if (Get.currentRoute != AppRoutes.HOME) return;
       onScan(code);
     });
+  }
+
+  @override
+  void onReady() {
+    super.onReady();
+    if (Get.isRegistered<AppUpdateService>()) {
+      unawaited(Get.find<AppUpdateService>().onHomeShown());
+    }
   }
 
   /// Attendance reminders are on by default, so ask for notification

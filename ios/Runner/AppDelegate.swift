@@ -21,5 +21,28 @@ import UserNotifications
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "IntakeBridge") {
       IntakeBridge.register(with: registrar)
     }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "AppUpdateReceipt") {
+      let channel = FlutterMethodChannel(
+        name: "com.ddmco.multimax/app_update", binaryMessenger: registrar.messenger())
+      channel.setMethodCallHandler { call, result in
+        guard call.method == "hasAppStoreReceipt" else {
+          result(FlutterMethodNotImplemented)
+          return
+        }
+        // package_info_plus also reports com.apple when the receipt is missing.
+        #if targetEnvironment(simulator) || targetEnvironment(macCatalyst)
+          result(false)
+        #else
+          guard !ProcessInfo.processInfo.isiOSAppOnMac,
+            let receipt = Bundle.main.appStoreReceiptURL,
+            receipt.lastPathComponent == "receipt"
+          else {
+            result(false)
+            return
+          }
+          result(FileManager.default.fileExists(atPath: receipt.path))
+        #endif
+      }
+    }
   }
 }
