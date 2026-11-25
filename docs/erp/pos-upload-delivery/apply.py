@@ -18,6 +18,7 @@ STAGING = "https://erp-testing.multimax.cloud"
 LIVE = "https://erp.multimax.cloud"
 SERVER_SCRIPTS_ENABLED = "/api/method/frappe.core.doctype.server_script.server_script.enabled"
 PERMISSIONS = "/api/method/frappe.core.page.permission_manager.permission_manager."
+PHASES = ("configuration", "workflow", "webhook")
 VOUCHER_SCRIPTS = tuple(
     f"{voucher} updates POS Upload {state}"
     for voucher in ("Delivery Note", "Stock Entry")
@@ -131,10 +132,11 @@ def resource(doctype, name=None):
 
 
 class Api:
-    def __init__(self, url, key_path):
+    def __init__(self, url, key_path, *, authorize_live_cutover=False):
         self.url = url.rstrip("/")
         if self.url not in (STAGING, LIVE):
             raise RolloutError("Use the Multimax staging or live HTTPS origin as --url.")
+        self._writable = self.url == STAGING or authorize_live_cutover
         self._token = read_key(key_path)
         self._opener = build_opener(NoRedirect())
 
@@ -142,8 +144,8 @@ class Api:
         return sanitize(value, (self._token, *self._token.split(":")))
 
     def request(self, method, path, payload=None, query=None):
-        if method != "GET" and self.url != STAGING:
-            raise RolloutError("The current rollout authorizes writes only to staging.")
+        if method != "GET" and not self._writable:
+            raise RolloutError("Live writes require separate cutover authorization.")
         parsed = urlsplit(path)
         if not path.startswith("/api/") or parsed.netloc or parsed.scheme or parsed.query or parsed.fragment:
             raise RolloutError("Expected a relative Frappe API path.")
@@ -231,13 +233,16 @@ def load_records(directory=ROOT / "records"):
         pending[key] = record
     ordered = {}
     while pending:
-        ready = [key for key, record in pending.items()
-                 if all(tuple(dependency) in ordered for dependency in record.get("_depends", []))]
-        if not ready:
+        next_key = next((key for key, record in pending.items()
+                         if all(tuple(dependency) in ordered for dependency in record.get("_depends", []))), None)
+        if next_key is None:
             raise RolloutError("Unresolved rollout dependencies. Check the _depends references.")
-        for key in ready:
-            ordered[key] = pending.pop(key)
-    return list(ordered.values())
+        ordered[next_key] = pending.pop(next_key)
+    return sorted(ordered.values(), key=lambda record: PHASES.index(record_phase(record)))
+
+
+def record_phase(record):
+    return {"Workflow": "workflow", "Webhook": "webhook"}.get(record["doctype"], "configuration")
 
 
 def permission_identity(record):
@@ -301,6 +306,11 @@ def capture(api, records, before_dir):
         baseline = api.request("GET", PERMISSIONS + "get_standard_permissions", query={"doctype": parent})
         permission_baseline[parent] = api.redact(baseline["message"])[0]
 
+    save_before_images(api, docs, permission_baseline, before_dir)
+
+
+def save_before_images(api, docs, permission_baseline, before_dir):
+    manifest_path = before_dir / "manifest.json"
     before_dir.mkdir(parents=True, exist_ok=True)
     entries = []
     used_paths = set()
@@ -599,18 +609,33 @@ def main():
     modes = parser.add_mutually_exclusive_group(required=True)
     modes.add_argument("--capture", action="store_true", help="save original configuration with GETs only")
     modes.add_argument("--dry-run", action="store_true", help="show planned changes with GETs only")
-    modes.add_argument("--apply", action="store_true", help="create or update delivery records on staging")
+    modes.add_argument("--apply", action="store_true", help="create or update delivery records")
     modes.add_argument("--rollback", action="store_true", help="use the before-images to pause and restore configuration")
     parser.add_argument("--url", default=os.getenv("POS_DELIVERY_ERP_URL"), required=not os.getenv("POS_DELIVERY_ERP_URL"))
     parser.add_argument("--key-path", default=os.getenv("POS_DELIVERY_ERP_KEY_PATH"), required=not os.getenv("POS_DELIVERY_ERP_KEY_PATH"))
     parser.add_argument("--before-dir", type=Path, help="directory for the target site's before-images")
+    parser.add_argument("--phase", choices=PHASES, help="select a phase for apply or dry run")
+    parser.add_argument("--authorize-live-cutover", action="store_true",
+                        help="opt in to live apply or rollback only after separate approval")
     args = parser.parse_args()
     try:
-        api = Api(args.url, args.key_path)
-        if (args.apply or args.rollback) and api.url != STAGING:
-            raise RolloutError("The current rollout authorizes writes only to staging.")
+        live = args.url.rstrip("/") == LIVE
+        write_mode = args.apply or args.rollback
+        if args.authorize_live_cutover and not (live and write_mode):
+            raise RolloutError("--authorize-live-cutover requires live --apply or --rollback.")
+        if live and write_mode and not args.authorize_live_cutover:
+            raise RolloutError("Live writes require separate cutover authorization.")
+        if args.phase and not (args.apply or args.dry_run):
+            raise RolloutError("--phase requires --apply or --dry-run.")
+        if live and args.apply and not args.phase:
+            raise RolloutError("Live apply requires one explicit phase.")
+        if live and write_mode and args.before_dir is None:
+            raise RolloutError("Live writes require an explicit path to the fresh live before-images.")
+        api = Api(args.url, args.key_path, authorize_live_cutover=args.authorize_live_cutover)
         before_dir = args.before_dir or ROOT / "before" / ("staging" if api.url == STAGING else "live")
         records = load_records()
+        if args.phase:
+            records = [record for record in records if record_phase(record) == args.phase]
         if not records and not args.capture:
             raise RolloutError("No rollout records found in records/.")
         api.preflight()
