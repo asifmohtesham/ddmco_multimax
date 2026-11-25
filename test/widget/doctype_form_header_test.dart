@@ -144,6 +144,41 @@ void main() {
       scrollController.dispose();
     });
 
+    testWidgets('long POS name leaves room for the status pill on XCover',
+        (tester) async {
+      tester.view.physicalSize = const Size(1080, 2408);
+      tester.view.devicePixelRatio = 2.8125;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+      const title = 'ML-ZZTEST-P1E-261125-MAIN';
+      for (final scale in [1.0, 1.12]) {
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        await tester.pumpWidget(_wrapInSliver(
+          DocTypeFormHeader(
+            title: title,
+            docType: 'POS Upload',
+            statusLabel: 'Out for Delivery',
+            onShare: () {},
+          ),
+        ));
+
+        expect(tester.takeException(), isNull, reason: 'text scale $scale');
+        final pill = find.byType(StatusPill);
+        final expandedWindow = find.ancestor(
+          of: pill,
+          matching: find.byType(ClipRect),
+        ).first;
+        expect(
+          tester.getRect(pill).bottom,
+          lessThanOrEqualTo(tester.getRect(expandedWindow).bottom),
+        );
+        expect(tester.getRect(find.text(title)).bottom,
+            lessThan(tester.getRect(pill).top));
+      }
+    });
+
     testWidgets('shows spinner instead of label while submitting',
         (tester) async {
       await tester.pumpWidget(_wrapInSliver(

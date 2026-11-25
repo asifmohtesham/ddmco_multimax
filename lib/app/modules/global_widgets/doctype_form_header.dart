@@ -302,13 +302,19 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
                 ),
               ),
             if (docType != null) const SizedBox(height: 4),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
-                color: colorScheme.onPrimary,
-                height: 1.15,
+            // Reserve space for the status pill when a long title wraps.
+            Flexible(
+              child: AutoSizeText(
+                title,
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  color: colorScheme.onPrimary,
+                  height: 1.15,
+                ),
+                maxLines: 2,
+                minFontSize: _kAutoSizeMinFont,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
             const SizedBox(height: 6),
