@@ -216,7 +216,7 @@ class FakePermissionService extends GetxService implements PermissionService {
   bool? hasAccess(String doctype, {String permType = 'read'}) => true;
 
   @override
-  Future<String?> moduleOf(String doctype) async => null;
+  Future<String?> moduleOf(String doctype, {bool refresh = false}) async => null;
 
   // Anything else on PermissionService is not part of the auth flow.
   @override

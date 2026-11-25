@@ -78,15 +78,17 @@ class PermissionService extends GetxService {
 
   /// [doctype]'s Frappe module (e.g. Item → Stock), or `null` if it can't be
   /// resolved. Reuses the getdoctype fetch behind create/write checks, so
-  /// doctypes prefetched at login cost no extra request.
-  Future<String?> moduleOf(String doctype) async {
+  /// doctypes prefetched at login cost no extra request. A drawer [refresh]
+  /// re-reads the metadata and keeps any resolved create/write permissions.
+  Future<String?> moduleOf(String doctype, {bool refresh = false}) async {
     if (!_hasSession) return null;
-    if (!_modules.containsKey(doctype)) {
+    final session = _session;
+    if (refresh || !_modules.containsKey(doctype)) {
       try {
-        await _resolveDocTypeRoles(doctype);
+        await _resolveDocTypeRoles(doctype, refreshModule: refresh);
       } catch (_) {}
     }
-    return _modules[doctype];
+    return session == _session ? _modules[doctype] : null;
   }
 
   Future<void> _fetchPermission(String doctype, String permType) async {
@@ -130,13 +132,21 @@ class PermissionService extends GetxService {
   /// roles. When the roles are not known (see [rolesKnown]) the server is
   /// asked instead. De-duped so concurrent create/write lookups share one
   /// resolution.
-  Future<void> _resolveDocTypeRoles(String doctype) {
+  Future<void> _resolveDocTypeRoles(
+    String doctype, {
+    bool refreshModule = false,
+  }) {
     final session = _session;
     return _roleFetches.putIfAbsent(doctype, () async {
+      if (refreshModule) _modules.remove(doctype);
+      final keepPermissions = refreshModule &&
+          _accessCache.containsKey('$doctype:create') &&
+          _accessCache.containsKey('$doctype:write');
       try {
         final roles = await _apiProvider.fetchDocTypeRoles(doctype);
         if (session != _session) return;
         if (roles.module != null) _modules[doctype] = roles.module!;
+        if (keepPermissions) return;
         final userRoles = _currentUserRoles();
         if (rolesKnown(userRoles)) {
           _accessCache['$doctype:create'] = roleGrants(userRoles, roles.create);
@@ -156,6 +166,7 @@ class PermissionService extends GetxService {
         }
       } catch (_) {
         if (session != _session) return;
+        if (keepPermissions) rethrow;
         // Fail-closed for operators (deny) but keep admins visible, and cache
         // the verdict so we don't refetch getdoctype on every rebuild.
         final userRoles = _currentUserRoles();
