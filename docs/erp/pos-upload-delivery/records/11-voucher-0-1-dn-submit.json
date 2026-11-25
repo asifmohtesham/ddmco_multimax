@@ -1,0 +1,10 @@
+{
+  "doctype": "Server Script",
+  "name": "Delivery Note updates POS Upload Completed",
+  "script_type": "DocType Event",
+  "reference_doctype": "Delivery Note",
+  "doctype_event": "After Submit",
+  "disabled": 0,
+  "_script_file": "../scripts/dn-submit.py",
+  "_script_include": "../scripts/voucher.py"
+}

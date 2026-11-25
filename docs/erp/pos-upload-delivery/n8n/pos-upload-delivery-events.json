@@ -1,0 +1,457 @@
+{
+  "name": "POS Upload Delivery Events",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pos-upload-delivery",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "5cd62c48-81b8-493d-8cbf-7ba481998491",
+      "name": "Receive signed POS update",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "0e786ec3-49e6-4c0a-b8e6-51ed1adc847b",
+      "notesInFlow": true,
+      "notes": "Rebind the Crypto, ERP Header Auth and Telegram credentials and select the operator error workflow before publishing. The Code runner needs crypto enabled."
+    },
+    {
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "binaryData": true,
+        "binaryPropertyName": "data",
+        "dataPropertyName": "calculatedHmac",
+        "encoding": "base64"
+      },
+      "id": "8d4bc24b-d2fe-4b53-864b-6d4b3c2b0ea9",
+      "name": "Calculate body HMAC",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ],
+      "credentials": {
+        "crypto": {
+          "name": "ERPNext POS Upload Delivery HMAC"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const { timingSafeEqual } = require('crypto');\nconst signedItem = $input.first().json;\nconst signature = signedItem.headers?.['x-frappe-webhook-signature'];\nconst calculated = signedItem.calculatedHmac;\nconst validTag = tag => typeof tag === 'string' && /^[A-Za-z0-9+/]{43}=$/.test(tag) && Buffer.from(tag, 'base64').toString('base64') === tag;\nif (!validTag(signature) || !validTag(calculated) ||\n    !timingSafeEqual(Buffer.from(signature, 'base64'), Buffer.from(calculated, 'base64'))) {\n  return [{ json: { statusCode: 403, response: { error: 'Invalid webhook signature' } } }];\n}\nconst badRequest = [{ json: { statusCode: 400, response: { error: 'Invalid delivery event' } } }];\nlet event;\ntry {\n  const raw = $('Receive signed POS update').first().binary?.data?.data;\n  event = JSON.parse(Buffer.from(raw, 'base64').toString('utf8'));\n} catch {\n  return badRequest;\n}\nconst present = text => typeof text === 'string' && text.trim().length > 0;\nconst optionalText = text => text == null || typeof text === 'string';\nif (!event || !present(event.name) || !present(event.modified_by) || !present(event.modified) ||\n    !/^\\d{4}-\\d{2}-\\d{2}[ T]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?$/.test(event.modified) ||\n    !DateTime.fromISO(event.modified.replace(' ', 'T'), { zone: 'Asia/Dubai' }).isValid ||\n    !optionalText(event.customer) || !optionalText(event.reference_no) || !optionalText(event.custom_return_reason) ||\n    !['Out for Delivery', 'To Deliver', 'Delivered'].includes(event.status) ||\n    (event.status === 'To Deliver' && !['Late', 'Rejected', 'Other'].includes(event.custom_return_reason))) {\n  return badRequest;\n}\nconst { name, customer, status, custom_return_reason, modified, modified_by } = event;\nreturn [{ json: { statusCode: 200, response: { ok: true }, event: { name, customer, status, custom_return_reason, modified, modified_by } } }];"
+      },
+      "id": "751dc393-f198-44f6-9758-139a0b3d5ccc",
+      "name": "Validate signed event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.response }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "aa342b3f-2b1e-494b-a3fa-075427c2d02c",
+      "name": "Acknowledge signed event",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        720,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { statusCode, event } = $input.first().json;\nif (statusCode !== 200) return [];\nconst state = $getWorkflowStaticData('global');\nconst keys = { ...state.sent };\nconst before = Object.keys(keys).length;\nconst now = Date.now();\nfor (const [id, sent] of Object.entries(keys)) {\n  if (sent <= now - 3600000) delete keys[id];\n}\nif (Object.keys(keys).length !== before) state.sent = keys;\nconst key = JSON.stringify([event.name, event.status, event.modified]);\nreturn keys[key] ? [] : [{ json: { event, key, erpBase: 'https://erp.multimax.cloud' } }];"
+      },
+      "id": "5895b10d-02c2-4bfc-a752-34d7424c604e",
+      "name": "Check event dedupe",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        0
+      ],
+      "notesInFlow": true,
+      "notes": "Set erpBase to the staging host in the staging copy. Leave execution payload saving disabled."
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Check event dedupe').first().json.erpBase + '/api/resource/POS%20Upload/' + encodeURIComponent($('Check event dedupe').first().json.event.name) + '' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 10000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 5,
+              "batchInterval": 200
+            }
+          }
+        }
+      },
+      "id": "cd5b2082-95ab-4169-9d79-db0326965441",
+      "name": "Read current POS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Multimax ERP GET"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Check event dedupe').first().json.erpBase + '/api/method/frappe.desk.form.load.get_docinfo' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "doctype",
+              "value": "POS Upload"
+            },
+            {
+              "name": "name",
+              "value": "={{ $('Check event dedupe').first().json.event.name }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 5,
+              "batchInterval": 200
+            }
+          }
+        }
+      },
+      "id": "d7feed62-a28f-4260-9874-0bf899f34bf7",
+      "name": "Load action Versions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Multimax ERP GET"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "function statusVersions(reply) {\n  if (!Array.isArray(reply.docinfo?.versions)) throw new Error('ERP returned no POS Version list');\n  const result = [];\n  for (const version of reply.docinfo.versions) {\n    let data;\n    try {\n      data = typeof version.data === 'string' ? JSON.parse(version.data) : version.data;\n    } catch {\n      throw new Error('ERP returned an invalid POS Version');\n    }\n    const change = data?.changed?.find(row => row[0] === 'status' && row[1] !== row[2]);\n    if (change) result.push({ name: version.name, creation: version.creation, from: change[1], to: change[2], audit: data.updater_reference?.pos_delivery });\n  }\n  return result;\n}\nconst { event, key } = $('Check event dedupe').first().json;\nconst required = {\n  'Out for Delivery': ['To Deliver', 'Out for Delivery'],\n  'To Deliver': ['Out for Delivery', 'Delivery Return'],\n  Delivered: ['Out for Delivery', 'Delivered'],\n};\nconst [from, action] = required[event.status];\n// Preserve microseconds while normalizing Frappe timestamp formatting.\nconst revision = value => {\n  const [whole, fraction = ''] = String(value ?? '').replace('T', ' ').split('.');\n  return `${whole}.${fraction.padEnd(6, '0')}`;\n};\nconst audit = statusVersions($input.first().json).find(v =>\n  v.from === from && v.to === event.status && v.audit?.action === action &&\n  v.audit.driver && v.audit.recorded_by === event.modified_by &&\n  revision(v.audit.modified) === revision(event.modified) &&\n  (action !== 'Delivery Return' || v.audit.reason === event.custom_return_reason)\n)?.audit;\nif (!audit) {\n  console.warn('POS delivery event skipped because its action Version could not be verified');\n  return [];\n}\nconst current = $('Read current POS').first().json.data;\nconst sameRevision = current?.name === event.name && current.status === event.status &&\n  revision(current.modified) === revision(event.modified);\nreturn [{ json: { event, key, audit, sameRevision } }];"
+      },
+      "id": "aa1ec3f8-8621-4a47-be56-6f2a4cd36dc9",
+      "name": "Verify committed action",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Check event dedupe').first().json.erpBase + '/api/resource/Delivery%20Note' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "[\"name\"]"
+            },
+            {
+              "name": "filters",
+              "value": "={{ JSON.stringify([['po_no', '=', $json.event.name], ['docstatus', '=', 1], ['is_return', '=', 0]]) }}"
+            },
+            {
+              "name": "limit_page_length",
+              "value": "2"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 5,
+              "batchInterval": 200
+            }
+          }
+        }
+      },
+      "id": "144e0a85-e205-414b-885d-ead21122a589",
+      "name": "Resolve outbound DN",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1920,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Multimax ERP GET"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "function escapeHtml(value) {\n  return String(value).replace(/[&<>\"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;'})[c]);\n}\nfunction lines(title, pos, dn, audit) {\n  const row = (label, value) => value ? `${label}: ${escapeHtml(value)}` : null;\n  const url = `https://erp.multimax.cloud/app/pos-upload/${encodeURIComponent(pos.name)}`;\n  return [\n    `<b>${escapeHtml(title)}</b>`,\n    `POS Upload: <a href=\"${escapeHtml(url)}\">${escapeHtml(pos.name)}</a>`,\n    row('Customer', pos.customer),\n    row('Delivery Note', dn),\n    row('Driver', audit?.driver_name || audit?.driver),\n    row('Recorded by', audit?.recorded_by_name || audit?.recorded_by),\n  ].filter(Boolean);\n}\nfunction erpTime(value) {\n  return DateTime.fromISO(value.replace(' ', 'T'), { zone: 'Asia/Dubai' }).setZone('Asia/Dubai');\n}\nfunction messageTime(timestamp) {\n  return timestamp.setLocale('en-GB').toFormat('dd MMM yyyy, HH:mm');\n}\nfunction currentDeliveryNote(reply) {\n  if (!Array.isArray(reply.data)) throw new Error('ERP returned no Delivery Note list');\n  return reply.data.length === 1 ? reply.data[0].name : null;\n}\n\nconst { event, key, audit, sameRevision } = $('Verify committed action').first().json;\nconst reasonLabel = { Late: 'Delivery delayed', Rejected: 'Rejected by customer', Other: 'Other reason' };\nconst currentDn = currentDeliveryNote($input.first().json);\nconst dn = sameRevision ? (currentDn === audit.dn ? currentDn : null) : audit.dn;\nlet title = 'Delivered';\nif (audit.action === 'Out for Delivery') {\n  title = `${audit.driver_name || audit.driver} is out to deliver POS Upload ${event.name}`;\n} else if (audit.action === 'Delivery Return') {\n  title = 'Delivery attempt unsuccessful';\n}\nconst text = lines(title, event, dn, audit);\nif (audit.action === 'Delivery Return') {\n  text.push('Status: Delivery Return', `Reason: ${reasonLabel[audit.reason]}`);\n}\ntext.push(`Time: ${messageTime(erpTime(event.modified))}`);\nreturn [{ json: { text: text.join('\\n'), key } }];"
+      },
+      "id": "9f23ffca-09b8-4c97-b2da-b7f0085dbd42",
+      "name": "Format action alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "-1002382434792",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML",
+          "disable_web_page_preview": true
+        }
+      },
+      "id": "eef63348-70fb-4cea-851c-fb4ba4bae344",
+      "name": "Send to Updates",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2400,
+        0
+      ],
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "notesInFlow": true,
+      "notes": "Select the staging destination before running acceptance."
+    },
+    {
+      "parameters": {
+        "jsCode": "const key = $('Format action alert').first().json.key;\nconst state = $getWorkflowStaticData('global');\nconst sent = { ...state.sent, [key]: Date.now() };\nconst oldest = Object.entries(sent).sort((a, b) => a[1] - b[1]);\nfor (const [id] of oldest.slice(0, Math.max(0, oldest.length - 512))) delete sent[id];\nstate.sent = sent;\nreturn [{ json: { sent: true } }];"
+      },
+      "id": "ff9d75f0-c73b-4fd9-bfbb-8fd0d08f822a",
+      "name": "Record successful action send",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Receive signed POS update": {
+      "main": [
+        [
+          {
+            "node": "Calculate body HMAC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate body HMAC": {
+      "main": [
+        [
+          {
+            "node": "Validate signed event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate signed event": {
+      "main": [
+        [
+          {
+            "node": "Acknowledge signed event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Acknowledge signed event": {
+      "main": [
+        [
+          {
+            "node": "Check event dedupe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check event dedupe": {
+      "main": [
+        [
+          {
+            "node": "Read current POS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read current POS": {
+      "main": [
+        [
+          {
+            "node": "Load action Versions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load action Versions": {
+      "main": [
+        [
+          {
+            "node": "Verify committed action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify committed action": {
+      "main": [
+        [
+          {
+            "node": "Resolve outbound DN",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve outbound DN": {
+      "main": [
+        [
+          {
+            "node": "Format action alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format action alert": {
+      "main": [
+        [
+          {
+            "node": "Send to Updates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to Updates": {
+      "main": [
+        [
+          {
+            "node": "Record successful action send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Dubai",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false
+  },
+  "tags": []
+}

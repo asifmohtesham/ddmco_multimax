@@ -1,0 +1,21 @@
+{
+  "name": "Stock Entry updates POS Upload In Progress",
+  "owner": "asif@multimax.cloud",
+  "creation": "2025-11-03 10:19:07.430127",
+  "modified": "2025-11-14 10:04:18.575353",
+  "modified_by": "asif@multimax.cloud",
+  "docstatus": 0,
+  "idx": 0,
+  "script_type": "DocType Event",
+  "reference_doctype": "Stock Entry",
+  "event_frequency": "All",
+  "doctype_event": "After Save",
+  "allow_guest": 0,
+  "module": "Stock",
+  "disabled": 0,
+  "script": "if doc.custom_reference_no and doc.docstatus == 0:\n    frappe.db.set_value(\n        \"POS Upload\",\n        doc.custom_reference_no,\n        \"status\",\n        \"In Progress\"\n    )\n",
+  "enable_rate_limit": 0,
+  "rate_limit_count": 5,
+  "rate_limit_seconds": 86400,
+  "doctype": "Server Script"
+}

@@ -1,0 +1,398 @@
+{
+  "origin": "https://erp-testing.multimax.cloud",
+  "captured_at": "2026-11-25T16:26:08+00:00",
+  "records": [
+    {
+      "doctype": "Client Script",
+      "name": "POS Upload",
+      "file": "client-script--pos-upload.json",
+      "redactions": []
+    },
+    {
+      "doctype": "Client Script",
+      "name": "POS Upload-List",
+      "file": "client-script--pos-upload-list.json",
+      "redactions": []
+    },
+    {
+      "doctype": "Custom DocPerm",
+      "name": "gm4eo5ng2l",
+      "file": "custom-docperm--gm4eo5ng2l.json",
+      "redactions": []
+    },
+    {
+      "doctype": "Custom DocPerm",
+      "name": "gm508qok1m",
+      "file": "custom-docperm--gm508qok1m.json",
+      "redactions": []
+    },
+    {
+      "doctype": "Custom DocPerm",
+      "name": "gm548dtu7p",
+      "file": "custom-docperm--gm548dtu7p.json",
+      "redactions": []
+    },
+    {
+      "doctype": "Custom DocPerm",
+      "name": "gm5i0hujl2",
+      "file": "custom-docperm--gm5i0hujl2.json",
+      "redactions": []
+    },
+    {
+      "doctype": "Custom DocPerm",
+      "name": "gsj6rmjctg",
+      "file": "custom-docperm--gsj6rmjctg.json",
+      "redactions": []
+    },
+    {
+      "doctype": "Custom DocPerm",
+      "name": "o867flpq8a",
+      "file": "custom-docperm--o867flpq8a.json",
+      "redactions": []
+    },
+    {
+      "doctype": "Custom DocPerm",
+      "name": "ogp1jjvus1",
+      "file": "custom-docperm--ogp1jjvus1.json",
+      "redactions": []
+    },
+    {
+      "doctype": "Property Setter",
+      "name": "POS Upload-customer-in_list_view",
+      "file": "property-setter--pos-upload-customer-in_list_view.json",
+      "redactions": []
+    },
+    {
+      "doctype": "Property Setter",
+      "name": "POS Upload-date-in_list_view",
+      "file": "property-setter--pos-upload-date-in_list_view.json",
+      "redactions": []
+    },
+    {
+      "doctype": "Property Setter",
+      "name": "POS Upload-reference_no-in_list_view",
+      "file": "property-setter--pos-upload-reference_no-in_list_view.json",
+      "redactions": []
+    },
+    {
+      "doctype": "Property Setter",
+      "name": "POS Upload-status-in_list_view",
+      "file": "property-setter--pos-upload-status-in_list_view.json",
+      "redactions": []
+    },
+    {
+      "doctype": "Property Setter",
+      "name": "POS Upload-total_amount-in_list_view",
+      "file": "property-setter--pos-upload-total_amount-in_list_view.json",
+      "redactions": []
+    },
+    {
+      "doctype": "Property Setter",
+      "name": "POS Upload-total_qty-in_list_view",
+      "file": "property-setter--pos-upload-total_qty-in_list_view.json",
+      "redactions": []
+    },
+    {
+      "doctype": "Server Script",
+      "name": "Delivery Note updates POS Upload Cancelled",
+      "file": "server-script--delivery-note-updates-pos-upload-cancelled.json",
+      "redactions": []
+    },
+    {
+      "doctype": "Server Script",
+      "name": "Delivery Note updates POS Upload Completed",
+      "file": "server-script--delivery-note-updates-pos-upload-completed.json",
+      "redactions": []
+    },
+    {
+      "doctype": "Server Script",
+      "name": "Delivery Note updates POS Upload In Progress",
+      "file": "server-script--delivery-note-updates-pos-upload-in-progress.json",
+      "redactions": []
+    },
+    {
+      "doctype": "Server Script",
+      "name": "Stock Entry updates POS Upload Cancelled",
+      "file": "server-script--stock-entry-updates-pos-upload-cancelled.json",
+      "redactions": []
+    },
+    {
+      "doctype": "Server Script",
+      "name": "Stock Entry updates POS Upload Completed",
+      "file": "server-script--stock-entry-updates-pos-upload-completed.json",
+      "redactions": []
+    },
+    {
+      "doctype": "Server Script",
+      "name": "Stock Entry updates POS Upload In Progress",
+      "file": "server-script--stock-entry-updates-pos-upload-in-progress.json",
+      "redactions": []
+    },
+    {
+      "doctype": "Webhook",
+      "name": "POS Upload",
+      "file": "webhook--pos-upload.json",
+      "redactions": []
+    },
+    {
+      "doctype": "Workflow State",
+      "name": "Pending",
+      "file": "workflow-state--pending.json",
+      "redactions": []
+    }
+  ],
+  "standard_permissions": {
+    "POS Upload": [
+      {
+        "name": "28a1r9cac6",
+        "owner": "asif@multimax.cloud",
+        "creation": "2025-06-16 11:48:55.166245",
+        "modified": "2026-06-23 13:24:19.846457",
+        "modified_by": "asif@multimax.cloud",
+        "docstatus": 0,
+        "idx": 1,
+        "role": "System Manager",
+        "if_owner": 0,
+        "permlevel": 0,
+        "select": 0,
+        "read": 1,
+        "write": 1,
+        "create": 1,
+        "delete": 1,
+        "submit": 0,
+        "cancel": 0,
+        "amend": 0,
+        "mask": 0,
+        "report": 1,
+        "export": 1,
+        "import": 0,
+        "share": 1,
+        "print": 1,
+        "email": 1,
+        "impersonate": 0,
+        "parent": "POS Upload",
+        "parentfield": "permissions",
+        "parenttype": "DocType",
+        "doctype": "DocPerm"
+      },
+      {
+        "name": "k7qkqpl3sk",
+        "owner": "asif@multimax.cloud",
+        "creation": "2025-06-16 11:48:55.166245",
+        "modified": "2026-06-23 13:24:19.846457",
+        "modified_by": "asif@multimax.cloud",
+        "docstatus": 0,
+        "idx": 2,
+        "role": "System Manager",
+        "if_owner": 0,
+        "permlevel": 1,
+        "select": 0,
+        "read": 1,
+        "write": 1,
+        "create": 0,
+        "delete": 1,
+        "submit": 0,
+        "cancel": 0,
+        "amend": 0,
+        "mask": 0,
+        "report": 1,
+        "export": 1,
+        "import": 0,
+        "share": 1,
+        "print": 1,
+        "email": 1,
+        "impersonate": 0,
+        "parent": "POS Upload",
+        "parentfield": "permissions",
+        "parenttype": "DocType",
+        "doctype": "DocPerm"
+      },
+      {
+        "name": "28a6880p6s",
+        "owner": "asif@multimax.cloud",
+        "creation": "2025-06-16 11:48:55.166245",
+        "modified": "2026-06-23 13:24:19.846457",
+        "modified_by": "asif@multimax.cloud",
+        "docstatus": 0,
+        "idx": 3,
+        "role": "Sales Manager",
+        "if_owner": 0,
+        "permlevel": 0,
+        "select": 0,
+        "read": 1,
+        "write": 1,
+        "create": 1,
+        "delete": 0,
+        "submit": 0,
+        "cancel": 0,
+        "amend": 0,
+        "mask": 0,
+        "report": 1,
+        "export": 1,
+        "import": 0,
+        "share": 1,
+        "print": 1,
+        "email": 1,
+        "impersonate": 0,
+        "parent": "POS Upload",
+        "parentfield": "permissions",
+        "parenttype": "DocType",
+        "doctype": "DocPerm"
+      },
+      {
+        "name": "28arh3cjpb",
+        "owner": "asif@multimax.cloud",
+        "creation": "2025-06-16 11:48:55.166245",
+        "modified": "2026-06-23 13:24:19.846457",
+        "modified_by": "asif@multimax.cloud",
+        "docstatus": 0,
+        "idx": 4,
+        "role": "Sales User",
+        "if_owner": 0,
+        "permlevel": 0,
+        "select": 0,
+        "read": 1,
+        "write": 1,
+        "create": 1,
+        "delete": 0,
+        "submit": 0,
+        "cancel": 0,
+        "amend": 0,
+        "mask": 0,
+        "report": 1,
+        "export": 0,
+        "import": 0,
+        "share": 0,
+        "print": 0,
+        "email": 0,
+        "impersonate": 0,
+        "parent": "POS Upload",
+        "parentfield": "permissions",
+        "parenttype": "DocType",
+        "doctype": "DocPerm"
+      },
+      {
+        "name": "kf4jnfc3er",
+        "owner": "asif@multimax.cloud",
+        "creation": "2025-06-16 11:48:55.166245",
+        "modified": "2026-06-23 13:24:19.846457",
+        "modified_by": "asif@multimax.cloud",
+        "docstatus": 0,
+        "idx": 5,
+        "role": "Stock User - Custom",
+        "if_owner": 0,
+        "permlevel": 0,
+        "select": 0,
+        "read": 1,
+        "write": 1,
+        "create": 0,
+        "delete": 0,
+        "submit": 0,
+        "cancel": 0,
+        "amend": 0,
+        "mask": 0,
+        "report": 1,
+        "export": 1,
+        "import": 0,
+        "share": 1,
+        "print": 1,
+        "email": 1,
+        "impersonate": 0,
+        "parent": "POS Upload",
+        "parentfield": "permissions",
+        "parenttype": "DocType",
+        "doctype": "DocPerm"
+      },
+      {
+        "name": "kf4ldqjt8o",
+        "owner": "asif@multimax.cloud",
+        "creation": "2025-06-16 11:48:55.166245",
+        "modified": "2026-06-23 13:24:19.846457",
+        "modified_by": "asif@multimax.cloud",
+        "docstatus": 0,
+        "idx": 6,
+        "role": "Stock User - Custom",
+        "if_owner": 0,
+        "permlevel": 1,
+        "select": 0,
+        "read": 1,
+        "write": 1,
+        "create": 0,
+        "delete": 0,
+        "submit": 0,
+        "cancel": 0,
+        "amend": 0,
+        "mask": 0,
+        "report": 1,
+        "export": 1,
+        "import": 0,
+        "share": 1,
+        "print": 1,
+        "email": 1,
+        "impersonate": 0,
+        "parent": "POS Upload",
+        "parentfield": "permissions",
+        "parenttype": "DocType",
+        "doctype": "DocPerm"
+      }
+    ],
+    "Driver": [
+      {
+        "create": 1,
+        "delete": 1,
+        "email": 1,
+        "export": 1,
+        "print": 1,
+        "read": 1,
+        "report": 1,
+        "role": "Fleet Manager",
+        "share": 1,
+        "write": 1
+      },
+      {
+        "print": 1,
+        "read": 1,
+        "report": 1,
+        "role": "Delivery User"
+      },
+      {
+        "email": 1,
+        "export": 1,
+        "print": 1,
+        "read": 1,
+        "report": 1,
+        "role": "Delivery Manager",
+        "share": 1,
+        "write": 1
+      },
+      {
+        "create": 1,
+        "delete": 1,
+        "email": 1,
+        "export": 1,
+        "print": 1,
+        "read": 1,
+        "report": 1,
+        "role": "System Manager",
+        "share": 1,
+        "write": 1
+      },
+      {
+        "role": "Fulfillment User",
+        "select": 1
+      },
+      {
+        "role": "Sales User",
+        "select": 1
+      },
+      {
+        "role": "Stock Manager",
+        "select": 1
+      },
+      {
+        "role": "Stock User",
+        "select": 1
+      }
+    ]
+  }
+}

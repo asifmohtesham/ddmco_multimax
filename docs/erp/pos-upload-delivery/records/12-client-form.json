@@ -1,0 +1,8 @@
+{
+  "doctype": "Client Script",
+  "name": "POS Upload",
+  "dt": "POS Upload",
+  "view": "Form",
+  "enabled": 1,
+  "_script_file": "../scripts/pos-upload.js"
+}
