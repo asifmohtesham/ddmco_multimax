@@ -1504,35 +1504,50 @@ class HomeController extends GetxController {
 
   Future<void> _openLinkedDeliveryNote(PosUpload posUpload) async {
     try {
-      final res = await _deliveryNoteProvider.getDeliveryNotes(
-          limit: 1, filters: {'po_no': posUpload.name});
-      if (res.statusCode == 200 &&
-          res.data['data'] != null &&
-          (res.data['data'] as List).isNotEmpty) {
+      final link = await _deliveryNoteProvider.resolvePosUploadDeliveryNote(
+        posUpload,
+      );
+      if (link.name != null) {
         Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM,
-            arguments: {'name': res.data['data'][0]['name'], 'mode': 'edit'});
-      } else {
-        // An upload that belongs to a Sales Order is delivered against that
-        // order (scan-to-pick DN, resuming its draft) — never a second,
-        // POS-only DN.
-        final so = await _salesOrderForUpload(posUpload.name);
-        if (so != null) {
-          final draft = await SoDeliveryLauncher.open(so);
-          GlobalSnackbar.info(
-              message: draft != null
-                  ? '${posUpload.name} belongs to $so — resuming draft $draft'
-                  : '${posUpload.name} belongs to $so');
-          return;
-        }
-        Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {
-          'name': '',
-          'mode': 'new',
-          'posUploadCustomer': posUpload.customer,
-          'posUploadName': posUpload.name
-        });
+            arguments: {'name': link.name, 'mode': 'edit'});
+        return;
       }
+      if (link.status != PosUploadDeliveryNoteStatus.missing ||
+          !posUpload.isInPreparation) {
+        _showDeliveryNoteLookupNotice(link);
+        return;
+      }
+      // Route Sales Order fulfillment through its scan-to-pick draft.
+      final so = await _salesOrderForUpload(posUpload.name);
+      if (so != null) {
+        final draft = await SoDeliveryLauncher.open(so);
+        GlobalSnackbar.info(
+            message: draft != null
+                ? '${posUpload.name} belongs to $so — resuming draft $draft'
+                : '${posUpload.name} belongs to $so');
+        return;
+      }
+      Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {
+        'name': '',
+        'mode': 'new',
+        'posUploadCustomer': posUpload.customer,
+        'posUploadName': posUpload.name
+      });
     } catch (e) {
       GlobalSnackbar.error(message: 'Error processing Delivery Note');
+    }
+  }
+
+  void _showDeliveryNoteLookupNotice(PosUploadDeliveryNoteLink link) {
+    final notice = link.notice;
+    if (notice == null) return;
+    switch (link.status) {
+      case PosUploadDeliveryNoteStatus.unavailable:
+        GlobalSnackbar.error(message: notice);
+      case PosUploadDeliveryNoteStatus.ambiguous:
+        GlobalSnackbar.warning(message: notice);
+      default:
+        GlobalSnackbar.info(message: notice);
     }
   }
 
@@ -1559,17 +1574,14 @@ class HomeController extends GetxController {
   /// several the operator picks the case.
   Future<void> _openLinkedPackingSlip(PosUpload posUpload) async {
     try {
-      final dnRes = await _deliveryNoteProvider.getDeliveryNotes(
-          limit: 1, filters: {'po_no': posUpload.name});
-      final dnList = (dnRes.data['data'] as List?) ?? const [];
-      if (dnRes.statusCode != 200 || dnList.isEmpty) {
-        GlobalSnackbar.error(
-            title: 'No Delivery Note',
-            message:
-                'No Delivery Note exists for ${posUpload.name} yet, so it has no Packing Slip.');
+      final link = await _deliveryNoteProvider.resolvePosUploadDeliveryNote(
+        posUpload,
+      );
+      final dnName = link.name;
+      if (dnName == null) {
+        _showDeliveryNoteLookupNotice(link);
         return;
       }
-      final dnName = dnList.first['name'].toString();
 
       final psRes = await _packingSlipProvider.getPackingSlips(
           limit: 0,

@@ -1,15 +1,19 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:archive/archive.dart';
+import 'package:dio/dio.dart';
 import 'package:excel/excel.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:multimax/app/data/mixins/dio_error_mixin.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
+import 'package:multimax/app/data/models/pos_upload_delivery.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
@@ -18,6 +22,7 @@ import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/modules/pos_upload/pos_upload_controller.dart';
 
 enum LinkedDocType { deliveryNote, stockEntry, none }
 
@@ -409,7 +414,14 @@ List<int> buildDeliveryNoteExcelBytes(DeliveryNoteExcelParams p) {
 }
 
 class PosUploadFormController extends GetxController
-    with OptimisticLockingMixin, RealtimeSyncMixin {
+    with OptimisticLockingMixin, RealtimeSyncMixin, DioErrorMixin {
+  static const manualStatusOptions = [
+    'Pending',
+    'In Progress',
+    'Completed',
+    'Cancelled',
+  ];
+
   final PosUploadProvider _provider = Get.find<PosUploadProvider>();
   final DeliveryNoteProvider _dnProvider = Get.find<DeliveryNoteProvider>();
   final StockEntryProvider _seProvider = Get.find<StockEntryProvider>();
@@ -431,6 +443,26 @@ class PosUploadFormController extends GetxController
   // ── Core state ─────────────────────────────────────────────────────────────
   var isLoading = true.obs;
   var posUpload = Rx<PosUpload?>(null);
+
+  final deliveryActions = <PosDeliveryAction>[].obs;
+  final deliveryActionBusy = false.obs;
+  final _deliveryActionRequest =
+      Rxn<({PosDeliveryAction action, bool confirmed})>();
+  final deliveryActionDiscoveryFailed = false.obs;
+  final posDeliveryDocinfo = Rxn<Map<String, dynamic>>();
+  final _deliveryActionsReady = false.obs;
+  int _documentGeneration = 0;
+
+  bool _isCurrentDocument(int generation) =>
+      !isClosed && generation == _documentGeneration;
+
+  bool get isRetryingDeliveryActions =>
+      deliveryActionBusy.value && _deliveryActionRequest.value == null;
+
+  bool isApplyingDeliveryAction(PosDeliveryAction action) {
+    final request = _deliveryActionRequest.value;
+    return request?.action == action && request?.confirmed == true;
+  }
 
   /// Server-confirmed write permission on this document (fail-closed:
   /// stays `false` until the probe succeeds).
@@ -457,6 +489,8 @@ class PosUploadFormController extends GetxController
   /// relative-time for that checkpoint. Empty until the linked doc loads.
   var linkedDocCreation = ''.obs;
   var isLoadingLinked = false.obs;
+  final linkedDeliveryNote = Rxn<PosUploadDeliveryNoteLink>();
+  int _linkedDocumentRequest = 0;
 
   /// The full linked Delivery Note, retained for the DN Excel export.
   final deliveryNote = Rxn<DeliveryNote>();
@@ -634,7 +668,7 @@ class PosUploadFormController extends GetxController
   @override
   void onInit() {
     super.onInit();
-    _loadData();
+    unawaited(fetchPosUpload());
   }
 
   @override
@@ -643,117 +677,327 @@ class PosUploadFormController extends GetxController
     super.onClose();
   }
 
-  // ── Initialisation ─────────────────────────────────────────────────────────
-
-  Future<void> _loadData() async {
-    isLoading.value = true;
-    await fetchPosUpload().then((_) => initRealtimeSync());
-    isLoading.value = false;
-    refreshWritePermission();
-    fetchLinkedDocument();
-  }
-
   // ── POS Upload ─────────────────────────────────────────────────────────────
 
   Future<void> fetchPosUpload() async {
+    await _refreshDocument();
+  }
+
+  Future<bool> _refreshDocument({PosUpload? savedUpload}) async {
+    final generation = ++_documentGeneration;
+    _deliveryActionsReady.value = false;
+    deliveryActionDiscoveryFailed.value = false;
+    canWriteStatus.value = false;
+    if (savedUpload == null) {
+      deliveryActions.clear();
+    } else {
+      _showUpload(savedUpload);
+    }
+
+    var fetched = false;
     try {
       final response = await _provider.getPosUpload(name);
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        posUpload.value = PosUpload.fromJson(response.data['data']);
-        _applyFilters();
-      } else {
-        GlobalSnackbar.error(message: 'Failed to fetch POS upload');
+      if (!_isCurrentDocument(generation)) return false;
+      if (response.statusCode == 200 &&
+          response.data['data'] is Map<String, dynamic>) {
+        _showUpload(PosUpload.fromJson(response.data['data']));
+        fetched = true;
       }
-    } catch (e) {
-      GlobalSnackbar.error(message: e.toString());
+    } catch (_) {
+      if (!_isCurrentDocument(generation)) return false;
     }
+    if (isLoading.value) {
+      isLoading.value = false;
+      unawaited(initRealtimeSync());
+    }
+    if (!fetched && savedUpload == null) {
+      isLoadingLinked.value = false;
+      isLoadingPackingSlips.value = false;
+      GlobalSnackbar.error(message: 'Failed to fetch POS upload');
+      return false;
+    }
+    isStale.value = false;
+    await Future.wait([
+      _discoverDeliveryActions(generation),
+      _refreshDeliveryDocinfo(generation),
+      fetchLinkedDocument(),
+      refreshWritePermission(),
+    ]);
+    return _isCurrentDocument(generation);
+  }
+
+  void _showUpload(PosUpload upload) {
+    posUpload.value = upload;
+    _applyFilters();
+  }
+
+  Future<void> _discoverDeliveryActions(int generation) async {
+    try {
+      final actions = await _provider.getDeliveryActions(name);
+      if (!_isCurrentDocument(generation)) return;
+      deliveryActions.assignAll(actions);
+      deliveryActionDiscoveryFailed.value = false;
+      _deliveryActionsReady.value = true;
+    } catch (_) {
+      if (!_isCurrentDocument(generation)) return;
+      deliveryActions.clear();
+      deliveryActionDiscoveryFailed.value = true;
+    }
+  }
+
+  Future<void> _refreshDeliveryDocinfo(int generation) async {
+    try {
+      final docinfo = await _provider.getDeliveryDocinfo(name);
+      if (_isCurrentDocument(generation)) posDeliveryDocinfo.value = docinfo;
+    } catch (_) {
+      if (_isCurrentDocument(generation)) posDeliveryDocinfo.value = null;
+    }
+  }
+
+  Future<void> retryDeliveryActions() async {
+    if (deliveryActionBusy.value || !deliveryActionDiscoveryFailed.value)
+      return;
+    deliveryActionBusy.value = true;
+    try {
+      await _discoverDeliveryActions(_documentGeneration);
+    } finally {
+      deliveryActionBusy.value = false;
+    }
+  }
+
+  Future<void> runDeliveryAction(
+    PosDeliveryAction action,
+    Future<PosDeliverySelection?> Function(PosDeliveryDriverOptions) select, {
+    bool Function()? isFormCurrent,
+  }) async {
+    final upload = posUpload.value;
+    if (deliveryActionBusy.value ||
+        isSaving.value ||
+        isStale.value ||
+        !_deliveryActionsReady.value ||
+        !deliveryActions.contains(action) ||
+        upload == null ||
+        upload.modified.isEmpty) {
+      return;
+    }
+
+    bool isActiveForm() => !isClosed && (isFormCurrent?.call() ?? true);
+    if (!isActiveForm()) return;
+    _deliveryActionRequest.value = (action: action, confirmed: false);
+    deliveryActionBusy.value = true;
+    int? applyGeneration;
+    try {
+      final options = await _provider.getDeliveryDrivers(upload.name, action);
+      if (!isActiveForm()) return;
+      final selection = await select(options);
+      if (!isActiveForm() || selection == null) return;
+      if (!options.drivers.any((driver) => driver.name == selection.driver) ||
+          (action.requiresReason && selection.reason == null)) {
+        return;
+      }
+
+      // A reload while the sheet is open can leave the revision unchanged.
+      // Submit the original revision and fence replies from before a later reload.
+      final generation = _documentGeneration;
+      applyGeneration = generation;
+      _deliveryActionRequest.value = (action: action, confirmed: true);
+      final saved = await _provider.applyDeliveryAction(
+        upload,
+        action,
+        selection,
+      );
+      if (Get.isRegistered<PosUploadController>() &&
+          !Get.isPrepared<PosUploadController>()) {
+        unawaited(
+          Get.find<PosUploadController>().refreshAfterDeliveryAction(upload.name),
+        );
+      }
+      if (!_isCurrentDocument(generation) || !isActiveForm()) return;
+      if (await _refreshDocument(savedUpload: saved) && isActiveForm()) {
+        GlobalSnackbar.success(message: 'Delivery action recorded');
+      }
+    } catch (error) {
+      if (!isActiveForm()) return;
+      if (applyGeneration == null) {
+        GlobalSnackbar.error(message: 'Unable to load delivery drivers');
+        return;
+      }
+      if (!_isCurrentDocument(applyGeneration)) return;
+      await _handleDeliveryActionFailure(error, isFormCurrent);
+    } finally {
+      deliveryActionBusy.value = false;
+      _deliveryActionRequest.value = null;
+    }
+  }
+
+  Future<void> _handleDeliveryActionFailure(
+    Object error,
+    bool Function()? isFormCurrent,
+  ) async {
+    final response = error is DioException ? error.response : null;
+    final status = response?.statusCode;
+    final message = error is DioException
+        ? _deliveryServerMessage(error)
+        : null;
+    final changed = message?.contains('This POS Upload changed.') == true;
+    final deadlock =
+        response?.data.toString().contains('QueryDeadlockError') == true;
+    if (changed || deadlock || status == null || status >= 500) {
+      final refreshGeneration = _documentGeneration + 1;
+      await _refreshDocument();
+      if (!_isCurrentDocument(refreshGeneration) ||
+          !(isFormCurrent?.call() ?? true)) {
+        return;
+      }
+      if (changed || deadlock) {
+        GlobalSnackbar.warning(
+          message: changed
+              ? '$message Try again.'
+              : 'The POS Upload was being updated. Try the action again.',
+        );
+      } else {
+        GlobalSnackbar.error(
+          message: 'Unable to confirm the delivery action. Check the POS Upload before trying again.',
+        );
+      }
+    } else {
+      GlobalSnackbar.error(
+        message: status == 417 && message != null
+            ? message
+            : 'Failed to apply delivery action',
+      );
+    }
+  }
+
+  String? _deliveryServerMessage(DioException error) {
+    final data = error.response?.data;
+    if (data is Map) {
+      try {
+        final raw = data['_server_messages'];
+        final messages = raw is String ? jsonDecode(raw) : raw;
+        if (messages is List) {
+          for (final entry in messages.reversed) {
+            final detail = entry is String ? jsonDecode(entry) : entry;
+            final message = detail is Map ? detail['message'] : null;
+            if (message is String && message.trim().isNotEmpty) {
+              return message.trim();
+            }
+          }
+        }
+      } on FormatException {
+        // Frappe also reports the exception on the outer response.
+      }
+    }
+    final message = extractDioError(error, '');
+    return message.isEmpty ? null : message;
   }
 
   // ── Linked document ────────────────────────────────────────────────────────
 
   Future<void> fetchLinkedDocument() async {
     final upload = posUpload.value;
-    if (upload == null) return;
+    if (upload == null || isClosed) return;
+    final generation = _documentGeneration;
+    final request = ++_linkedDocumentRequest;
+    bool isCurrent() =>
+        _isCurrentDocument(generation) && request == _linkedDocumentRequest;
     final prefix =
         name.length >= 2 ? name.substring(0, 2).toUpperCase() : '';
     if (prefix == 'ML' || prefix == 'KA') {
-      await _fetchDeliveryNote(upload);
+      await _fetchDeliveryNote(upload, isCurrent);
     } else if (prefix == 'MX' || prefix == 'KX') {
-      await _fetchStockEntry(upload);
+      await _fetchStockEntry(upload, isCurrent);
     }
   }
 
-  Future<void> _fetchDeliveryNote(PosUpload upload) async {
+  Future<void> _fetchDeliveryNote(
+    PosUpload upload,
+    bool Function() isCurrent,
+  ) async {
     isLoadingLinked.value = true;
     linkedDocType.value = LinkedDocType.deliveryNote;
+    linkedDocName.value = '';
+    linkedDocCreation.value = '';
+    linkedDeliveryNote.value = null;
+    deliveryNote.value = null;
+    resolvedSerials.clear();
+    resolvedDnQty.clear();
+    packingSlips.clear();
+    resolvedPackingSlips.clear();
+    resolvedPsItems.clear();
+    caseOptions.clear();
+    isLoadingPackingSlips.value = false;
+    _applyFilters();
     try {
-      final listResp = await _dnProvider.getDeliveryNotes(
-          limit: 1, filters: {'po_no': name});
-      if (listResp.statusCode == 200 &&
-          (listResp.data['data'] as List?)?.isNotEmpty == true) {
-        final dnName =
-            (listResp.data['data'] as List).first['name'].toString();
-        linkedDocName.value = dnName;
-        final detailResp = await _dnProvider.getDeliveryNote(dnName);
-        if (detailResp.statusCode == 200 &&
-            detailResp.data['data'] != null) {
-          final dn = DeliveryNote.fromJson(detailResp.data['data']);
-          deliveryNote.value = dn;
-          linkedDocCreation.value = dn.creation;
-          _buildSerialMap(
-            posItems: upload.items,
-            matchSerial: (idx) => dn.items
-                .firstWhereOrNull(
-                    (i) => i.customInvoiceSerialNumber == idx.toString())
-                ?.customInvoiceSerialNumber,
-          );
-          _buildDnQtyMap(
-            posItems: upload.items,
-            matchQty: (idx) {
-              final serial = idx.toString();
-              final matches = dn.items
-                  .where((i) => i.customInvoiceSerialNumber == serial)
-                  .toList();
-              if (matches.isEmpty) return null;
-              return matches.fold<double>(0, (sum, i) => sum + i.qty);
-            },
-          );
-        } else {
-          // Detail fetch failed — clear any DN retained from a previous
-          // fetch so the export UI can't act on stale data.
-          deliveryNote.value = null;
-          linkedDocCreation.value = '';
-        }
-        isLoadingLinked.value = false;
-        await _fetchPackingSlips(upload, dnName);
-      } else {
-        linkedDocName.value = '';
+      final link = await _dnProvider.resolvePosUploadDeliveryNote(upload);
+      if (!isCurrent()) return;
+      final dnName = link.name;
+      if (dnName == null) {
+        linkedDeliveryNote.value = link;
         linkedDocType.value = LinkedDocType.none;
-        deliveryNote.value = null;
-        linkedDocCreation.value = '';
-        isLoadingLinked.value = false;
+        activeCaseFilter.value = null;
+        return;
       }
-    } catch (_) {
-      linkedDocType.value = LinkedDocType.none;
-      deliveryNote.value = null;
-      linkedDocCreation.value = '';
+
+      final response = await _dnProvider.getDeliveryNote(dnName);
+      if (!isCurrent()) return;
+      final data = response.data is Map ? response.data['data'] : null;
+      if (response.statusCode != 200 || data is! Map<String, dynamic>) {
+        throw const FormatException('Unable to read Delivery Note');
+      }
+      final dn = DeliveryNote.fromJson(data);
+      linkedDeliveryNote.value = link;
+      linkedDocName.value = dnName;
+      deliveryNote.value = dn;
+      linkedDocCreation.value = dn.creation;
+      _buildSerialMap(
+        posItems: upload.items,
+        matchSerial: (idx) => dn.items
+            .firstWhereOrNull(
+                (i) => i.customInvoiceSerialNumber == idx.toString())
+            ?.customInvoiceSerialNumber,
+      );
+      _buildDnQtyMap(
+        posItems: upload.items,
+        matchQty: (idx) {
+          final serial = idx.toString();
+          final matches = dn.items
+              .where((i) => i.customInvoiceSerialNumber == serial)
+              .toList();
+          if (matches.isEmpty) return null;
+          return matches.fold<double>(0, (sum, i) => sum + i.qty);
+        },
+      );
       isLoadingLinked.value = false;
+      await _fetchPackingSlips(upload, dnName, isCurrent);
+    } catch (_) {
+      if (!isCurrent()) return;
+      linkedDeliveryNote.value = const PosUploadDeliveryNoteLink.unavailable();
+      linkedDocType.value = LinkedDocType.none;
+      activeCaseFilter.value = null;
+    } finally {
+      if (isCurrent()) isLoadingLinked.value = false;
     }
   }
 
-  Future<void> _fetchStockEntry(PosUpload upload) async {
+  Future<void> _fetchStockEntry(
+    PosUpload upload,
+    bool Function() isCurrent,
+  ) async {
     isLoadingLinked.value = true;
     // resolvedDnQty and resolvedPsItems are not applicable to Stock Entry linked uploads.
     linkedDocType.value = LinkedDocType.stockEntry;
     try {
       final listResp = await _seProvider.getStockEntries(
           limit: 1, filters: {'custom_reference_no': name});
+      if (!isCurrent()) return;
       if (listResp.statusCode == 200 &&
           (listResp.data['data'] as List?)?.isNotEmpty == true) {
         final seName =
             (listResp.data['data'] as List).first['name'].toString();
         linkedDocName.value = seName;
         final detailResp = await _seProvider.getStockEntry(seName);
+        if (!isCurrent()) return;
         if (detailResp.statusCode == 200 &&
             detailResp.data['data'] != null) {
           final se = StockEntry.fromJson(detailResp.data['data']);
@@ -772,16 +1016,21 @@ class PosUploadFormController extends GetxController
         linkedDocCreation.value = '';
       }
     } catch (_) {
+      if (!isCurrent()) return;
       linkedDocType.value = LinkedDocType.none;
       linkedDocCreation.value = '';
     } finally {
-      isLoadingLinked.value = false;
+      if (isCurrent()) isLoadingLinked.value = false;
     }
   }
 
   // ── Packing Slip layer ─────────────────────────────────────────────────────
 
-  Future<void> _fetchPackingSlips(PosUpload upload, String dnName) async {
+  Future<void> _fetchPackingSlips(
+    PosUpload upload,
+    String dnName,
+    bool Function() isCurrent,
+  ) async {
     isLoadingPackingSlips.value = true;
     try {
       final listResp = await _psProvider.getPackingSlips(
@@ -789,13 +1038,14 @@ class PosUploadFormController extends GetxController
         filters: {'delivery_note': dnName},
         orderBy: 'from_case_no asc',
       );
-      if (listResp.statusCode != 200) return;
+      if (!isCurrent() || listResp.statusCode != 200) return;
       final psList = listResp.data['data'] as List? ?? [];
       if (psList.isEmpty) return;
 
       final responses = await Future.wait(
           psList.map((ps) =>
               _psProvider.getPackingSlip(ps['name'].toString())));
+      if (!isCurrent()) return;
 
       final slips = <PackingSlip>[];
       for (final resp in responses) {
@@ -860,12 +1110,18 @@ class PosUploadFormController extends GetxController
             })
             .toList(),
       );
-
-      // Re-apply any active case filter now that PS data is available.
-      _applyFilters();
     } catch (_) {
     } finally {
-      isLoadingPackingSlips.value = false;
+      if (isCurrent()) {
+        final selected = activeCaseFilter.value;
+        if (selected != null) {
+          activeCaseFilter.value = caseOptions.firstWhereOrNull(
+            (option) => option.psName == selected.psName,
+          );
+        }
+        _applyFilters();
+        isLoadingPackingSlips.value = false;
+      }
     }
   }
 
@@ -942,10 +1198,9 @@ class PosUploadFormController extends GetxController
 
   @override
   Future<void> reloadDocument() async {
-    await fetchPosUpload();
-    await fetchLinkedDocument();
-    refreshWritePermission();
-    GlobalSnackbar.success(message: 'Document reloaded successfully');
+    if (await _refreshDocument()) {
+      GlobalSnackbar.success(message: 'Document reloaded successfully');
+    }
   }
 
   // ── Status update (write-gated) ────────────────────────────────────────────
@@ -958,11 +1213,11 @@ class PosUploadFormController extends GetxController
   /// permlevel-1 access (e.g. plain Sales User) open the dropdown, pick a
   /// value, and have the server silently discard it.
   Future<void> refreshWritePermission() async {
-    if (!await _provider.canWrite(name)) {
-      canWriteStatus.value = false;
-      return;
-    }
-    canWriteStatus.value = await _provider.canWriteStatusField(_userRoles());
+    final generation = _documentGeneration;
+    final granted =
+        await _provider.canWrite(name) &&
+        await _provider.canWriteStatusField(_userRoles());
+    if (_isCurrentDocument(generation)) canWriteStatus.value = granted;
   }
 
   Set<String> _userRoles() {
@@ -984,7 +1239,11 @@ class PosUploadFormController extends GetxController
   }) =>
       canWritePerm && !isSaving && !isStale;
 
-  bool get canEditStatus => computeCanEditStatus(
+  bool get canEditStatus =>
+      manualStatusOptions.contains(posUpload.value?.status) &&
+      _deliveryActionsReady.value &&
+      !deliveryActionBusy.value &&
+      computeCanEditStatus(
         canWritePerm: canWriteStatus.value,
         isSaving: isSaving.value,
         isStale: isStale.value,
@@ -997,20 +1256,27 @@ class PosUploadFormController extends GetxController
   Future<void> updateStatus(String newStatus) async {
     final upload = posUpload.value;
     if (upload == null || newStatus == upload.status) return;
+    if (!manualStatusOptions.contains(upload.status) ||
+        !manualStatusOptions.contains(newStatus)) {
+      return;
+    }
     if (isSaving.value) return;
     if (checkStaleAndBlock()) {
       statusEditRevision.value++;
       return;
     }
+    if (!canEditStatus) return;
 
+    final generation = _documentGeneration;
     isSaving.value = true;
     try {
       final response = await _provider.updatePosUpload(name, {
         'status': newStatus,
         'modified': upload.modified,
       });
+      if (!_isCurrentDocument(generation)) return;
       if (response.statusCode == 200) {
-        await fetchPosUpload();
+        if (!await _refreshDocument()) return;
         // A 200 does not guarantee the change stuck: Frappe silently resets
         // permlevel-gated fields for users without write access at that
         // level. Trust only the refetched document.
@@ -1026,6 +1292,7 @@ class PosUploadFormController extends GetxController
         GlobalSnackbar.error(message: 'Failed to update status');
       }
     } catch (e) {
+      if (!_isCurrentDocument(generation)) return;
       statusEditRevision.value++;
       if (!handleVersionConflict(e)) {
         GlobalSnackbar.error(message: 'Failed to update status: $e');

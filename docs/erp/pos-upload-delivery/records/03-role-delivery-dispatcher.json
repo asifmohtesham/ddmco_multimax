@@ -1,0 +1,8 @@
+{
+  "doctype": "Role",
+  "name": "Delivery Dispatcher",
+  "role_name": "Delivery Dispatcher",
+  "desk_access": 1,
+  "disabled": 0,
+  "is_custom": 1
+}

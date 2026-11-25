@@ -409,16 +409,21 @@ class ApiProvider {
     return await _dio.get('/api/method/$method', queryParameters: params);
   }
 
-  /// Call a Frappe whitelisted method via POST with a form-urlencoded body.
+  /// Call a Frappe whitelisted method via POST.
   Future<Response> callMethodPost(
     String method, {
     Map<String, dynamic>? params,
+    bool jsonBody = false,
   }) async {
     if (!_dioInitialised) await _initDio();
     return await _dio.post(
       '/api/method/$method',
       data: params,
-      options: Options(contentType: Headers.formUrlEncodedContentType),
+      options: Options(
+        contentType: jsonBody
+            ? Headers.jsonContentType
+            : Headers.formUrlEncodedContentType,
+      ),
     );
   }
 

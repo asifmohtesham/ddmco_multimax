@@ -1,0 +1,10 @@
+{
+  "doctype": "Property Setter",
+  "name": "POS Upload-status-read_only",
+  "doc_type": "POS Upload",
+  "doctype_or_field": "DocField",
+  "field_name": "status",
+  "property": "read_only",
+  "property_type": "Check",
+  "value": "1"
+}

@@ -1,0 +1,10 @@
+{
+  "doctype": "Server Script",
+  "name": "Stock Entry updates POS Upload In Progress",
+  "script_type": "DocType Event",
+  "reference_doctype": "Stock Entry",
+  "doctype_event": "After Save",
+  "disabled": 0,
+  "_script_file": "../scripts/se-save.py",
+  "_script_include": "../scripts/voucher.py"
+}

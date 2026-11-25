@@ -12,20 +12,22 @@ import 'package:multimax/app/modules/pos_upload/pos_upload_controller.dart';
 import 'package:multimax/app/modules/pos_upload/pos_upload_screen.dart';
 import 'package:multimax/app/modules/pos_upload/widgets/pos_upload_status_filter_bar.dart';
 
+const _deliveryStatuses = ['To Deliver', 'Out for Delivery', 'Delivered'];
+
 Response _ok(List<Map<String, dynamic>> rows) => Response(
-      requestOptions: RequestOptions(path: ''),
-      statusCode: 200,
-      data: {'data': rows},
-    );
+  requestOptions: RequestOptions(path: ''),
+  statusCode: 200,
+  data: {'data': rows},
+);
 
 class _FakePosUploadProvider extends PosUploadProvider {
-  static const _rows = [
+  static final _rows = [
     {
       'name': 'PU-0001',
       'customer': 'CUST-A',
       'date': '2026-07-01',
       'modified': '2026-07-01 10:00:00',
-      'status': 'Pending',
+      'status': '',
     },
     {
       'name': 'PU-0002',
@@ -34,6 +36,14 @@ class _FakePosUploadProvider extends PosUploadProvider {
       'modified': '2026-07-02 10:00:00',
       'status': 'Completed',
     },
+    for (final (i, status) in _deliveryStatuses.indexed)
+      {
+        'name': 'PU-000${i + 3}',
+        'customer': 'CUST-C',
+        'date': '2026-07-03',
+        'modified': '2026-07-03 10:00:00',
+        'status': status,
+      },
   ];
 
   @override
@@ -41,12 +51,16 @@ class _FakePosUploadProvider extends PosUploadProvider {
     int limit = 50,
     int limitStart = 0,
     Map<String, dynamic>? filters,
+    List<List<dynamic>>? orFilterTuples,
     String orderBy = 'modified desc',
   }) async {
     final status = filters?['status'];
-    final rows = status == null
-        ? _rows
-        : _rows.where((r) => r['status'] == status).toList();
+    final rows = switch (status) {
+      null => _rows,
+      ['in', List values] =>
+        _rows.where((r) => values.contains(r['status'])).toList(),
+      _ => _rows.where((r) => r['status'] == status).toList(),
+    };
     return _ok(rows);
   }
 }
@@ -61,9 +75,9 @@ void main() {
   setUpAll(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-      const MethodChannel('plugins.flutter.io/path_provider'),
-      (MethodCall call) async => r'C:\temp\test_cookies',
-    );
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          (MethodCall call) async => r'C:\temp\test_cookies',
+        );
   });
 
   setUp(() {
@@ -85,8 +99,24 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('tapping a status pill filters the list by that status',
-      (tester) async {
+  Future<Finder> showChip(
+    WidgetTester tester,
+    String label, {
+    Offset drag = const Offset(-80, 0),
+  }) async {
+    final chip = find.widgetWithText(SelectableFilterChip, label);
+    await tester.dragUntilVisible(
+      chip,
+      find.byType(PosUploadStatusFilterBar),
+      drag,
+    );
+    await tester.pumpAndSettle();
+    return chip;
+  }
+
+  testWidgets('tapping a Pending pill keeps a legacy blank row in the list', (
+    tester,
+  ) async {
     await pumpList(tester);
     expect(find.text('PU-0001'), findsOneWidget);
     expect(find.text('PU-0002'), findsOneWidget);
@@ -104,8 +134,27 @@ void main() {
     expect(find.byType(PosUploadScreen), findsOneWidget);
   });
 
-  testWidgets('tapping the active status again clears the filter',
-      (tester) async {
+  for (final (i, status) in _deliveryStatuses.indexed) {
+    testWidgets('tapping the $status pill filters to that status', (
+      tester,
+    ) async {
+      await pumpList(tester);
+      await tester.tap(find.widgetWithText(StatusPill, status));
+      await tester.pumpAndSettle();
+
+      final controller = Get.find<PosUploadController>();
+      expect(controller.activeFilters['status'], status);
+      expect(controller.posUploads.map((upload) => upload.name), [
+        'PU-000${i + 3}',
+      ]);
+      expect(find.text('Status: $status'), findsOneWidget);
+      expect(find.byType(PosUploadScreen), findsOneWidget);
+    });
+  }
+
+  testWidgets('tapping the active status again clears the filter', (
+    tester,
+  ) async {
     await pumpList(tester);
 
     await tester.tap(find.widgetWithText(StatusPill, 'Pending'));
@@ -120,8 +169,9 @@ void main() {
     expect(find.text('Status: Pending'), findsNothing);
   });
 
-  testWidgets('status filter from a pill tap preserves other active filters',
-      (tester) async {
+  testWidgets('status filter from a pill tap preserves other active filters', (
+    tester,
+  ) async {
     await pumpList(tester);
     final controller = Get.find<PosUploadController>();
     controller.applyFilters({'customer': 'CUST-A'});
@@ -134,35 +184,53 @@ void main() {
     expect(controller.activeFilters['customer'], 'CUST-A');
   });
 
-  testWidgets('quick-filter bar shows All plus every status option',
-      (tester) async {
+  testWidgets('quick-filter bar shows All plus every status option', (
+    tester,
+  ) async {
     await pumpList(tester);
 
     expect(find.widgetWithText(SelectableFilterChip, 'All'), findsOneWidget);
     for (final s in PosUpload.statusOptions) {
-      // The bar builds lazily — drag trailing chips into view before
-      // asserting on them.
-      await tester.dragUntilVisible(
-        find.widgetWithText(SelectableFilterChip, s),
-        find.byType(PosUploadStatusFilterBar),
-        const Offset(-80, 0),
-      );
-      expect(find.widgetWithText(SelectableFilterChip, s), findsOneWidget,
-          reason: 'missing status chip "$s"');
+      final chip = await showChip(tester, s);
+      expect(chip, findsOneWidget, reason: 'missing status chip "$s"');
     }
   });
 
-  testWidgets('tapping a bar chip filters the list in one tap',
-      (tester) async {
+  testWidgets('tapping a delivery status chip filters the list in one tap', (
+    tester,
+  ) async {
     await pumpList(tester);
 
-    await tester.tap(find.widgetWithText(SelectableFilterChip, 'Pending'));
+    await tester.tap(await showChip(tester, 'Out for Delivery'));
     await tester.pumpAndSettle();
 
     final controller = Get.find<PosUploadController>();
-    expect(controller.activeFilters['status'], 'Pending');
-    expect(find.text('PU-0001'), findsOneWidget);
-    expect(find.text('PU-0002'), findsNothing);
+    expect(controller.activeFilters['status'], 'Out for Delivery');
+    expect(controller.posUploads.map((upload) => upload.name), ['PU-0004']);
+  });
+
+  testWidgets('switching delivery status updates the active filter chip', (
+    tester,
+  ) async {
+    await pumpList(tester);
+
+    await tester.tap(await showChip(tester, 'Out for Delivery'));
+    await tester.pumpAndSettle();
+    expect(find.text('Status: Out for Delivery'), findsOneWidget);
+    expect(find.text('PU-0004'), findsOneWidget);
+
+    final toDeliver = await showChip(
+      tester,
+      'To Deliver',
+      drag: const Offset(80, 0),
+    );
+    await tester.tap(toDeliver);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Status: To Deliver'), findsOneWidget);
+    expect(find.text('Status: Out for Delivery'), findsNothing);
+    expect(find.text('PU-0003'), findsOneWidget);
+    expect(find.text('PU-0004'), findsNothing);
   });
 
   testWidgets('bar chip toggles off on second tap', (tester) async {
@@ -181,11 +249,11 @@ void main() {
   testWidgets('All chip clears an active status filter', (tester) async {
     await pumpList(tester);
 
-    await tester.tap(find.widgetWithText(SelectableFilterChip, 'Completed'));
+    await tester.tap(await showChip(tester, 'Completed'));
     await tester.pumpAndSettle();
     expect(find.text('PU-0001'), findsNothing);
 
-    await tester.tap(find.widgetWithText(SelectableFilterChip, 'All'));
+    await tester.tap(await showChip(tester, 'All', drag: const Offset(80, 0)));
     await tester.pumpAndSettle();
 
     final controller = Get.find<PosUploadController>();

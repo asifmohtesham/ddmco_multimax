@@ -3,14 +3,25 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
 import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
 import 'package:multimax/app/modules/pos_upload/form/pos_upload_form_controller.dart';
+import 'package:multimax/app/modules/pos_upload/widgets/pos_delivery_action_sheet.dart';
 import 'package:multimax/app/modules/pos_upload/widgets/pos_upload_timeline.dart';
 
 class PosUploadFormScreen extends GetView<PosUploadFormController> {
   const PosUploadFormScreen({super.key});
+
+  static const _tabs = TabBar(
+    tabs: [
+      Tab(text: 'Details'),
+      Tab(text: 'Items'),
+    ],
+  );
+  static const _deliveryActionsHeight = 52.0;
 
   @override
   Widget build(BuildContext context) {
@@ -23,6 +34,7 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
               : 'POS Upload';
       final isLoading  = controller.isLoading.value;
       final posUpload  = controller.posUpload.value;
+      final hasDeliveryActions = controller.deliveryActions.isNotEmpty;
       // Gate on the loaded DN object (not linkedDocName): if the DN detail
       // fetch failed, deliveryNote stays null and the export stays disabled
       // instead of throwing when the sheet opens.
@@ -40,14 +52,34 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                 statusLabel: posUpload?.status,
                 onShare: canShare ? () => _showShareSheet(context) : null,
                 extraActions: [
+                  Obx(() {
+                    if (!controller.deliveryActionDiscoveryFailed.value) {
+                      return const SizedBox.shrink();
+                    }
+                    return AsyncIconButton(
+                      busy: controller.deliveryActionBusy,
+                      showSpinnerWhenBusy: () =>
+                          controller.isRetryingDeliveryActions,
+                      onPressed: controller.retryDeliveryActions,
+                      icon: const Icon(Icons.refresh),
+                      tooltip: 'Retry delivery actions',
+                    );
+                  }),
                   RealtimeSyncStatusIcon(
                     isConnected: controller.isRealtimeConnected,
                     isSyncing:   controller.isRemoteSyncing,
                   ),
                 ],
-                bottom: const TabBar(
-                  tabs: [Tab(text: 'Details'), Tab(text: 'Items')],
-                ),
+                bottom: hasDeliveryActions
+                    ? PreferredSize(
+                        preferredSize: Size.fromHeight(
+                          _tabs.preferredSize.height + _deliveryActionsHeight,
+                        ),
+                        child: Column(
+                          children: [_buildDeliveryActions(context), _tabs],
+                        ),
+                      )
+                    : _tabs,
               ),
             ],
             body: isLoading
@@ -76,6 +108,58 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
         ),
       );
     });
+  }
+
+  Widget _buildDeliveryActions(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final route = ModalRoute.of(context);
+    final style = FilledButton.styleFrom(
+      backgroundColor: colors.onPrimary,
+      foregroundColor: colors.primary,
+      disabledBackgroundColor: colors.primary,
+      disabledForegroundColor: colors.onPrimary,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+    );
+    return SizedBox(
+      height: _deliveryActionsHeight,
+      child: Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Obx(
+            () => Row(
+              children: [
+                for (final action in controller.deliveryActions)
+                  Padding(
+                    key: ValueKey(action),
+                    padding: const EdgeInsetsDirectional.only(end: 8),
+                    child: AsyncFilledButton(
+                      busy: controller.deliveryActionBusy,
+                      showSpinnerWhenBusy: () =>
+                          controller.isApplyingDeliveryAction(action),
+                      label: action.label,
+                      icon: const Icon(Icons.local_shipping_outlined, size: 18),
+                      style: style,
+                      spinnerColor: colors.onPrimary,
+                      onPressed: () => controller.runDeliveryAction(
+                        action,
+                        (options) => showPosDeliveryActionSheet(
+                          context,
+                          action,
+                          options,
+                        ),
+                        isFormCurrent: () =>
+                            context.mounted && (route?.isCurrent ?? true),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   // Must match the column names in the controller's export builders
@@ -294,11 +378,6 @@ class _DetailsTabState extends State<_DetailsTab> {
   late final TextEditingController _qtyCtrl;
   late final Worker _posUploadWorker;
 
-  /// All possible status values a POS Upload can have — the shared
-  /// [PosUpload.statusOptions] list, so the form dropdown, list quick-filter
-  /// bar and filter sheet can never drift apart.
-  static const _statusOptions = PosUpload.statusOptions;
-
   @override
   void initState() {
     super.initState();
@@ -335,13 +414,9 @@ class _DetailsTabState extends State<_DetailsTab> {
       final upload = ctrl.posUpload.value;
       if (upload == null) return const SizedBox.shrink();
 
-      // Ensure the current status is always present in the list so the
-      // DropdownButtonFormField never throws an assertion error for an
-      // unexpected value coming from the server (e.g. "Completed").
-      final statusItems = {
-        ...?(_statusOptions.contains(upload.status) ? null : [upload.status]),
-        ..._statusOptions,
-      }.toList();
+      const manualStatuses = PosUploadFormController.manualStatusOptions;
+      final canEditStatus = ctrl.canEditStatus;
+      final returnReason = upload.returnReason;
 
       // ── Linked-doc banner ─────────────────────────────────────────────────
       // Status ramp inks (x700 light / x300 dark) — the x500 bases fall
@@ -350,6 +425,7 @@ class _DetailsTabState extends State<_DetailsTab> {
       final orangeInk = isDark ? AppColors.orange300 : AppColors.orange700;
       final greenInk = isDark ? AppColors.green300 : AppColors.green700;
       final blueInk = isDark ? AppColors.blue300 : AppColors.blue700;
+      final deliveryLink = ctrl.linkedDeliveryNote.value;
       Widget? linkedBanner;
       if (ctrl.isLoadingLinked.value) {
         linkedBanner = _StatusBanner(
@@ -358,23 +434,38 @@ class _DetailsTabState extends State<_DetailsTab> {
           text: 'Fetching linked document…',
           isSpinning: true,
         );
+      } else if (deliveryLink?.notice case final notice?) {
+        linkedBanner = _StatusBanner(
+          icon: Icons.local_shipping_outlined,
+          color: orangeInk,
+          text: notice,
+        );
       } else if (ctrl.linkedDocType.value != LinkedDocType.none &&
           ctrl.linkedDocName.value.isNotEmpty) {
         final isDelivery =
             ctrl.linkedDocType.value == LinkedDocType.deliveryNote;
-        // Fix #9 — banner is tappable
+        final label = isDelivery
+            ? (deliveryLink?.isDraft == true
+                  ? 'Draft Delivery Note'
+                  : 'Delivery Note')
+            : 'Stock Entry';
+        final linkedName = ctrl.linkedDocName.value;
         linkedBanner = _StatusBanner(
           icon: isDelivery
               ? Icons.local_shipping_outlined
               : Icons.inventory_2_outlined,
           color: greenInk,
-          text:
-              '${isDelivery ? 'Delivery Note' : 'Stock Entry'}: ${ctrl.linkedDocName.value}',
+          text: '$label: $linkedName',
           trailing: Icon(Icons.chevron_right, size: 16, color: greenInk),
           onTap: () {
-            // TODO: navigate to DN/SE form screen when route is wired
-            GlobalSnackbar.info(
-                message: 'Navigate to ${ctrl.linkedDocName.value}');
+            if (isDelivery) {
+              Get.toNamed(
+                AppRoutes.DELIVERY_NOTE_FORM,
+                arguments: {'name': linkedName, 'mode': 'edit'},
+              );
+            } else {
+              GlobalSnackbar.info(message: 'Navigate to $linkedName');
+            }
           },
         );
       }
@@ -408,7 +499,9 @@ class _DetailsTabState extends State<_DetailsTab> {
         onRefresh: ctrl.reloadDocument,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.fromLTRB(
+            16, 16, 16, 16 + MediaQuery.paddingOf(context).bottom,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -443,46 +536,62 @@ class _DetailsTabState extends State<_DetailsTab> {
               ),
               const SizedBox(height: 16),
 
-              // Status dropdown — value is always guaranteed to be in statusItems.
-              // Editable only when the server confirmed document-level write
-              // permission (fail-closed); everyone else sees it read-only.
-              // The key re-syncs the field to the authoritative status after
-              // a reload or a failed update.
-              DropdownButtonFormField<String>(
-                key: ValueKey(
-                    'status-${upload.status}-${ctrl.statusEditRevision.value}'),
-                // ignore: deprecated_member_use
-                value: upload.status,
-                isExpanded: true,
-                decoration: InputDecoration(
-                  labelText: 'Status',
-                  border: const OutlineInputBorder(),
-                  filled: !ctrl.canEditStatus,
-                  fillColor: cs.surfaceContainerHighest,
-                  suffixIcon: ctrl.isSaving.value
-                      ? const Padding(
-                          padding: EdgeInsets.all(14),
-                          child: SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+              if (manualStatuses.contains(upload.status))
+                // The key re-syncs the field to the authoritative status after
+                // a reload or a failed update.
+                DropdownButtonFormField<String>(
+                  key: ValueKey(
+                    'status-${upload.status}-${ctrl.statusEditRevision.value}',
+                  ),
+                  // ignore: deprecated_member_use
+                  value: upload.status,
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    labelText: 'Status',
+                    border: const OutlineInputBorder(),
+                    filled: !canEditStatus,
+                    fillColor: cs.surfaceContainerHighest,
+                    suffixIcon: ctrl.isSaving.value
+                        ? const Padding(
+                            padding: EdgeInsets.all(14),
+                            child: SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        : canEditStatus
+                        ? null
+                        : Icon(
+                            Icons.lock,
+                            size: 16,
+                            color: context.scheme.textSubtle,
                           ),
-                        )
-                      : ctrl.canEditStatus
-                          ? null
-                          : const Icon(Icons.lock,
-                              size: 16, color: Colors.grey),
+                  ),
+                  items: manualStatuses
+                      .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                      .toList(),
+                  onChanged: canEditStatus
+                      ? (v) {
+                          if (v != null) ctrl.updateStatus(v);
+                        }
+                      : null,
+                )
+              else
+                _ReadOnlyField(
+                  key: ValueKey('read-only-status-${upload.status}'),
+                  label: 'Status',
+                  value: upload.status,
                 ),
-                items: statusItems
-                    .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                    .toList(),
-                onChanged: ctrl.canEditStatus
-                    ? (v) {
-                        if (v != null) ctrl.updateStatus(v);
-                      }
-                    : null,
-              ),
               const SizedBox(height: 16),
+              if (returnReason != null) ...[
+                _ReadOnlyField(
+                  key: ValueKey('return-reason-$returnReason'),
+                  label: 'Return Reason',
+                  value: returnReason,
+                ),
+                const SizedBox(height: 16),
+              ],
 
               // Fix #14 — formatted amounts
               TextFormField(
@@ -570,6 +679,7 @@ class _DetailsTabState extends State<_DetailsTab> {
       packedItems:
           ctrl.resolvedPackingSlips.values.where((v) => v != null).length,
       totalSerials: ctrl.resolvedSerials.length,
+      deliveryDocInfo: ctrl.posDeliveryDocinfo.value,
     );
   }
 }
@@ -1374,7 +1484,7 @@ class _Stat extends StatelessWidget {
 class _ReadOnlyField extends StatelessWidget {
   final String label;
   final String value;
-  const _ReadOnlyField({required this.label, required this.value});
+  const _ReadOnlyField({super.key, required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {

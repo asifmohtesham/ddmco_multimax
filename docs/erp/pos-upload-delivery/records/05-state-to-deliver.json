@@ -1,0 +1,7 @@
+{
+  "doctype": "Workflow State",
+  "name": "To Deliver",
+  "workflow_state_name": "To Deliver",
+  "style": "Warning",
+  "_if_missing": true
+}

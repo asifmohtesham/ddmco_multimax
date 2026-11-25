@@ -1,0 +1,7 @@
+{
+  "doctype": "Workflow State",
+  "name": "In Progress",
+  "workflow_state_name": "In Progress",
+  "style": "Primary",
+  "_if_missing": true
+}

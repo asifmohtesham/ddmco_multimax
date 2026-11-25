@@ -1,0 +1,10 @@
+{
+  "doctype": "Property Setter",
+  "name": "POS Upload-status-options",
+  "doc_type": "POS Upload",
+  "doctype_or_field": "DocField",
+  "field_name": "status",
+  "property": "options",
+  "property_type": "Text",
+  "value": "\nPending\nIn Progress\nTo Deliver\nOut for Delivery\nDelivered\nCompleted\nCancelled"
+}

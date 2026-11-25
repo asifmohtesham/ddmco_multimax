@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/modules/pos_upload/widgets/pos_upload_timeline.dart';
 
@@ -15,6 +17,7 @@ List<TimelineCheckpoint> _dnTimeline({
   String? earliestPackingSlipCreation,
   int packedItems = 0,
   int totalSerials = 0,
+  Map<String, dynamic>? deliveryDocInfo,
 }) =>
     buildPosUploadTimeline(
       isStockEntryUpload: false,
@@ -31,9 +34,147 @@ List<TimelineCheckpoint> _dnTimeline({
       earliestPackingSlipCreation: earliestPackingSlipCreation,
       packedItems: packedItems,
       totalSerials: totalSerials,
+      deliveryDocInfo: deliveryDocInfo,
     );
 
+Map<String, dynamic> _returnVersion({
+  required String commentId,
+  required String creation,
+  required String driverName,
+  required String recorderName,
+  required String reason,
+  String? dn,
+}) => {
+  'creation': creation,
+  'data': jsonEncode({
+    'changed': [
+      ['status', 'Out for Delivery', 'To Deliver'],
+    ],
+    'updater_reference': {
+      'pos_delivery': {
+        'action': 'Delivery Return',
+        'driver_name': driverName,
+        'recorded_by_name': recorderName,
+        'reason': reason,
+        'dn': dn,
+        'comment_id': commentId,
+      },
+    },
+  }),
+};
+
 void main() {
+  group('delivery audit history', () {
+    test('pairs by comment ID and preserves each return with its own driver', () {
+      final firstReturn = _returnVersion(
+        commentId: 'return-1',
+        creation: '2026-11-25 12:07:00.124200',
+        driverName: 'First Driver',
+        recorderName: 'First Recorder',
+        reason: 'Late',
+        dn: 'DN-00001',
+      );
+      final secondReturn = _returnVersion(
+        commentId: 'return-2',
+        creation: '2026-11-25 13:18:00.390010',
+        driverName: 'Second Driver',
+        recorderName: 'Second Recorder',
+        reason: 'Rejected',
+      );
+
+      final timeline = _dnTimeline(
+        deliveryDocInfo: {
+          'workflow_logs': [
+            {
+              'name': 'return-1',
+              'content':
+                  'POS delivery · Delivery Return · Driver: Summary Driver',
+            },
+            {'name': 'native-stage', 'content': 'To Deliver'},
+            {'name': 'return-2', 'content': 'POS delivery · Delivery Return'},
+          ],
+          'comments': [
+            {'name': 'return-2', 'content': 'POS delivery · Delivery Return'},
+          ],
+          'versions': [secondReturn, firstReturn],
+        },
+      );
+
+      expect(timeline.take(3).map((row) => row.title), [
+        'POS Upload Created',
+        'Delivery Note',
+        'Packing Slips',
+      ]);
+      final returns = timeline.skip(3).toList();
+      expect(returns.map((row) => row.title), [
+        'Delivery Return',
+        'Delivery Return',
+      ]);
+      expect(returns.map((row) => row.statusLabel), [
+        'To Deliver',
+        'To Deliver',
+      ]);
+      expect(returns.map((row) => row.timestamp), [
+        firstReturn['creation'],
+        secondReturn['creation'],
+      ]);
+      expect(returns.first.docName, 'DN-00001');
+      expect(returns.last.docName, isNull);
+      expect(
+        returns.first.detail,
+        'Driver: First Driver\nRecorded by: First Recorder\nReason: Delivery delayed',
+      );
+      expect(
+        returns.last.detail,
+        'Driver: Second Driver\nRecorded by: Second Recorder\nReason: Rejected by customer',
+      );
+    });
+
+    test('retains older summaries and decodes escaped names', () {
+      final history = buildPosUploadDeliveryHistory({
+        'versions': [
+          {'data': 'invalid Version data'},
+          _returnVersion(
+            commentId: 'recent',
+            creation: '2026-11-25 12:30:00',
+            driverName: 'Recent Driver',
+            recorderName: 'Recent Recorder',
+            reason: 'Late',
+          ),
+        ],
+        'workflow_logs': [
+          {
+            'name': 'old-audit',
+            'creation': '2026-11-20 08:30:00',
+            'content':
+                '<p>POS delivery · Delivery Return · Driver: A &amp; B'
+                ' · recorded by O&#x27;Brien · Reason: Other · Delivery Note: DN-1</p>',
+          },
+          {'name': 'native-stage', 'content': 'Delivered'},
+        ],
+        'comments': [
+          {
+            'name': 'old-dispatch',
+            'creation': '2026-11-20 08:00:00',
+            'content': 'POS delivery · Out for Delivery · Driver: A &amp; B',
+          },
+        ],
+      });
+
+      expect(history.map((entry) => entry.title), [
+        'Out for Delivery',
+        'Delivery Return',
+        'Delivery Return',
+      ]);
+      expect(history[1].timestamp, '2026-11-20 08:30:00');
+      expect(history[1].docName, 'DN-1');
+      expect(
+        history[1].detail,
+        "Driver: A & B\nRecorded by: O'Brien\nReason: Other reason",
+      );
+    });
+  });
+
   group('buildPosUploadTimeline — DN-linked (ML/KA)', () {
     test('POS-only: node 1 reached, DN and PS nodes upcoming', () {
       final t = _dnTimeline();

@@ -168,6 +168,11 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
   /// the document is dirty and editable, otherwise the stored [statusLabel].
   String? get _effectiveStatusLabel => canSave ? 'Not Saved' : statusLabel;
 
+  StatusPill _statusPill(String status, {bool compact = false}) =>
+      docType == 'POS Upload' && !canSave
+      ? StatusPill.posUpload(status: status, compact: compact)
+      : StatusPill(status: status, compact: compact);
+
   @override
   double get minExtent => statusBarHeight + _kCollapsedToolbar + _bottomHeight;
 
@@ -241,7 +246,12 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
                           if (docType != null && _effectiveStatusLabel != null)
                             const SizedBox(width: 5),
                           if (_effectiveStatusLabel != null)
-                            StatusPill(status: _effectiveStatusLabel!, compact: true),
+                            Flexible(
+                              child: _statusPill(
+                                _effectiveStatusLabel!,
+                                compact: true,
+                              ),
+                            ),
                         ],
                       ),
                       const SizedBox(height: 3),
@@ -292,18 +302,24 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
                 ),
               ),
             if (docType != null) const SizedBox(height: 4),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
-                color: colorScheme.onPrimary,
-                height: 1.15,
+            // Reserve space for the status pill when a long title wraps.
+            Flexible(
+              child: AutoSizeText(
+                title,
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  color: colorScheme.onPrimary,
+                  height: 1.15,
+                ),
+                maxLines: 2,
+                minFontSize: _kAutoSizeMinFont,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
             const SizedBox(height: 6),
             if (_effectiveStatusLabel != null)
-              StatusPill(status: _effectiveStatusLabel!),
+              _statusPill(_effectiveStatusLabel!),
           ],
         ),
       ),

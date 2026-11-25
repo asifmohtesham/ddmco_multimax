@@ -1,21 +1,17 @@
 class PosUpload {
-  /// The `status` values a POS Upload can be given, in the DocType's option
-  /// order. Feeds the form's status dropdown, the list's status bar and the
-  /// filter sheet, so keep it in step with the server.
+  /// POS Upload statuses in list filter order, including the delivery workflow
+  /// states on sites where it is installed.
   ///
-  /// POS Upload is a site DocType (Selling module, custom). Its `status` is a
-  /// Select with the options blank, Pending, In Progress, Completed and
-  /// Cancelled (default Pending, permlevel 1), read on production (v16) on
-  /// 16/11/2026. It is not submittable, so every upload has docstatus 0 and
-  /// there is no "Draft" or "Submitted": the server rejects either on save and
-  /// a filter on either matches nothing. Those two were left over from the
-  /// first model, which derived the status from docstatus.
-  ///
-  /// The blank option is not offered: it is not a state anyone should set,
-  /// and [PosUpload.fromJson] shows a blank status as "Pending".
+  /// POS Upload is a custom, non-submittable site DocType. Without the workflow,
+  /// its permlevel 1 Status select accepts blank, Pending, In Progress,
+  /// Completed and Cancelled. The form offers the four non-blank manual
+  /// statuses, and [PosUpload.fromJson] displays blank as Pending.
   static const List<String> statusOptions = [
     'Pending',
     'In Progress',
+    'To Deliver',
+    'Out for Delivery',
+    'Delivered',
     'Completed',
     'Cancelled',
   ];
@@ -26,9 +22,12 @@ class PosUpload {
   final String modified;
   final String creation;
   final String status;
+  final String? returnReason;
   final double? totalAmount;
   final double? totalQty;
   final List<PosUploadItem> items;
+
+  bool get isInPreparation => status == 'Pending' || status == 'In Progress';
 
   PosUpload({
     required this.name,
@@ -37,6 +36,7 @@ class PosUpload {
     required this.modified,
     required this.creation,
     required this.status,
+    this.returnReason,
     this.totalAmount,
     this.totalQty,
     required this.items,
@@ -46,8 +46,8 @@ class PosUpload {
     var itemsList = json['items'] as List? ?? [];
     List<PosUploadItem> items = itemsList.map((i) => PosUploadItem.fromJson(i)).toList();
 
-    // Directly use the 'status' field from JSON, default to 'Pending' if null/empty
-    final String docStatus = json['status'] ?? 'Pending';
+    final status = json['status']?.toString() ?? '';
+    final returnReason = json['custom_return_reason']?.toString() ?? '';
 
     return PosUpload(
       name: json['name'] ?? '',
@@ -55,7 +55,8 @@ class PosUpload {
       date: json['date'] ?? '',
       modified: json['modified'] ?? '',
       creation: json['creation'] ?? '',
-      status: docStatus,
+      status: status.trim().isEmpty ? 'Pending' : status,
+      returnReason: returnReason.trim().isEmpty ? null : returnReason,
       totalAmount: (json['total_amount'] as num?)?.toDouble(),
       totalQty: (json['total_qty'] as num?)?.toDouble(), // Corrected field name? usually total_qty
       items: items,

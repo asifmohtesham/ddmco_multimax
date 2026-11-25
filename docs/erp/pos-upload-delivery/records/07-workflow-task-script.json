@@ -1,0 +1,7 @@
+{
+  "doctype": "Server Script",
+  "name": "POS Upload Apply Delivery Action",
+  "script_type": "Workflow Task",
+  "disabled": 0,
+  "_script_file": "../scripts/workflow-action.py"
+}

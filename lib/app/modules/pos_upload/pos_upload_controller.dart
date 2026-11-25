@@ -15,6 +15,7 @@ class PosUploadController extends GetxController {
   var posUploads = <PosUpload>[].obs;
   final int _limit = 20;
   int _currentPage = 0;
+  int _fetchGeneration = 0;
 
   var expandedUploadName = ''.obs;
   var isLoadingDetails = false.obs;
@@ -107,10 +108,32 @@ class PosUploadController extends GetxController {
   // ── Data ──────────────────────────────────────────────────────────────────
 
   Future<void> fetchPosUploads(
-      {bool isLoadMore = false, bool clear = false}) async {
+      {bool isLoadMore = false, bool clear = false}) =>
+      _fetchPosUploads(isLoadMore: isLoadMore, clear: clear);
+
+  Future<void> refreshAfterDeliveryAction(String name) {
+    _detailedUploadsCache.remove(name);
+    return _fetchPosUploads(pageCount: _currentPage == 0 ? 1 : _currentPage);
+  }
+
+  Future<void> _fetchPosUploads({
+    bool isLoadMore = false,
+    bool clear = false,
+    int pageCount = 1,
+  }) async {
+    if (isClosed ||
+        (isLoadMore &&
+            (isLoading.value || isFetchingMore.value || !hasMore.value))) {
+      return;
+    }
+    final generation = ++_fetchGeneration;
+    bool isCurrent() => !isClosed && generation == _fetchGeneration;
+    final startPage = isLoadMore ? _currentPage : 0;
+    final limit = _limit * pageCount;
     if (isLoadMore) {
       isFetchingMore.value = true;
     } else {
+      isFetchingMore.value = false;
       isLoading.value = true;
       if (clear) {
         posUploads.clear();
@@ -121,39 +144,48 @@ class PosUploadController extends GetxController {
 
     try {
       final Map<String, dynamic> queryFilters = Map.from(activeFilters);
+      if (queryFilters['status'] == 'Pending') {
+        queryFilters['status'] = [
+          'in',
+          ['Pending', ''],
+        ];
+      }
       if (searchQuery.value.isNotEmpty) {
         queryFilters['name'] = ['like', '%${searchQuery.value}%'];
       }
 
       final response = await _provider.getPosUploads(
-        limit: _limit,
-        limitStart: _currentPage * _limit,
+        limit: limit,
+        limitStart: startPage * _limit,
         filters: queryFilters,
         orderBy: '${sortField.value} ${sortOrder.value}',
       );
+      if (!isCurrent()) return;
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
         final newUploads =
         data.map((json) => PosUpload.fromJson(json)).toList();
 
-        if (newUploads.length < _limit) hasMore.value = false;
+        hasMore.value = newUploads.length == limit;
 
         if (isLoadMore) {
           posUploads.addAll(newUploads);
         } else {
           posUploads.value = newUploads;
         }
-        _currentPage++;
+        _currentPage = startPage + pageCount;
       } else {
         AppNotification.error('Failed to fetch POS uploads');
       }
     } catch (e) {
-      AppNotification.error(e.toString());
+      if (isCurrent()) AppNotification.error(e.toString());
     } finally {
-      if (isLoadMore) {
-        isFetchingMore.value = false;
-      } else {
-        isLoading.value = false;
+      if (isCurrent()) {
+        if (isLoadMore) {
+          isFetchingMore.value = false;
+        } else {
+          isLoading.value = false;
+        }
       }
     }
   }

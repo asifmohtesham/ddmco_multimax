@@ -8,11 +8,12 @@ library;
 
 String _decodeEntities(String s) => s
     .replaceAll('&nbsp;', ' ')
-    .replaceAll('&amp;', '&')
     .replaceAll('&lt;', '<')
     .replaceAll('&gt;', '>')
     .replaceAll('&#39;', "'")
-    .replaceAll('&quot;', '"');
+    .replaceAll('&#x27;', "'")
+    .replaceAll('&quot;', '"')
+    .replaceAll('&amp;', '&');
 
 /// Converts rich-text HTML to multi-line plain text — for plain-text
 /// editors. `<br>` and block-close tags become newlines, every other tag is

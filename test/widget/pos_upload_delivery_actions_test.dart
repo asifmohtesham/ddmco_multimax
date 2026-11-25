@@ -1,0 +1,713 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart' hide Response;
+import 'package:multimax/app/data/constants/app_theme.dart';
+import 'package:multimax/app/data/models/pos_upload_delivery.dart';
+import 'package:multimax/app/data/models/pos_upload_model.dart';
+import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/providers/customer_provider.dart';
+import 'package:multimax/app/data/providers/pos_upload_provider.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/modules/pos_upload/form/pos_upload_form_binding.dart';
+import 'package:multimax/app/modules/pos_upload/form/pos_upload_form_controller.dart';
+import 'package:multimax/app/modules/pos_upload/form/pos_upload_form_screen.dart';
+import 'package:multimax/app/modules/pos_upload/pos_upload_controller.dart';
+import 'package:multimax/app/modules/pos_upload/pos_upload_screen.dart';
+
+class _UnusedApiProvider extends Fake implements ApiProvider {}
+
+class _EmptyCustomerProvider extends Fake implements CustomerProvider {
+  @override
+  Future<Response> getCustomers({int limit = 0, String? searchTerm}) async =>
+      Response(
+        requestOptions: RequestOptions(),
+        statusCode: 200,
+        data: {'data': []},
+      );
+}
+
+class _OfflineFormController extends PosUploadFormController {
+  @override
+  Future<void> initRealtimeSync() async {}
+}
+
+class _DeliveryProvider extends PosUploadProvider {
+  static const driverOptions = PosDeliveryDriverOptions(
+    drivers: [
+      PosDeliveryDriver(name: 'DRV-1', fullName: 'Driver One'),
+      PosDeliveryDriver(name: 'DRV-2', fullName: 'Driver Two'),
+    ],
+    defaultDriver: 'DRV-1',
+  );
+
+  String status = 'Out for Delivery';
+  String modified = '2026-11-25 19:20:11.123456';
+  bool discoveryFails = false;
+  List<PosDeliveryAction> actions = [
+    PosDeliveryAction.deliveryReturn,
+    PosDeliveryAction.delivered,
+  ];
+  Completer<PosDeliveryDriverOptions>? pendingDrivers;
+  Completer<PosUpload>? pendingApply;
+  DioException? applyError;
+  int documentReads = 0;
+  int actionReads = 0;
+  int auditReads = 0;
+  final driverRequests = <PosDeliveryAction>[];
+  final applied = <(PosDeliveryAction, PosDeliverySelection)>[];
+  final appliedRevisions = <String>[];
+
+  Map<String, dynamic> _pos(String name) => {
+    'doctype': 'POS Upload',
+    'name': name,
+    'status': status,
+    'modified': modified,
+  };
+
+  @override
+  Future<Response> getPosUpload(String name) async {
+    documentReads++;
+    return Response(
+      requestOptions: RequestOptions(path: ''),
+      statusCode: 200,
+      data: {'data': _pos(name)},
+    );
+  }
+
+  @override
+  Future<List<PosDeliveryAction>> getDeliveryActions(String name) async {
+    actionReads++;
+    if (discoveryFails) throw StateError('Transition discovery denied');
+    return actions;
+  }
+
+  @override
+  Future<PosDeliveryDriverOptions> getDeliveryDrivers(
+    String name,
+    PosDeliveryAction action,
+  ) async {
+    driverRequests.add(action);
+    final pending = pendingDrivers;
+    return pending == null ? driverOptions : await pending.future;
+  }
+
+  @override
+  Future<PosUpload> applyDeliveryAction(
+    PosUpload upload,
+    PosDeliveryAction action,
+    PosDeliverySelection selection,
+  ) async {
+    applied.add((action, selection));
+    appliedRevisions.add(upload.modified);
+    if (applyError case final error?) throw error;
+    if (pendingApply case final pending?) return pending.future;
+    status = action.requiresReason ? 'To Deliver' : action.label;
+    modified = '2026-11-25 19:20:13.000001';
+    actions = [];
+    return PosUpload.fromJson(_pos(upload.name));
+  }
+
+  @override
+  Future<Map<String, dynamic>?> getDeliveryDocinfo(String name) async {
+    auditReads++;
+    return null;
+  }
+
+  @override
+  Future<bool> canWrite(String name) async => true;
+
+  @override
+  Future<bool> canWriteStatusField(Set<String> userRoles) async => true;
+}
+
+class _PagedDeliveryProvider extends _DeliveryProvider {
+  static const uploadName = 'PU-0001';
+  final listRequests =
+      <({int limit, int start, Map<String, dynamic>? filters, String orderBy})>[];
+
+  @override
+  Future<Response> getPosUploads({
+    int limit = 50,
+    int limitStart = 0,
+    Map<String, dynamic>? filters,
+    List<List<dynamic>>? orFilterTuples,
+    String orderBy = 'modified desc',
+  }) async {
+    listRequests.add((
+      limit: limit,
+      start: limitStart,
+      filters: filters,
+      orderBy: orderBy,
+    ));
+    final rows = [
+      _pos(uploadName),
+      for (var i = 2; i <= 41; i++)
+        {
+          'name': 'PU-$i',
+          'status': 'To Deliver',
+          'modified': '2026-11-25 19:19:00',
+        },
+    ];
+    return Response(
+      requestOptions: RequestOptions(),
+      statusCode: 200,
+      data: {'data': rows.skip(limitStart).take(limit).toList()},
+    );
+  }
+}
+
+DioException _applyFailure(int status, Map<String, dynamic> body) {
+  final request = RequestOptions(
+    path: '/api/method/frappe.model.workflow.apply_workflow',
+  );
+  return DioException.badResponse(
+    statusCode: status,
+    requestOptions: request,
+    response: Response(requestOptions: request, statusCode: status, data: body),
+  );
+}
+
+Map<String, dynamic> _serverMessage(String message) => {
+  '_server_messages': jsonEncode([
+    jsonEncode({'message': message}),
+  ]),
+};
+
+Future<PosDeliverySelection?> _selectDriver(
+  PosDeliveryDriverOptions options,
+) async => PosDeliverySelection(driver: options.defaultDriver!);
+
+Finder _action(PosDeliveryAction action) => find.byWidgetPredicate(
+  (widget) => widget is AsyncFilledButton && widget.label == action.label,
+);
+
+Finder _actionButton(PosDeliveryAction action) => find.descendant(
+  of: _action(action),
+  matching: find.byWidgetPredicate((widget) => widget is FilledButton),
+);
+
+Finder _actionSpinner(PosDeliveryAction action) => find.descendant(
+  of: _action(action),
+  matching: find.byType(CircularProgressIndicator),
+);
+
+final _confirm = find.widgetWithText(FilledButton, 'Confirm');
+
+Future<void> _animateOverlay(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 450));
+  await tester.pump();
+}
+
+double _contrast(Color a, Color b) {
+  final aLuminance = a.computeLuminance();
+  final bLuminance = b.computeLuminance();
+  return aLuminance > bLuminance
+      ? (aLuminance + 0.05) / (bLuminance + 0.05)
+      : (bLuminance + 0.05) / (aLuminance + 0.05);
+}
+
+void main() {
+  setUp(() {
+    Get.testMode = true;
+    Get.put<ApiProvider>(_UnusedApiProvider(), permanent: true);
+  });
+  tearDown(Get.reset);
+
+  Future<PosUploadFormController> pumpForm(
+    WidgetTester tester,
+    _DeliveryProvider provider, {
+    Brightness brightness = Brightness.light,
+  }) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final scheme = AppScheme.of(brightness);
+    final theme = ThemeData(
+      colorScheme:
+          ColorScheme.fromSeed(
+            seedColor: scheme.primary,
+            brightness: brightness,
+          ).copyWith(
+            primary: scheme.primary,
+            onPrimary: scheme.onPrimary,
+            surface: scheme.fg,
+            onSurface: scheme.text,
+          ),
+    );
+
+    await tester.pumpWidget(
+      GetMaterialApp(
+        theme: theme,
+        home: const Scaffold(),
+        getPages: [
+          GetPage(
+            name: '/pos-upload-form',
+            page: () => const PosUploadFormScreen(),
+            binding: PosUploadFormBinding(),
+          ),
+        ],
+      ),
+    );
+
+    Get.put<PosUploadProvider>(provider);
+    Get.lazyPut<PosUploadFormController>(_OfflineFormController.new);
+    Get.toNamed<void>(
+      '/pos-upload-form',
+      arguments: {'name': 'PU-0001', 'mode': 'edit'},
+    );
+    await tester.pumpAndSettle();
+    return Get.find<PosUploadFormController>();
+  }
+
+  testWidgets('a delivery write refreshes the paged POS list on return', (
+    tester,
+  ) async {
+    const action = PosDeliveryAction.outForDelivery;
+    final provider = _PagedDeliveryProvider()
+      ..status = 'To Deliver'
+      ..actions = [action];
+    Get.put<PosUploadProvider>(provider);
+    Get.put<CustomerProvider>(_EmptyCustomerProvider());
+    final list = Get.put(PosUploadController());
+    Get.lazyPut<PosUploadFormController>(_OfflineFormController.new);
+
+    await tester.pumpWidget(
+      GetMaterialApp(
+        home: const PosUploadScreen(),
+        getPages: [
+          GetPage(
+            name: AppRoutes.POS_UPLOAD_FORM,
+            page: () => const PosUploadFormScreen(),
+            binding: PosUploadFormBinding(),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+    list.applyFilters({'customer': 'CUST-A'});
+    list.setSort('date', 'asc');
+    await tester.pumpAndSettle();
+    await list.fetchPosUploads(isLoadMore: true);
+    expect(list.posUploads, hasLength(40));
+    final previousRevision = list.posUploads.first.modified;
+
+    final row = find.widgetWithText(ListTile, _PagedDeliveryProvider.uploadName);
+    Finder rowStatus(String status) => find.descendant(
+      of: row,
+      matching: find.widgetWithText(StatusPill, status),
+    );
+    expect(rowStatus('To Deliver'), findsOneWidget);
+    await tester.tap(find.text(_PagedDeliveryProvider.uploadName));
+    await tester.pumpAndSettle();
+    await tester.tap(_action(action));
+    await _animateOverlay(tester);
+    await tester.tap(_confirm);
+    await tester.pumpAndSettle();
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(rowStatus('Out for Delivery'), findsOneWidget);
+    expect(rowStatus('To Deliver'), findsNothing);
+    expect(list.posUploads.first.modified, isNot(previousRevision));
+    expect(list.posUploads, hasLength(40));
+    final refresh = provider.listRequests.last;
+    expect(refresh.limit, 40);
+    expect(refresh.start, 0);
+    expect(refresh.filters, {'customer': 'CUST-A'});
+    expect(refresh.orderBy, 'date asc');
+
+    await list.fetchPosUploads(isLoadMore: true);
+    expect(provider.listRequests.last.start, 40);
+    expect(list.posUploads, hasLength(41));
+  });
+
+  testWidgets('failed action discovery leaves status read-only with a retry', (
+    tester,
+  ) async {
+    final provider = _DeliveryProvider()
+      ..status = 'Pending'
+      ..discoveryFails = true
+      ..actions = [PosDeliveryAction.outForDelivery];
+    final controller = await pumpForm(tester, provider);
+
+    expect(find.byType(AsyncFilledButton), findsNothing);
+    expect(controller.canWriteStatus.value, isTrue);
+    expect(controller.canEditStatus, isFalse);
+    final statusDropdown = find.byType(DropdownButton<String>);
+    expect(
+      tester.widget<DropdownButton<String>>(statusDropdown).onChanged,
+      isNull,
+    );
+
+    provider.discoveryFails = false;
+    await tester.tap(find.byTooltip('Retry delivery actions'));
+    await tester.pumpAndSettle();
+    expect(_action(PosDeliveryAction.outForDelivery), findsOneWidget);
+    expect(find.byTooltip('Retry delivery actions'), findsNothing);
+    expect(provider.applied, isEmpty);
+  });
+
+  testWidgets('Return preselects the driver and requires a selected reason', (
+    tester,
+  ) async {
+    final provider = _DeliveryProvider();
+    await pumpForm(tester, provider);
+
+    await tester.tap(_action(PosDeliveryAction.deliveryReturn));
+    await _animateOverlay(tester);
+    final driver = find.byType(DropdownButton<String>);
+    expect(tester.widget<DropdownButton<String>>(driver).value, 'DRV-1');
+    expect(tester.widget<FilledButton>(_confirm).onPressed, isNull);
+
+    await tester.tap(driver);
+    await _animateOverlay(tester);
+    await tester.tap(find.text('Driver Two').last);
+    await _animateOverlay(tester);
+    expect(tester.widget<DropdownButton<String>>(driver).value, 'DRV-2');
+    expect(tester.widget<FilledButton>(_confirm).onPressed, isNull);
+
+    await tester.tap(find.byType(DropdownButton<PosDeliveryReason>));
+    await _animateOverlay(tester);
+    await tester.tap(find.text('Rejected').last);
+    await _animateOverlay(tester);
+    await tester.tap(_confirm);
+    await tester.pumpAndSettle();
+
+    final (action, selection) = provider.applied.single;
+    expect(action, PosDeliveryAction.deliveryReturn);
+    expect(selection.driver, 'DRV-2');
+    expect(selection.reason, PosDeliveryReason.rejected);
+  });
+
+  testWidgets('dismissing a driver sheet sends no action', (tester) async {
+    final provider = _DeliveryProvider();
+    final controller = await pumpForm(tester, provider);
+
+    await tester.ensureVisible(_action(PosDeliveryAction.delivered));
+    await tester.tap(_action(PosDeliveryAction.delivered));
+    await _animateOverlay(tester);
+    expect(find.byType(DropdownButton<String>), findsOneWidget);
+    expect(find.byType(DropdownButton<PosDeliveryReason>), findsNothing);
+    expect(tester.widget<FilledButton>(_confirm).onPressed, isNotNull);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(provider.applied, isEmpty);
+    expect(controller.deliveryActionBusy.value, isFalse);
+  });
+
+  for (final revisionChanged in [false, true]) {
+    testWidgets(
+      revisionChanged
+          ? 'a changed revision is validated by the server after confirmation'
+          : 'the driver sheet can confirm after a same-revision reload',
+      (tester) async {
+        const action = PosDeliveryAction.outForDelivery;
+        const changedMessage =
+            'This POS Upload changed. Reload it and use Actions again.';
+        final provider = _DeliveryProvider()
+          ..status = 'To Deliver'
+          ..actions = [action];
+        final controller = await pumpForm(tester, provider);
+        final originalRevision = provider.modified;
+
+        await tester.tap(_action(action));
+        await _animateOverlay(tester);
+        await tester.tap(find.byType(DropdownButton<String>));
+        await _animateOverlay(tester);
+        await tester.tap(find.text('Driver Two').last);
+        await _animateOverlay(tester);
+
+        if (revisionChanged) {
+          provider.modified = '2026-11-25 19:20:12.654321';
+          provider.applyError = _applyFailure(
+            417,
+            _serverMessage(changedMessage),
+          );
+        }
+        await controller.fetchPosUpload();
+        await _animateOverlay(tester);
+        expect(controller.posUpload.value?.modified, provider.modified);
+        expect(find.byType(BottomSheet), findsOneWidget);
+
+        await tester.tap(_confirm);
+        await tester.pumpAndSettle();
+
+        expect(provider.appliedRevisions, [originalRevision]);
+        expect(provider.applied.single.$1, action);
+        expect(provider.applied.single.$2.driver, 'DRV-2');
+        final notice = revisionChanged
+            ? '$changedMessage Try again.'
+            : 'Delivery action recorded';
+        expect(find.text(notice), findsOneWidget);
+        expect(controller.deliveryActionBusy.value, isFalse);
+      },
+    );
+  }
+
+  testWidgets('a 417 validation failure shows the server message', (
+    tester,
+  ) async {
+    const message = 'Select an active Driver.';
+    final provider = _DeliveryProvider()
+      ..applyError = _applyFailure(417, _serverMessage(message));
+    final controller = await pumpForm(tester, provider);
+
+    await controller.runDeliveryAction(
+      PosDeliveryAction.delivered,
+      _selectDriver,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(message), findsOneWidget);
+    expect(provider.documentReads, 1);
+    expect(controller.deliveryActionBusy.value, isFalse);
+  });
+
+  for (final (label, error, notice) in [
+    (
+      'stale revision',
+      _applyFailure(
+        417,
+        _serverMessage(
+          'This POS Upload changed. Reload it and use Actions again.',
+        ),
+      ),
+      'This POS Upload changed. Reload it and use Actions again. Try again.',
+    ),
+    (
+      'deadlock',
+      _applyFailure(500, {'exc_type': 'QueryDeadlockError'}),
+      'The POS Upload was being updated. Try the action again.',
+    ),
+  ]) {
+    testWidgets('a $label refreshes the form and offers a retry', (
+      tester,
+    ) async {
+      final provider = _DeliveryProvider()..applyError = error;
+      final controller = await pumpForm(tester, provider);
+      provider.status = 'To Deliver';
+      provider.actions = [PosDeliveryAction.outForDelivery];
+
+      await controller.runDeliveryAction(
+        PosDeliveryAction.delivered,
+        _selectDriver,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text(notice), findsOneWidget);
+      expect(controller.posUpload.value?.status, 'To Deliver');
+      expect(controller.deliveryActions, [PosDeliveryAction.outForDelivery]);
+      expect(provider.documentReads, 2);
+      expect(provider.actionReads, 2);
+      expect(provider.auditReads, 2);
+    });
+  }
+
+  testWidgets('an apply reply after reload cannot replace the current POS', (
+    tester,
+  ) async {
+    final pending = Completer<PosUpload>();
+    final provider = _DeliveryProvider()..pendingApply = pending;
+    final controller = await pumpForm(tester, provider);
+
+    final applying = controller.runDeliveryAction(
+      PosDeliveryAction.delivered,
+      _selectDriver,
+    );
+    await tester.pump();
+    expect(provider.applied, hasLength(1));
+    provider.status = 'To Deliver';
+    provider.actions = [PosDeliveryAction.outForDelivery];
+    await controller.reloadDocument();
+    pending.complete(
+      PosUpload.fromJson({'name': controller.name, 'status': 'Delivered'}),
+    );
+    await applying;
+    await tester.pumpAndSettle();
+
+    expect(controller.posUpload.value?.status, 'To Deliver');
+    expect(controller.deliveryActions, [PosDeliveryAction.outForDelivery]);
+    expect(provider.documentReads, 2);
+    expect(find.text('Delivery action recorded'), findsNothing);
+    expect(controller.deliveryActionBusy.value, isFalse);
+  });
+
+  testWidgets('an apply reply after navigating away is ignored', (
+    tester,
+  ) async {
+    final pending = Completer<PosUpload>();
+    final provider = _DeliveryProvider()
+      ..pendingApply = pending
+      ..actions = [PosDeliveryAction.delivered];
+    final controller = await pumpForm(tester, provider);
+    await tester.tap(_action(PosDeliveryAction.delivered));
+    await _animateOverlay(tester);
+    await tester.tap(_confirm);
+    await _animateOverlay(tester);
+    expect(provider.applied, hasLength(1));
+
+    Get.to<void>(() => const Scaffold(body: Text('Another screen')));
+    await _animateOverlay(tester);
+    expect(find.text('Another screen'), findsOneWidget);
+    pending.complete(
+      PosUpload.fromJson({'name': controller.name, 'status': 'Delivered'}),
+    );
+    await tester.pumpAndSettle();
+
+    expect(controller.posUpload.value?.status, 'Out for Delivery');
+    expect(provider.documentReads, 1);
+    expect(find.text('Delivery action recorded'), findsNothing);
+    expect(controller.deliveryActionBusy.value, isFalse);
+  });
+
+  testWidgets('only the confirmed action spins and taps share one guard', (
+    tester,
+  ) async {
+    final pending = Completer<PosUpload>();
+    final provider = _DeliveryProvider()
+      ..pendingDrivers = Completer<PosDeliveryDriverOptions>()
+      ..pendingApply = pending;
+    final controller = await pumpForm(tester, provider);
+    const action = PosDeliveryAction.delivered;
+    const other = PosDeliveryAction.deliveryReturn;
+
+    // Invoke both controls before their disabled state can repaint.
+    final sendSelected = tester.widget<FilledButton>(_actionButton(action));
+    final sendOther = tester.widget<FilledButton>(_actionButton(other));
+    sendSelected.onPressed!();
+    sendOther.onPressed!();
+    expect(provider.driverRequests, [action]);
+    provider.pendingDrivers!.complete(_DeliveryProvider.driverOptions);
+    await _animateOverlay(tester);
+    expect(find.byType(BottomSheet), findsOneWidget);
+    expect(provider.applied, isEmpty);
+    for (final headerAction in [action, other]) {
+      expect(_actionSpinner(headerAction), findsNothing);
+      expect(
+        tester.widget<FilledButton>(_actionButton(headerAction)).onPressed,
+        isNull,
+      );
+    }
+
+    await tester.tap(_confirm);
+    await _animateOverlay(tester);
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(_actionSpinner(action), findsOneWidget);
+    expect(_actionSpinner(other), findsNothing);
+    for (final headerAction in [action, other]) {
+      expect(
+        tester.widget<FilledButton>(_actionButton(headerAction)).onPressed,
+        isNull,
+      );
+    }
+    expect(
+      tester.widget<CircularProgressIndicator>(_actionSpinner(action)).color,
+      AppScheme.light.onPrimary,
+    );
+    sendOther.onPressed!();
+    expect(provider.driverRequests, [action]);
+    expect(provider.applied.single.$1, action);
+
+    pending.completeError(_applyFailure(417, _serverMessage('Try again.')));
+    await tester.pump();
+    await tester.pump();
+    expect(controller.deliveryActionBusy.value, isFalse);
+    for (final headerAction in [action, other]) {
+      expect(_actionSpinner(headerAction), findsNothing);
+      expect(
+        tester.widget<FilledButton>(_actionButton(headerAction)).onPressed,
+        isNotNull,
+      );
+    }
+    await tester.pumpAndSettle();
+  });
+
+  for (final brightness in Brightness.values) {
+    testWidgets('header and sheet use readable ${brightness.name} colors', (
+      tester,
+    ) async {
+      final pending = Completer<PosUpload>();
+      final provider = _DeliveryProvider()..pendingApply = pending;
+      await pumpForm(tester, provider, brightness: brightness);
+      const action = PosDeliveryAction.deliveryReturn;
+      final scheme = AppScheme.of(brightness);
+      final buttonStyle = tester
+          .widget<FilledButton>(_actionButton(action))
+          .style!;
+      final enabledFill = buttonStyle.backgroundColor!.resolve({})!;
+      final enabledInk = buttonStyle.foregroundColor!.resolve({})!;
+      expect(_contrast(enabledFill, enabledInk), greaterThanOrEqualTo(4.5));
+
+      await tester.tap(_action(action));
+      await _animateOverlay(tester);
+      expect(_actionSpinner(action), findsNothing);
+      expect(_actionSpinner(PosDeliveryAction.delivered), findsNothing);
+
+      final sheet = find.byType(BottomSheet);
+      final sheetFill = tester.widget<BottomSheet>(sheet).backgroundColor!;
+      expect(sheetFill, scheme.fg);
+      final title = tester.widget<Text>(
+        find.descendant(of: sheet, matching: find.text(action.label)),
+      );
+      expect(
+        _contrast(title.style!.color!, sheetFill),
+        greaterThanOrEqualTo(4.5),
+      );
+      final select = tester.widget<DropdownButton<String>>(
+        find.byType(DropdownButton<String>),
+      );
+      expect(
+        _contrast(select.style!.color!, select.dropdownColor!),
+        greaterThanOrEqualTo(4.5),
+      );
+      final field = tester.widget<InputDecorator>(
+        find.descendant(
+          of: sheet,
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is InputDecorator &&
+                widget.decoration.labelText == 'Driver',
+          ),
+        ),
+      );
+      expect(
+        _contrast(
+          field.decoration.labelStyle!.color!,
+          field.decoration.fillColor!,
+        ),
+        greaterThanOrEqualTo(4.5),
+      );
+
+      await tester.tap(find.byType(DropdownButton<PosDeliveryReason>));
+      await _animateOverlay(tester);
+      await tester.tap(find.text('Rejected').last);
+      await _animateOverlay(tester);
+      await tester.tap(_confirm);
+      await _animateOverlay(tester);
+      final spinner = tester.widget<CircularProgressIndicator>(
+        _actionSpinner(action),
+      );
+      expect(
+        _contrast(spinner.color!, scheme.primary),
+        greaterThanOrEqualTo(4.5),
+      );
+      expect(_actionSpinner(PosDeliveryAction.delivered), findsNothing);
+
+      provider.status = 'To Deliver';
+      provider.actions = [PosDeliveryAction.outForDelivery];
+      pending.complete(PosUpload.fromJson(provider._pos('PU-0001')));
+      await tester.pumpAndSettle();
+    });
+  }
+}

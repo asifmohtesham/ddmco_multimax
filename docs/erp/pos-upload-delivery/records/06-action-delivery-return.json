@@ -1,0 +1,6 @@
+{
+  "doctype": "Workflow Action Master",
+  "name": "Delivery Return",
+  "workflow_action_name": "Delivery Return",
+  "_if_missing": true
+}
