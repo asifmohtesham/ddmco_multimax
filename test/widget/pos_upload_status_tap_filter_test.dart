@@ -209,6 +209,30 @@ void main() {
     expect(controller.posUploads.map((upload) => upload.name), ['PU-0004']);
   });
 
+  testWidgets('switching delivery status updates the active filter chip', (
+    tester,
+  ) async {
+    await pumpList(tester);
+
+    await tester.tap(await showChip(tester, 'Out for Delivery'));
+    await tester.pumpAndSettle();
+    expect(find.text('Status: Out for Delivery'), findsOneWidget);
+    expect(find.text('PU-0004'), findsOneWidget);
+
+    final toDeliver = await showChip(
+      tester,
+      'To Deliver',
+      drag: const Offset(80, 0),
+    );
+    await tester.tap(toDeliver);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Status: To Deliver'), findsOneWidget);
+    expect(find.text('Status: Out for Delivery'), findsNothing);
+    expect(find.text('PU-0003'), findsOneWidget);
+    expect(find.text('PU-0004'), findsNothing);
+  });
+
   testWidgets('bar chip toggles off on second tap', (tester) async {
     await pumpList(tester);
 

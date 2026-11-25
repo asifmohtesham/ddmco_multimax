@@ -77,10 +77,15 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
           }));
     }
     if (f.containsKey('status')) {
-      chips.add(_chip(context,
-          icon: Icons.flag_outlined,
-          label: 'Status: ${f['status']}',
-          onDeleted: () => controller.removeFilter('status')));
+      // Switching status keeps the header's filter count unchanged.
+      chips.add(Obx(() {
+        final status = f['status'];
+        if (status == null) return const SizedBox.shrink();
+        return _chip(context,
+            icon: Icons.flag_outlined,
+            label: 'Status: $status',
+            onDeleted: () => controller.removeFilter('status'));
+      }));
     }
     if (f.containsKey('customer') && f['customer'].toString().isNotEmpty) {
       final match = controller.customers
