@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
+import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/data/services/digest_service.dart';
 
@@ -104,6 +107,21 @@ void main() {
     svc.probeError = _FakeDigestService.network();
     expect(
         (await svc.fetchDigest(kDigestDoctypes)).status, DigestStatus.failed);
+  });
+
+  test('unreadable session cookies fail the run before fetching counts',
+      () async {
+    const probe = '/api/method/frappe.auth.get_logged_user';
+    svc.probeError = DioException(
+      requestOptions: RequestOptions(path: probe),
+      error: CookieManagerLoadException(
+        error: const FileSystemException('Cookie file is locked'),
+        stackTrace: StackTrace.current,
+      ),
+    );
+    final result = await svc.fetchDigest(kDigestDoctypes);
+    expect(result.status, DigestStatus.failed);
+    expect(svc.countedDoctypes, isEmpty);
   });
 
   test('count network error → failed', () async {

@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
+import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/data/services/attendance_notify_service.dart';
 
@@ -77,6 +80,20 @@ void main() {
   test('network error at the probe: null (post nothing)', () async {
     final f = _FakeService()..probeError = _FakeService.err(null);
     expect(await f.fetch(employee: 'E1', day: day), isNull);
+  });
+
+  test('unreadable session cookies cause the worker to retry', () async {
+    const probe = '/api/method/frappe.auth.get_logged_user';
+    final f = _FakeService()
+      ..probeError = DioException(
+        requestOptions: RequestOptions(path: probe),
+        error: CookieManagerLoadException(
+          error: const FileSystemException('Cookie file is locked'),
+          stackTrace: StackTrace.current,
+        ),
+      );
+    expect(await f.fetch(employee: 'E1', day: day), isNull);
+    expect(f.paths, [probe]);
   });
 
   test('tracked employee: assignments, catalog, punches, heartbeat', () async {

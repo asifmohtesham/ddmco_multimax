@@ -8,31 +8,70 @@ import 'package:multimax/app/data/services/attendance_notify_scheduler.dart';
 import 'package:multimax/app/data/services/digest_scheduler.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 
-/// Runs the startup session check once the app is on screen, then opens
-/// home or login. Keeping this out of main() means a slow server shows a
-/// progress screen instead of holding the launch image.
+/// Runs startup verification on screen and waits for a usable session result.
 class SplashController extends GetxController {
   final AuthenticationController _authController =
       Get.find<AuthenticationController>();
 
   static const _slowAfter = Duration(seconds: 4);
 
-  /// True once the check has run long enough to deserve an explanation.
+  /// True once the initial check has run long enough to deserve an explanation.
   final isSlow = false.obs;
 
+  RxBool get isSessionVerificationPending =>
+      _authController.isSessionVerificationPending;
+  RxBool get isCheckingSession => _authController.isCheckingSession;
+
   Timer? _slowTimer;
+  Worker? _verificationWorker;
+  bool _hasNavigated = false;
 
   @override
   void onReady() {
     super.onReady();
     _slowTimer = Timer(_slowAfter, () => isSlow.value = true);
-    _openApp();
+    unawaited(_checkAtStartup());
   }
 
   @override
   void onClose() {
     _slowTimer?.cancel();
+    _verificationWorker?.dispose();
     super.onClose();
+  }
+
+  Future<void> _checkAtStartup() async {
+    await _authController.checkAuthenticationStatus();
+    _slowTimer?.cancel();
+    if (isClosed) return;
+    if (isSessionVerificationPending.value) {
+      _verificationWorker = ever(isSessionVerificationPending, (pending) {
+        if (!pending) _openVerifiedRoute();
+      });
+    } else {
+      _openVerifiedRoute();
+    }
+  }
+
+  void retry() {
+    if (_hasNavigated || isCheckingSession.value) return;
+    unawaited(_authController.checkAuthenticationStatus());
+  }
+
+  void openLogin() {
+    if (_hasNavigated || isCheckingSession.value) return;
+    _hasNavigated = true;
+    _authController.stopStartupRecheck();
+    Get.offAllNamed(AppRoutes.LOGIN);
+  }
+
+  void _openVerifiedRoute() {
+    if (_hasNavigated || isClosed) return;
+    _hasNavigated = true;
+    _selfHealSchedules();
+    Get.offAllNamed(
+      _authController.isAuthenticated.value ? AppRoutes.HOME : AppRoutes.LOGIN,
+    );
   }
 
   /// Re-arms the digest schedule on every launch (Android: WorkManager
@@ -44,14 +83,5 @@ class SplashController extends GetxController {
     if (Platform.isAndroid) {
       unawaited(AttendanceNotifyScheduler().rearm().catchError((_) {}));
     }
-  }
-
-  Future<void> _openApp() async {
-    await _authController.checkAuthenticationStatus();
-    _slowTimer?.cancel();
-    _selfHealSchedules();
-    Get.offAllNamed(
-      _authController.isAuthenticated.value ? AppRoutes.HOME : AppRoutes.LOGIN,
-    );
   }
 }

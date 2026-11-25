@@ -7,9 +7,9 @@ library;
 
 import 'dart:convert';
 
-import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
+import 'package:multimax/app/data/services/session_cookie_jar.dart';
 
 /// One doctype tracked by the digest.
 class DigestDoctype {
@@ -150,8 +150,7 @@ class DigestService {
 
   Dio _client() {
     if (_dio != null) return _dio!;
-    final jar =
-        PersistCookieJar(ignoreExpires: true, storage: FileStorage(cookieDir));
+    final jar = createSessionCookieJar(cookieDir);
     _dio = Dio(BaseOptions(
       baseUrl: baseUrl,
       connectTimeout: const Duration(seconds: 10),

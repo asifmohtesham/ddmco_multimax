@@ -25,7 +25,7 @@ enum SessionCheck {
   /// The server confirmed the session and the user profile was loaded.
   valid,
 
-  /// The server said there is no session. Local session data was cleared.
+  /// The cookie was absent or the server rejected the session.
   invalid,
 
   /// The server could not be asked, or did not give a usable answer.
@@ -46,10 +46,13 @@ class AuthenticationController extends GetxController {
   var currentUser = Rx<User?>(null);
   var isAuthenticated = false.obs;
 
+  /// A saved session may still be usable, but Splash has no profile to open.
+  final isSessionVerificationPending = false.obs;
+  final isCheckingSession = false.obs;
+
   static const _recheckInterval = Duration(seconds: 30);
 
   Timer? _recheckTimer;
-  bool _recheckRunning = false;
   Future<void>? _expiryInProgress;
 
   /// True while a logout is in flight; drives [LogoutDialog]'s busy state.
@@ -61,15 +64,14 @@ class AuthenticationController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    // The startup check is awaited by main() before runApp, so it is not
-    // started again here.
+    // Splash owns the first check so a slow server does not delay launch.
     _apiProvider.hasActiveSession = () => isAuthenticated.value;
     _apiProvider.onSessionExpired = handleSessionExpired;
   }
 
   @override
   void onClose() {
-    _recheckTimer?.cancel();
+    _stopRecheck();
     super.onClose();
   }
 
@@ -83,21 +85,22 @@ class AuthenticationController extends GetxController {
     final String loggedInUserEmail;
     try {
       final response = await _apiProvider.getLoggedUser();
-      final message = response.data?['message'];
+      final data = response.data;
+      final message = data is Map ? data['message'] : null;
       if (message is! String || message.isEmpty) {
         return SessionCheck.unverified;
       }
       // Frappe returns "Guest" when the session has expired. Treat this as
       // unauthenticated — do not proceed with a Guest user or prefetch.
       if (message == 'Guest') {
-        await _clearSessionAndLocalData();
+        await _invalidateSession();
         return SessionCheck.invalid;
       }
       loggedInUserEmail = message;
     } on DioException catch (e) {
       final status = e.response?.statusCode;
       if (status == 401 || status == 403) {
-        await _clearSessionAndLocalData();
+        await _invalidateSession();
         return SessionCheck.invalid;
       }
       printError(info: 'Could not verify session: ${e.type.name}');
@@ -142,12 +145,12 @@ class AuthenticationController extends GetxController {
       }
       // -----------------------------
 
-      currentUser.value = user;
-      isAuthenticated.value = true;
-
       if (Get.isRegistered<StorageService>()) {
         await Get.find<StorageService>().saveUser(user);
       }
+
+      currentUser.value = user;
+      isAuthenticated.value = true;
 
       // Arm the scheduled digest for the user who just signed in.
       if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
@@ -205,31 +208,63 @@ class AuthenticationController extends GetxController {
   }
 
   Future<void> checkAuthenticationStatus() async {
+    if (isCheckingSession.value || isClosed) return;
+    isCheckingSession.value = true;
+    _stopRecheck();
+    var result = SessionCheck.unverified;
     try {
-      bool hasSession = await _apiProvider.hasSessionCookies();
-      if (hasSession) {
-        if (Get.isRegistered<StorageService>()) {
-          final storedUser = Get.find<StorageService>().getUser();
-          if (storedUser != null) {
-            currentUser.value = storedUser;
-            isAuthenticated.value = true;
-          }
-        }
-        // Offline policy: a session the server could not confirm stays
-        // signed in only when a cached user exists. Either way the cookie
-        // is kept, and the check repeats until the server answers.
-        final result = await fetchUserDetails();
-        if (result == SessionCheck.unverified && isAuthenticated.value) {
-          _startRecheck();
-        }
-      } else {
-        await _clearSessionAndLocalData();
-      }
+      result = await _checkStoredSession();
     } catch (e) {
-      printError(info: 'Error checking auth status: $e');
-      await _clearSessionAndLocalData();
+      printError(info: 'Could not check saved session: ${e.runtimeType}');
+    } finally {
+      final unverified = result == SessionCheck.unverified;
+      isSessionVerificationPending.value = unverified && !isAuthenticated.value;
+      if (unverified && !isClosed) {
+        _recheckTimer = Timer(_recheckInterval, _recheck);
+      }
+      isCheckingSession.value = false;
     }
   }
+
+  Future<SessionCheck> _checkStoredSession() async {
+    bool? hasSession;
+    try {
+      hasSession = await _apiProvider.hasSessionCookies();
+    } catch (e) {
+      printError(info: 'Could not read session cookies: ${e.runtimeType}');
+    }
+    if (hasSession == false) {
+      await _invalidateSession();
+      return SessionCheck.invalid;
+    }
+
+    await _restoreCachedUser();
+    // An unreadable jar cannot establish whether the cookie would be sent.
+    if (hasSession == null) return SessionCheck.unverified;
+    return fetchUserDetails();
+  }
+
+  Future<void> _restoreCachedUser() async {
+    if (isAuthenticated.value || !Get.isRegistered<StorageService>()) return;
+    final storage = Get.find<StorageService>();
+    try {
+      final user = storage.getUser();
+      if (user != null) {
+        currentUser.value = user;
+        isAuthenticated.value = true;
+      }
+    } catch (e) {
+      printError(info: 'Could not read cached profile: ${e.runtimeType}');
+      try {
+        await storage.clearCachedUser();
+      } catch (error) {
+        printError(info: 'Could not remove cached profile: ${error.runtimeType}');
+      }
+    }
+  }
+
+  /// Stops the scheduled check when the user chooses to enter credentials.
+  void stopStartupRecheck() => _stopRecheck();
 
   /// Re-checks the session while the app is in use. Unlike
   /// [fetchUserDetails], a rejected session also sends the user to login.
@@ -251,8 +286,17 @@ class AuthenticationController extends GetxController {
   }
 
   Future<void> _endExpiredSession() async {
-    await _clearSessionAndLocalData();
+    await _invalidateSession();
     _showLoginAfterExpiry();
+  }
+
+  Future<void> _invalidateSession() async {
+    try {
+      await _clearSessionAndLocalData();
+    } catch (e) {
+      printError(info: 'Could not clear saved session: ${e.runtimeType}');
+      _forgetSession();
+    }
   }
 
   void _showLoginAfterExpiry() {
@@ -265,30 +309,26 @@ class AuthenticationController extends GetxController {
     );
   }
 
-  void _startRecheck() {
-    _recheckTimer?.cancel();
-    _recheckTimer = Timer.periodic(_recheckInterval, (_) => _recheck());
-  }
-
   void _stopRecheck() {
     _recheckTimer?.cancel();
     _recheckTimer = null;
   }
 
   Future<void> _recheck() async {
-    if (_recheckRunning) return;
-    _recheckRunning = true;
-    try {
-      final result = await revalidateSession();
-      if (result != SessionCheck.unverified) _stopRecheck();
-    } finally {
-      _recheckRunning = false;
+    final wasSignedIn = isAuthenticated.value;
+    await checkAuthenticationStatus();
+    if (wasSignedIn &&
+        !isAuthenticated.value &&
+        !isSessionVerificationPending.value) {
+      _showLoginAfterExpiry();
     }
   }
 
   /// Opens the app for [user] after the server accepted their credentials.
   /// The caller has already run [fetchUserDetails]; it is not repeated here.
   void processSuccessfulLogin(User user) {
+    _stopRecheck();
+    isSessionVerificationPending.value = false;
     currentUser.value ??= user;
     isAuthenticated.value = true;
     Get.offAllNamed(AppRoutes.HOME);
@@ -357,10 +397,17 @@ class AuthenticationController extends GetxController {
     if (!kIsWeb && Platform.isIOS) {
       await cancelIosDigestReminders();
     }
-    await _apiProvider.clearSessionCookies();
-    if (Get.isRegistered<StorageService>()) {
-      await Get.find<StorageService>().clearUserData();
+    try {
+      await _apiProvider.clearSessionCookies();
+    } finally {
+      if (Get.isRegistered<StorageService>()) {
+        await Get.find<StorageService>().clearUserData();
+      }
     }
+    _forgetSession();
+  }
+
+  void _forgetSession() {
     // Sign out before clearing the cache: clearing notifies every mounted
     // DocTypeGuard, and they must find no session to probe.
     currentUser.value = null;

@@ -191,6 +191,21 @@ class FakeStorageService extends Fake implements StorageService {
       String user, List<Map<String, dynamic>> menu) async {}
 }
 
+/// In-memory GetStorage box for tests that exercise the real StorageService.
+class FakeStorageBox {
+  final values = <String, dynamic>{};
+  final removedKeys = <String>[];
+
+  T? read<T>(String key) => values[key] as T?;
+
+  Future<void> write(String key, dynamic value) async => values[key] = value;
+
+  Future<void> remove(String key) async {
+    removedKeys.add(key);
+    values.remove(key);
+  }
+}
+
 // Extends GetxService (not Fake) because Get.put drives the GetX lifecycle
 // hooks on anything that is a GetLifeCycle.
 class FakePermissionService extends GetxService implements PermissionService {

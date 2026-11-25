@@ -1,18 +1,63 @@
 // test/unit/authentication_controller_test.dart
 import 'dart:async';
+import 'dart:io' show Directory, File, FileSystemException;
 
+import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
+import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart' hide Response;
+import 'package:get/get.dart' hide FormData, Response;
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
+import 'package:multimax/app/data/services/session_cookie_jar.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 
 import '../helpers/auth_fakes.dart';
+
+class _FailingRemoveBox extends FakeStorageBox {
+  @override
+  Future<void> remove(String key) async {
+    throw const FileSystemException('cache is read only');
+  }
+}
+
+class _FailingClearCookiesApi extends FakeApiProvider {
+  @override
+  Future<void> clearSessionCookies() async {
+    clearCookieCalls++;
+    throw const FileSystemException('cookie files are read only');
+  }
+}
+
+class _LoginServer implements HttpClientAdapter {
+  final requests = <RequestOptions>[];
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    requests.add(options);
+    await requestStream?.drain<void>();
+    return ResponseBody.fromString(
+      '{"message":"Logged In"}',
+      200,
+      headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+        'set-cookie': ['sid=new-session; Path=/; HttpOnly'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
 
 void main() {
   late FakeApiProvider api;
@@ -42,6 +87,12 @@ void main() {
     return AuthenticationController()
       ..currentUser.value = cachedUser()
       ..isAuthenticated.value = true;
+  }
+
+  StorageService useStorageBox(FakeStorageBox box) {
+    final service = StorageService.withStorage(box);
+    Get.replace<StorageService>(service);
+    return service;
   }
 
   group('fetchUserDetails — server cannot be reached', () {
@@ -96,6 +147,8 @@ void main() {
 
         expect(api.clearCookieCalls, 1);
         expect(auth.isAuthenticated.value, isFalse);
+        expect(auth.currentUser.value, isNull);
+        expect(storage.stored, isNull);
       });
     }
   });
@@ -220,18 +273,49 @@ void main() {
 
       expect(auth.isAuthenticated.value, isTrue);
       expect(auth.currentUser.value?.email, kTestEmail);
+      expect(auth.isSessionVerificationPending.value, isFalse);
       expect(api.clearCookieCalls, 0);
     });
 
-    test('shows login but keeps the cookie when offline with no cached user',
+    test('replaces a corrupt cached profile and keeps the session cookie',
         () async {
-      api.onGetLoggedUser = () async => throw networkError();
+      final box = FakeStorageBox()
+        ..values['currentUser'] = {'name': kTestEmail, 'roles': 42}
+        ..values['apiToken'] = 'saved token'
+        ..values['baseUrl'] = 'https://erp.example.com';
+      final realStorage = useStorageBox(box);
+      api.onGetLoggedUser = () async {
+        expect(box.values.containsKey('currentUser'), isFalse);
+        return jsonResponse({'message': kTestEmail});
+      };
       final auth = AuthenticationController();
-
-      await auth.checkAuthenticationStatus();
       addTearDown(auth.onClose);
 
-      expect(auth.isAuthenticated.value, isFalse);
+      await auth.checkAuthenticationStatus();
+
+      expect(auth.isAuthenticated.value, isTrue);
+      expect(auth.isSessionVerificationPending.value, isFalse);
+      expect(auth.currentUser.value?.email, kTestEmail);
+      expect(realStorage.getUser()?.email, kTestEmail);
+      expect(box.removedKeys, ['currentUser']);
+      expect(realStorage.getToken(), 'saved token');
+      expect(realStorage.getBaseUrl(), 'https://erp.example.com');
+      expect(api.hasCookies, isTrue);
+      expect(api.clearCookieCalls, 0);
+    });
+
+    test('verifies the session even if the corrupt profile cannot be removed',
+        () async {
+      final box = _FailingRemoveBox()..values['currentUser'] = 'bad profile';
+      final realStorage = useStorageBox(box);
+      final auth = AuthenticationController();
+      addTearDown(auth.onClose);
+
+      await auth.checkAuthenticationStatus();
+
+      expect(api.identityChecks, 1);
+      expect(auth.isAuthenticated.value, isTrue);
+      expect(realStorage.getUser()?.email, kTestEmail);
       expect(api.clearCookieCalls, 0);
     });
 
@@ -243,11 +327,301 @@ void main() {
       await auth.checkAuthenticationStatus();
 
       expect(auth.isAuthenticated.value, isFalse);
+      expect(auth.isSessionVerificationPending.value, isFalse);
+      expect(api.identityChecks, 0);
+      expect(api.clearCookieCalls, 1);
       expect(storage.stored, isNull);
+    });
+
+    test('signs out after Guest even if deleting the cookie fails', () async {
+      storage.stored = cachedUser();
+      final failingApi = _FailingClearCookiesApi()
+        ..onGetLoggedUser = () async => jsonResponse({'message': 'Guest'});
+      Get.replace<ApiProvider>(failingApi);
+      final auth = AuthenticationController();
+      addTearDown(auth.onClose);
+
+      await auth.checkAuthenticationStatus();
+
+      expect(failingApi.clearCookieCalls, 1);
+      expect(storage.stored, isNull);
+      expect(auth.currentUser.value, isNull);
+      expect(auth.isAuthenticated.value, isFalse);
+      expect(auth.isSessionVerificationPending.value, isFalse);
+    });
+  });
+
+  group('cookie files at app start', () {
+    const host = 'erp.example.com';
+    const baseUrl = 'https://$host';
+    const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
+    late Directory dir;
+    late PersistCookieJar seededJar;
+    late File hostFile;
+    late List<int> originalHostBytes;
+    late StorageService realStorage;
+
+    setUp(() async {
+      dir = await Directory.systemTemp.createTemp('multimax_auth_cookies_');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(pathProvider, (_) async => dir.path);
+      addTearDown(() => messenger.setMockMethodCallHandler(pathProvider, null));
+
+      realStorage = useStorageBox(FakeStorageBox());
+      await realStorage.saveBaseUrl(baseUrl);
+      await realStorage.saveToken('saved token');
+
+      seededJar = PersistCookieJar(
+        ignoreExpires: true,
+        storage: FileStorage('${dir.path}/.cookies/'),
+      );
+      await seededJar.saveFromResponse(
+        Uri.parse(baseUrl),
+        [Cookie('sid', 'saved')],
+      );
+      hostFile = File('${dir.path}/.cookies/ie1_ps1/$host');
+      originalHostBytes = await hostFile.readAsBytes();
+    });
+
+    for (final fileName in [host, '.index', '.domains']) {
+      test('signs out when the only SID depends on malformed $fileName',
+          () async {
+        if (fileName == '.domains') {
+          await seededJar.deleteAll();
+          await seededJar.saveFromResponse(
+            Uri.parse(baseUrl),
+            [Cookie('sid', 'saved')..domain = host],
+          );
+        }
+        await realStorage.saveUser(cachedUser());
+        final malformedFile = File('${hostFile.parent.path}/$fileName');
+        expect(await malformedFile.exists(), isTrue);
+        await malformedFile.writeAsString('{');
+        final realApi = ApiProvider();
+        await realApi.initDio();
+        Get.replace<ApiProvider>(realApi);
+        final auth = AuthenticationController();
+        addTearDown(auth.onClose);
+
+        await auth.checkAuthenticationStatus();
+
+        expect(auth.isAuthenticated.value, isFalse);
+        expect(auth.isSessionVerificationPending.value, isFalse);
+        expect(auth.currentUser.value, isNull);
+        expect(await malformedFile.exists(), isFalse);
+        expect(realStorage.getUser(), isNull);
+        expect(realStorage.getToken(), isNull);
+        expect(await realApi.hasSessionCookies(), isFalse);
+      });
+    }
+
+    CookieManager cookieManager(ApiProvider provider) =>
+        provider.dio.interceptors.whereType<CookieManager>().single;
+
+    PersistCookieJar unreadableIndex(String path) =>
+        createSessionCookieJar(path, readFile: (file) async {
+          if (file.path.endsWith('.index')) {
+            throw FileSystemException('Cookie index is locked', file.path);
+          }
+          return file.readAsBytes();
+        });
+
+    test('falls back to deleting the directory when deleteAll cannot read it',
+        () async {
+      var jarsCreated = 0;
+      final realApi = ApiProvider(
+        cookieJarFactory: (path) => ++jarsCreated == 1
+            ? unreadableIndex(path)
+            : createSessionCookieJar(path),
+      );
+      await realApi.initDio();
+      final originalManager = cookieManager(realApi);
+      final cookieDirectory = Directory('${dir.path}/.cookies');
+
+      await expectLater(
+        realApi.hasSessionCookies(),
+        throwsA(isA<FileSystemException>()),
+      );
+      expect(await hostFile.readAsBytes(), originalHostBytes);
+      await Future.wait([
+        realApi.clearSessionCookies(),
+        realApi.clearSessionCookies(),
+      ]);
+
+      expect(await cookieDirectory.exists(), isFalse);
+      expect(jarsCreated, 2);
+      expect(cookieManager(realApi), isNot(same(originalManager)));
+      expect(await realApi.hasSessionCookies(), isFalse);
+      await cookieManager(realApi).cookieJar.saveFromResponse(
+        Uri.parse(baseUrl),
+        [Cookie('sid', 'replacement')],
+      );
+      expect(await realApi.getSessionCookieHeader(), 'sid=replacement');
+    });
+
+    for (final replacementReadable in [true, false]) {
+      test('retries login once when the cookie index is unreadable '
+          '(replacement readable: $replacementReadable)', () async {
+        var jarsCreated = 0;
+        final realApi = ApiProvider(cookieJarFactory: (path) {
+          if (++jarsCreated > 1 && replacementReadable) {
+            return createSessionCookieJar(path);
+          }
+          return unreadableIndex(path);
+        });
+        await realApi.initDio();
+        final network = _LoginServer();
+        realApi.dio.httpClientAdapter = network;
+        var attempts = 0;
+        realApi.dio.interceptors.insert(0, InterceptorsWrapper(
+          onRequest: (request, handler) {
+            attempts++;
+            handler.next(request);
+          },
+        ));
+
+        final login = realApi.loginWithFrappe(kTestEmail, ' password ');
+        if (replacementReadable) {
+          expect((await login).data['message'], 'Logged In');
+          final sent = network.requests.single;
+          expect(sent.path, '/api/method/login');
+          expect(sent.headers['cookie'], isNull);
+          expect(Map.fromEntries((sent.data as FormData).fields), {
+            'usr': kTestEmail,
+            'pwd': ' password ',
+          });
+          expect(await realApi.getSessionCookieHeader(), 'sid=new-session');
+        } else {
+          await expectLater(
+            login,
+            throwsA(isA<DioException>().having((e) => e.error, 'cause',
+                isA<CookieManagerLoadException>())),
+          );
+          expect(network.requests, isEmpty);
+        }
+        expect(jarsCreated, 2);
+        expect(attempts, 2);
+      });
+    }
+
+    test('preserves the cookie when the selected URL is empty', () async {
+      final realApi = ApiProvider();
+      await realApi.initDio();
+      realApi.setBaseUrl('');
+      Get.replace<ApiProvider>(realApi);
+      final auth = AuthenticationController();
+      addTearDown(auth.onClose);
+
+      await auth.checkAuthenticationStatus();
+
+      expect(auth.isSessionVerificationPending.value, isTrue);
+      expect(await hostFile.readAsBytes(), originalHostBytes);
+      expect(realStorage.getToken(), 'saved token');
+
+      realApi.setBaseUrl(baseUrl);
+      expect(await realApi.hasSessionCookies(), isTrue);
+    });
+
+    test('retries cookie initialization after a local directory error',
+        () async {
+      var directoryAvailable = false;
+      var directoryRequests = 0;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(pathProvider, (_) async {
+        directoryRequests++;
+        if (!directoryAvailable) {
+          throw PlatformException(code: 'directory_unavailable');
+        }
+        return dir.path;
+      });
+      final realApi = ApiProvider();
+      Get.replace<ApiProvider>(realApi);
+      final auth = AuthenticationController();
+      addTearDown(auth.onClose);
+
+      await auth.checkAuthenticationStatus();
+
+      expect(auth.isSessionVerificationPending.value, isTrue);
+      expect(await hostFile.readAsBytes(), originalHostBytes);
+      expect(realStorage.getToken(), 'saved token');
+      expect(directoryRequests, 1);
+
+      directoryAvailable = true;
+      expect(await realApi.hasSessionCookies(), isTrue);
+      expect(directoryRequests, 2);
     });
   });
 
   group('recovery after an unverified start', () {
+    final transientAnswers = <String, Future<Response> Function()>{
+      'a timeout': () async => throw networkError(),
+      'a 503': () async => throw httpError(503),
+      'a malformed answer': () async => jsonResponse({'message': []}),
+    };
+    for (final answer in transientAnswers.entries) {
+      testWidgets('recovers without a cached profile after ${answer.key}',
+          (tester) async {
+        api.onGetLoggedUser = answer.value;
+        final auth = AuthenticationController();
+        addTearDown(auth.onClose);
+
+        await auth.checkAuthenticationStatus();
+
+        expect(auth.isAuthenticated.value, isFalse);
+        expect(auth.isSessionVerificationPending.value, isTrue);
+        expect(auth.isCheckingSession.value, isFalse);
+        expect(api.identityChecks, 1);
+        expect(api.hasCookies, isTrue);
+        expect(storage.stored, isNull);
+
+        api.onGetLoggedUser = () async => jsonResponse({'message': kTestEmail});
+        await tester.pump(const Duration(seconds: 29));
+        expect(api.identityChecks, 1);
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pump();
+
+        expect(api.identityChecks, 2);
+        expect(auth.isAuthenticated.value, isTrue);
+        expect(auth.isSessionVerificationPending.value, isFalse);
+        expect(auth.currentUser.value?.email, kTestEmail);
+        expect(storage.stored?.email, kTestEmail);
+        expect(api.clearCookieCalls, 0);
+
+        await tester.pump(const Duration(minutes: 1));
+        expect(api.identityChecks, 2);
+      });
+    }
+
+    final rejectionAnswers = <String, Future<Response> Function()>{
+      'Guest': () async => jsonResponse({'message': 'Guest'}),
+      '401': () async => throw httpError(401),
+    };
+    for (final answer in rejectionAnswers.entries) {
+      testWidgets('ends the pending session on ${answer.key}', (tester) async {
+        api.onGetLoggedUser = () async => throw networkError();
+        final auth = AuthenticationController();
+        addTearDown(auth.onClose);
+        await auth.checkAuthenticationStatus();
+        expect(auth.isSessionVerificationPending.value, isTrue);
+
+        api.onGetLoggedUser = answer.value;
+        await tester.pump(const Duration(seconds: 30));
+        await tester.pump();
+
+        expect(auth.isAuthenticated.value, isFalse);
+        expect(auth.isSessionVerificationPending.value, isFalse);
+        expect(auth.currentUser.value, isNull);
+        expect(storage.stored, isNull);
+        expect(api.clearCookieCalls, 1);
+        expect(api.hasCookies, isFalse);
+
+        await tester.pump(const Duration(minutes: 1));
+        expect(api.identityChecks, 2);
+      });
+    }
+
     testWidgets('re-checks until the server confirms, then stops',
         (tester) async {
       var identityChecks = 0;

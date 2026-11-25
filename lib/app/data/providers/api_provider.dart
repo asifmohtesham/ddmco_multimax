@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Directory, FileSystemException, PathNotFoundException;
 import 'dart:typed_data';
 import 'package:path/path.dart' as p;
 import 'package:dio/dio.dart';
@@ -14,6 +16,7 @@ import 'package:multimax/app/data/providers/safe_log_interceptor.dart';
 import 'package:multimax/app/data/providers/session_expiry_interceptor.dart';
 import 'package:multimax/app/data/providers/csrf_interceptor.dart';
 import 'package:multimax/app/data/services/database_service.dart';
+import 'package:multimax/app/data/services/session_cookie_jar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/global_search_service.dart';
@@ -29,8 +32,12 @@ class ApiProvider {
   static const String defaultBaseUrl = "https://erp.domain.com";
 
   bool _dioInitialised = false;
+  Future<void>? _dioInitialization;
+  Future<void>? _cookieCleanup;
+  final PersistCookieJar Function(String directory) _createCookieJar;
   late Dio _dio;
-  late CookieJar _cookieJar;
+  late String _cookiePath;
+  late CookieManager _cookieManager;
   String _baseUrl = defaultBaseUrl;
 
   String get baseUrl => _baseUrl;
@@ -183,8 +190,11 @@ class ApiProvider {
   }
   // ──────────────────────────────────────────────────────────────────────────
 
-  ApiProvider() {
-    _initDio();
+  ApiProvider({PersistCookieJar Function(String directory)? cookieJarFactory})
+      : _createCookieJar = cookieJarFactory ?? createSessionCookieJar {
+    // Prewarm the client. A request awaiting initialization still receives
+    // any local error and can retry.
+    unawaited(_initDio().catchError((Object _) {}));
   }
 
   void setBaseUrl(String url) {
@@ -200,7 +210,11 @@ class ApiProvider {
 
   Future<void> _initDio() async {
     if (_dioInitialised) return;
+    await (_dioInitialization ??=
+        _createDio().whenComplete(() => _dioInitialization = null));
+  }
 
+  Future<void> _createDio() async {
     // Load URL from SQLite Database
     if (Get.isRegistered<DatabaseService>()) {
       final dbService = Get.find<DatabaseService>();
@@ -217,14 +231,14 @@ class ApiProvider {
       }
     }
     final appSupportDir = await getApplicationSupportDirectory();
-    final cookiePath = '${appSupportDir.path}/.cookies/';
-    _cookieJar = PersistCookieJar(ignoreExpires: true, storage: FileStorage(cookiePath));
+    _cookiePath = p.join(appSupportDir.path, '.cookies');
+    _cookieManager = CookieManager(_createCookieJar(_cookiePath));
     _dio = Dio(BaseOptions(
       baseUrl: _baseUrl,
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 20),
     ));
-    _dio.interceptors.add(CookieManager(_cookieJar));
+    _dio.interceptors.add(_cookieManager);
     _dio.interceptors.add(CsrfInterceptor(dio: _dio));
     _dio.interceptors.add(SessionExpiryInterceptor(
       dio: _dio,
@@ -2501,11 +2515,26 @@ class ApiProvider {
     _rackWarehouseSession++;
     clearDeskHtml();
     if (!_dioInitialised) await _initDio();
+
+    Future<Response> sendCredentials() => _dio.post(
+          '/api/method/login',
+          data: FormData.fromMap({'usr': username, 'pwd': password}),
+          options: SessionExpiryInterceptor.unchecked(
+            Options(contentType: Headers.formUrlEncodedContentType),
+          ),
+        );
+
     try {
-      final formData = FormData.fromMap({'usr': username, 'pwd': password});
-      return await _dio.post('/api/method/login', data: formData, options: SessionExpiryInterceptor.unchecked(Options(contentType: Headers.formUrlEncodedContentType)));
-    } on DioException {
-      rethrow;
+      return await sendCredentials();
+    } on DioException catch (error) {
+      final cause = error.error;
+      if (cause is! CookieManagerLoadException ||
+          cause.error is! FileSystemException) {
+        rethrow;
+      }
+      // CookieManager rejected the request before sending the credentials.
+      await clearSessionCookies();
+      return sendCredentials();
     }
   }
   // ── Desk boot page ────────────────────────────────────────────────────────
@@ -2567,19 +2596,42 @@ class ApiProvider {
 
   Future<bool> hasSessionCookies() async {
     if (!_dioInitialised) await _initDio();
-    final cookies = await _cookieJar.loadForRequest(Uri.parse(_baseUrl));
+    final server = Uri.parse(_baseUrl);
+    if ((server.scheme != 'https' && server.scheme != 'http') ||
+        server.host.isEmpty) {
+      throw const FormatException('Invalid server URL');
+    }
+    final cookies = await _cookieManager.cookieJar.loadForRequest(server);
     return cookies.any((cookie) => cookie.name == 'sid');
   }
-  Future<void> clearSessionCookies() async {
+
+  Future<void> clearSessionCookies() => _cookieCleanup ??=
+      _clearSessionCookies().whenComplete(() => _cookieCleanup = null);
+
+  Future<void> _clearSessionCookies() async {
     _rackWarehouseSession++;
     clearDeskHtml();
     if (!_dioInitialised) await _initDio();
-    await _cookieJar.deleteAll();
+    try {
+      await _cookieManager.cookieJar.deleteAll();
+    } catch (_) {
+      // deleteAll initializes the jar first, so an unreadable index can block it.
+      try {
+        await Directory(_cookiePath).delete(recursive: true);
+      } on PathNotFoundException {
+        // Another caller already removed the persisted cookies.
+      }
+      final replacement = CookieManager(_createCookieJar(_cookiePath));
+      final index = _dio.interceptors.indexOf(_cookieManager);
+      _dio.interceptors[index] = replacement;
+      _cookieManager = replacement;
+    }
   }
 
   Future<String> getSessionCookieHeader() async {
     if (!_dioInitialised) await _initDio();
-    final cookies = await _cookieJar.loadForRequest(Uri.parse(_baseUrl));
+    final cookies =
+        await _cookieManager.cookieJar.loadForRequest(Uri.parse(_baseUrl));
     return cookies.map((c) => '${c.name}=${c.value}').join('; ');
   }
 

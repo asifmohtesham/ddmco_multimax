@@ -76,8 +76,12 @@ class StorageService {
     return null;
   }
 
-  Future<void> clearUserData() async {
+  Future<void> clearCachedUser() async {
     await _box.remove(_userKey);
+  }
+
+  Future<void> clearUserData() async {
+    await clearCachedUser();
     await _box.remove(_tokenKey);
     printInfo(info: "User data cleared from local storage.");
   }
