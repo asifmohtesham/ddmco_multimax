@@ -248,20 +248,26 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
                             ),
                             const SizedBox(height: 6),
                             Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 // The inner GestureDetector wins the gesture
                                 // arena over the ListTile's InkWell, so a tap
                                 // on the pill filters instead of navigating.
-                                Tooltip(
-                                  message: 'Filter by ${upload.status}',
-                                  child: GestureDetector(
-                                    behavior: HitTestBehavior.opaque,
-                                    onTap: () => controller
-                                        .toggleStatusFilter(upload.status),
-                                    child: StatusPill(status: upload.status),
+                                Flexible(
+                                  child: Tooltip(
+                                    message: 'Filter by ${upload.status}',
+                                    child: GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onTap: () => controller.toggleStatusFilter(
+                                        upload.status,
+                                      ),
+                                      child: StatusPill.posUpload(
+                                        status: upload.status,
+                                      ),
+                                    ),
                                   ),
                                 ),
-                                const Spacer(),
+                                const SizedBox(width: 8),
                                 Text(
                                   FormattingHelper.getRelativeTime(
                                       upload.modified),

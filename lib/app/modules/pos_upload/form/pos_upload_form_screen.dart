@@ -294,11 +294,6 @@ class _DetailsTabState extends State<_DetailsTab> {
   late final TextEditingController _qtyCtrl;
   late final Worker _posUploadWorker;
 
-  /// All possible status values a POS Upload can have — the shared
-  /// [PosUpload.statusOptions] list, so the form dropdown, list quick-filter
-  /// bar and filter sheet can never drift apart.
-  static const _statusOptions = PosUpload.statusOptions;
-
   @override
   void initState() {
     super.initState();
@@ -335,13 +330,9 @@ class _DetailsTabState extends State<_DetailsTab> {
       final upload = ctrl.posUpload.value;
       if (upload == null) return const SizedBox.shrink();
 
-      // Ensure the current status is always present in the list so the
-      // DropdownButtonFormField never throws an assertion error for an
-      // unexpected value coming from the server (e.g. "Completed").
-      final statusItems = {
-        ...?(_statusOptions.contains(upload.status) ? null : [upload.status]),
-        ..._statusOptions,
-      }.toList();
+      const manualStatuses = PosUploadFormController.manualStatusOptions;
+      final canEditStatus = ctrl.canEditStatus;
+      final returnReason = upload.returnReason;
 
       // ── Linked-doc banner ─────────────────────────────────────────────────
       // Status ramp inks (x700 light / x300 dark) — the x500 bases fall
@@ -443,46 +434,62 @@ class _DetailsTabState extends State<_DetailsTab> {
               ),
               const SizedBox(height: 16),
 
-              // Status dropdown — value is always guaranteed to be in statusItems.
-              // Editable only when the server confirmed document-level write
-              // permission (fail-closed); everyone else sees it read-only.
-              // The key re-syncs the field to the authoritative status after
-              // a reload or a failed update.
-              DropdownButtonFormField<String>(
-                key: ValueKey(
-                    'status-${upload.status}-${ctrl.statusEditRevision.value}'),
-                // ignore: deprecated_member_use
-                value: upload.status,
-                isExpanded: true,
-                decoration: InputDecoration(
-                  labelText: 'Status',
-                  border: const OutlineInputBorder(),
-                  filled: !ctrl.canEditStatus,
-                  fillColor: cs.surfaceContainerHighest,
-                  suffixIcon: ctrl.isSaving.value
-                      ? const Padding(
-                          padding: EdgeInsets.all(14),
-                          child: SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+              if (manualStatuses.contains(upload.status))
+                // The key re-syncs the field to the authoritative status after
+                // a reload or a failed update.
+                DropdownButtonFormField<String>(
+                  key: ValueKey(
+                    'status-${upload.status}-${ctrl.statusEditRevision.value}',
+                  ),
+                  // ignore: deprecated_member_use
+                  value: upload.status,
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    labelText: 'Status',
+                    border: const OutlineInputBorder(),
+                    filled: !canEditStatus,
+                    fillColor: cs.surfaceContainerHighest,
+                    suffixIcon: ctrl.isSaving.value
+                        ? const Padding(
+                            padding: EdgeInsets.all(14),
+                            child: SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        : canEditStatus
+                        ? null
+                        : Icon(
+                            Icons.lock,
+                            size: 16,
+                            color: context.scheme.textSubtle,
                           ),
-                        )
-                      : ctrl.canEditStatus
-                          ? null
-                          : const Icon(Icons.lock,
-                              size: 16, color: Colors.grey),
+                  ),
+                  items: manualStatuses
+                      .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                      .toList(),
+                  onChanged: canEditStatus
+                      ? (v) {
+                          if (v != null) ctrl.updateStatus(v);
+                        }
+                      : null,
+                )
+              else
+                _ReadOnlyField(
+                  key: ValueKey('read-only-status-${upload.status}'),
+                  label: 'Status',
+                  value: upload.status,
                 ),
-                items: statusItems
-                    .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                    .toList(),
-                onChanged: ctrl.canEditStatus
-                    ? (v) {
-                        if (v != null) ctrl.updateStatus(v);
-                      }
-                    : null,
-              ),
               const SizedBox(height: 16),
+              if (returnReason != null) ...[
+                _ReadOnlyField(
+                  key: ValueKey('return-reason-$returnReason'),
+                  label: 'Return Reason',
+                  value: returnReason,
+                ),
+                const SizedBox(height: 16),
+              ],
 
               // Fix #14 — formatted amounts
               TextFormField(
@@ -1374,7 +1381,7 @@ class _Stat extends StatelessWidget {
 class _ReadOnlyField extends StatelessWidget {
   final String label;
   final String value;
-  const _ReadOnlyField({required this.label, required this.value});
+  const _ReadOnlyField({super.key, required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {

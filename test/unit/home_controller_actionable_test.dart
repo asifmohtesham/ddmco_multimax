@@ -102,7 +102,13 @@ class _FakeApiProvider extends ApiProvider {
     listQueries.add((doctype: doctype, filters: filters));
     // Capture the rows BEFORE awaiting the gate, so a later map mutation
     // can't change what an already-issued request resolves to.
-    final rows = listRows[doctype] ?? const <Map<String, dynamic>>[];
+    var rows = listRows[doctype] ?? const <Map<String, dynamic>>[];
+    if (filters?['status'] case final List status
+        when doctype == 'POS Upload') {
+      expect(status.first, 'in');
+      final allowed = status.last as List;
+      rows = rows.where((row) => allowed.contains(row['status'])).toList();
+    }
     final gate = listGates[doctype];
     if (gate != null) await gate.future;
     if (throwingDoctypes.contains(doctype)) {
@@ -202,6 +208,26 @@ void main() {
   });
 
   tearDown(() => Get.deleteAll(force: true));
+
+  test('fulfillment queue excludes all three delivery stages', () async {
+    api.listRows['POS Upload'] = [
+      for (final status in [
+        'Pending',
+        'In Progress',
+        'To Deliver',
+        'Out for Delivery',
+        'Delivered',
+      ])
+        {'name': 'ML-$status', 'status': status},
+    ];
+
+    await controller.fetchFulfillmentPosUploads();
+
+    expect(controller.fulfillmentPosUploads.map((upload) => upload.status), [
+      'Pending',
+      'In Progress',
+    ]);
+  });
 
   // GetX runs onClose synchronously when the route is disposed, while the
   // Dashboard can still rebuild once more; its scan box then re-attaches to

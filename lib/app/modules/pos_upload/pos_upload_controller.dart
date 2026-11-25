@@ -121,6 +121,12 @@ class PosUploadController extends GetxController {
 
     try {
       final Map<String, dynamic> queryFilters = Map.from(activeFilters);
+      if (queryFilters['status'] == 'Pending') {
+        queryFilters['status'] = [
+          'in',
+          ['Pending', ''],
+        ];
+      }
       if (searchQuery.value.isNotEmpty) {
         queryFilters['name'] = ['like', '%${searchQuery.value}%'];
       }

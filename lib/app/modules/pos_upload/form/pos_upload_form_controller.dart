@@ -410,6 +410,13 @@ List<int> buildDeliveryNoteExcelBytes(DeliveryNoteExcelParams p) {
 
 class PosUploadFormController extends GetxController
     with OptimisticLockingMixin, RealtimeSyncMixin {
+  static const manualStatusOptions = [
+    'Pending',
+    'In Progress',
+    'Completed',
+    'Cancelled',
+  ];
+
   final PosUploadProvider _provider = Get.find<PosUploadProvider>();
   final DeliveryNoteProvider _dnProvider = Get.find<DeliveryNoteProvider>();
   final StockEntryProvider _seProvider = Get.find<StockEntryProvider>();
@@ -984,7 +991,9 @@ class PosUploadFormController extends GetxController
   }) =>
       canWritePerm && !isSaving && !isStale;
 
-  bool get canEditStatus => computeCanEditStatus(
+  bool get canEditStatus =>
+      manualStatusOptions.contains(posUpload.value?.status) &&
+      computeCanEditStatus(
         canWritePerm: canWriteStatus.value,
         isSaving: isSaving.value,
         isStale: isStale.value,
@@ -997,6 +1006,10 @@ class PosUploadFormController extends GetxController
   Future<void> updateStatus(String newStatus) async {
     final upload = posUpload.value;
     if (upload == null || newStatus == upload.status) return;
+    if (!manualStatusOptions.contains(upload.status) ||
+        !manualStatusOptions.contains(newStatus)) {
+      return;
+    }
     if (isSaving.value) return;
     if (checkStaleAndBlock()) {
       statusEditRevision.value++;

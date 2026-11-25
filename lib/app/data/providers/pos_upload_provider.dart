@@ -9,6 +9,7 @@ class PosUploadProvider {
     int limit = 50,
     int limitStart = 0,
     Map<String, dynamic>? filters,
+    List<List<dynamic>>? orFilterTuples,
     String orderBy = 'modified desc',
   }) async {
     // POS Upload specific logic to exclude cancelled/deleted if needed
@@ -21,6 +22,7 @@ class PosUploadProvider {
       limit: limit,
       limitStart: limitStart,
       filters: filters,
+      orFilterTuples: orFilterTuples,
       orderBy: orderBy,
       // Added 'total_qty'
       fields: ['name', 'customer', 'date', 'modified', 'status', 'total_qty'],

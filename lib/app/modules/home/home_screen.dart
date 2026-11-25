@@ -920,7 +920,7 @@ class HomeScreen extends GetView<HomeController> {
                                 ),
                               ],
                             ),
-                            trailing: StatusPill(status: pos.status),
+                            trailing: StatusPill.posUpload(status: pos.status),
                             onTap: () => controller.handleFulfillmentSelection(pos),
                           );
                         },

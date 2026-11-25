@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/data/services/digest_service.dart';
@@ -17,6 +19,7 @@ class _FakeDigestService extends DigestService {
   /// doctype name → count, DioException, or Exception.
   final Map<String, Object> countResults = {};
   final List<String> countedDoctypes = [];
+  final Map<String, dynamic> countFilters = {};
 
   static DioException _dioError(int? statusCode) => DioException(
         requestOptions: RequestOptions(path: '/x'),
@@ -48,6 +51,7 @@ class _FakeDigestService extends DigestService {
     // count call
     final doctype = query['doctype'] as String;
     countedDoctypes.add(doctype);
+    countFilters[doctype] = jsonDecode(query['filters'] as String);
     final r = countResults[doctype];
     if (r is DioException) throw r;
     if (r is Exception) throw r;
@@ -74,6 +78,24 @@ void main() {
     expect(result.total, 7);
     expect(svc.countedDoctypes, ['Purchase Order', 'POS Upload']);
   });
+
+  test(
+    'POS Upload count is limited to warehouse preparation statuses',
+    () async {
+      final posUpload = kDigestDoctypes.singleWhere(
+        (d) => d.key == 'pos_upload',
+      );
+
+      await svc.fetchDigest([posUpload]);
+
+      expect(svc.countFilters['POS Upload'], {
+        'status': [
+          'in',
+          ['Pending', 'In Progress'],
+        ],
+      });
+    },
+  );
 
   test('per-doctype 403 is a permission skip, not a failure', () async {
     svc.countResults['Purchase Order'] = _FakeDigestService.forbidden();

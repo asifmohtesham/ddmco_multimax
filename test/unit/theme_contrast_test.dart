@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/main.dart' show buildAppTheme;
 
 /// WCAG 2.x contrast ratio between two opaque colours.
@@ -55,6 +56,20 @@ void main() {
           () {
         expect(contrast(s.textSubtle, s.fg), greaterThanOrEqualTo(3.0));
       });
+    }
+  });
+
+  group('POS delivery status contrast', () {
+    for (final brightness in Brightness.values) {
+      for (final status in ['To Deliver', 'Out for Delivery', 'Delivered']) {
+        test('$status pill text passes AA (4.5) [$brightness]', () {
+          final (fill, ink) = StatusPill.colourForStatus(
+            status,
+            brightness: brightness,
+          );
+          expect(contrast(ink, fill), greaterThanOrEqualTo(4.5));
+        });
+      }
     }
   });
 

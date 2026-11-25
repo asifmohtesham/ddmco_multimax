@@ -268,7 +268,19 @@ class DeliveryNoteController extends GetxController {
   Future<void> fetchPosUploadsForSelection() async {
     isFetchingPosUploads.value = true;
     try {
-      final response = await _posUploadProvider.getPosUploads(limit: 100);
+      final response = await _posUploadProvider.getPosUploads(
+        limit: 100,
+        filters: {
+          'status': [
+            'in',
+            ['Pending', 'In Progress', ''],
+          ],
+        },
+        orFilterTuples: const [
+          ['POS Upload', 'name', 'like', 'ML-%'],
+          ['POS Upload', 'name', 'like', 'KA-%'],
+        ],
+      );
       final List<PosUpload> fetchedUploads = [];
       if (response.statusCode == 200 && response.data['data'] != null) {
         fetchedUploads.addAll(

@@ -1,14 +1,13 @@
 class PosUpload {
-  /// All status values a POS Upload can have, in ERPNext option order.
-  /// Must be kept in sync with the ERPNext DocType so status dropdowns
-  /// and filter chips never miss (or invent) a status.
+  /// Canonical ERPNext statuses in filter order.
   static const List<String> statusOptions = [
-    'Draft',
     'Pending',
     'In Progress',
+    'To Deliver',
+    'Out for Delivery',
+    'Delivered',
     'Completed',
     'Cancelled',
-    'Submitted',
   ];
 
   final String name;
@@ -17,6 +16,7 @@ class PosUpload {
   final String modified;
   final String creation;
   final String status;
+  final String? returnReason;
   final double? totalAmount;
   final double? totalQty;
   final List<PosUploadItem> items;
@@ -28,6 +28,7 @@ class PosUpload {
     required this.modified,
     required this.creation,
     required this.status,
+    this.returnReason,
     this.totalAmount,
     this.totalQty,
     required this.items,
@@ -35,10 +36,12 @@ class PosUpload {
 
   factory PosUpload.fromJson(Map<String, dynamic> json) {
     var itemsList = json['items'] as List? ?? [];
-    List<PosUploadItem> items = itemsList.map((i) => PosUploadItem.fromJson(i)).toList();
+    List<PosUploadItem> items = itemsList
+        .map((i) => PosUploadItem.fromJson(i))
+        .toList();
 
-    // Directly use the 'status' field from JSON, default to 'Pending' if null/empty
-    final String docStatus = json['status'] ?? 'Pending';
+    final status = json['status']?.toString() ?? '';
+    final returnReason = json['custom_return_reason']?.toString() ?? '';
 
     return PosUpload(
       name: json['name'] ?? '',
@@ -46,9 +49,11 @@ class PosUpload {
       date: json['date'] ?? '',
       modified: json['modified'] ?? '',
       creation: json['creation'] ?? '',
-      status: docStatus,
+      status: status.trim().isEmpty ? 'Pending' : status,
+      returnReason: returnReason.trim().isEmpty ? null : returnReason,
       totalAmount: (json['total_amount'] as num?)?.toDouble(),
-      totalQty: (json['total_qty'] as num?)?.toDouble(), // Corrected field name? usually total_qty
+      totalQty: (json['total_qty'] as num?)
+          ?.toDouble(), // Corrected field name? usually total_qty
       items: items,
     );
   }
