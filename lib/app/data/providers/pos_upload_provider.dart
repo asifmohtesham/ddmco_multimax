@@ -38,13 +38,19 @@ class PosUploadProvider {
   }
 
   Future<List<PosDeliveryAction>> getDeliveryActions(String name) async {
-    final response = await _apiProvider.callMethod(
-      'frappe.model.workflow.get_transitions',
-      params: {
-        'doc': jsonEncode({'doctype': 'POS Upload', 'name': name}),
-      },
-    );
-    final transitions = _requireSuccess(response)['message'];
+    final Object? transitions;
+    try {
+      final response = await _apiProvider.callMethod(
+        'frappe.model.workflow.get_transitions',
+        params: {
+          'doc': jsonEncode({'doctype': 'POS Upload', 'name': name}),
+        },
+      );
+      transitions = _requireSuccess(response)['message'];
+    } on DioException catch (error) {
+      if (_isMissingWorkflow(error.response)) return [];
+      rethrow;
+    }
     if (transitions is! List) {
       throw const FormatException('Invalid workflow transitions');
     }
@@ -55,6 +61,25 @@ class PosUploadProvider {
       if (action != null) actions.add(action);
     }
     return actions.toList();
+  }
+
+  // Frappe loads "Workflow None" when this DocType has no active workflow.
+  bool _isMissingWorkflow(Response? response) {
+    if (response?.statusCode != 404) return false;
+    final data = response?.data;
+    if (data is! Map || data['exc_type'] != 'DoesNotExistError') return false;
+    final rawMessages = data['_server_messages'];
+    if (rawMessages is! String) return false;
+    try {
+      final messages = jsonDecode(rawMessages);
+      if (messages is! List || messages.length != 1) return false;
+      final rawMessage = messages.single;
+      if (rawMessage is! String) return false;
+      final message = jsonDecode(rawMessage);
+      return message is Map && message['message'] == 'Workflow None not found';
+    } on FormatException {
+      return false;
+    }
   }
 
   Future<PosDeliveryDriverOptions> getDeliveryDrivers(

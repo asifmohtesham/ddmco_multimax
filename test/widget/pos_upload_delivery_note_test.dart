@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart' hide Response;
+import 'package:multimax/app/data/models/pos_upload_delivery.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
@@ -27,12 +29,15 @@ import '../helpers/auth_fakes.dart';
 
 const _uploadName = 'ML-POS-0001';
 const _note = 'DN-0001';
+const _revision = '2026-11-25 10:11:12.000001';
 const _draft = 'DN-0002';
 const _form = '/pos-upload-form';
 const _fulfillment = '/fulfillment';
 
 class _FakeApi extends FakeApiProvider {
   String status = 'To Deliver';
+  DioException? transitionError;
+  final statusWrites = <Map<String, dynamic>>[];
   List<String> submitted = [];
   List<String> drafts = [];
   bool denyList = false;
@@ -43,7 +48,11 @@ class _FakeApi extends FakeApiProvider {
   final noteQueries =
       <({int limit, Map<String, dynamic>? filters, List<String>? fields})>[];
 
-  Map<String, dynamic> get upload => {'name': _uploadName, 'status': status};
+  Map<String, dynamic> get upload => {
+    'name': _uploadName,
+    'status': status,
+    'modified': _revision,
+  };
 
   @override
   Future<Response> getPosUpload(String name) async =>
@@ -53,7 +62,46 @@ class _FakeApi extends FakeApiProvider {
   Future<Response> callMethod(
     String method, {
     Map<String, dynamic>? params,
-  }) async => jsonResponse({'message': [], 'docinfo': <String, dynamic>{}});
+  }) async {
+    final error = transitionError;
+    if (method == 'frappe.model.workflow.get_transitions' && error != null) {
+      throw error;
+    }
+    return jsonResponse({'message': [], 'docinfo': <String, dynamic>{}});
+  }
+
+  @override
+  Future<Response> hasDocPermission(
+    String doctype,
+    String name,
+    String ptype,
+  ) async => jsonResponse({'message': {'has_permission': 1}});
+
+  @override
+  Future<Response> getDocTypeMeta(String doctype) async => jsonResponse({
+    'docs': [
+      {
+        'doctype': 'DocType',
+        'name': 'POS Upload',
+        'fields': [
+          {'fieldname': 'status'},
+        ],
+      },
+    ],
+  });
+
+  @override
+  Future<Response> updateDocument(
+    String doctype,
+    String name,
+    Map<String, dynamic> data,
+  ) async {
+    expect(doctype, 'POS Upload');
+    expect(name, _uploadName);
+    statusWrites.add(data);
+    status = data['status'] as String;
+    return jsonResponse({'data': upload});
+  }
 
   @override
   Future<Response> getDocumentList(
@@ -196,6 +244,93 @@ void main() {
     await tester.tap(link);
     await tester.pumpAndSettle();
     expect(find.text('Open DN $_note'), findsOneWidget);
+  });
+
+  testWidgets('live missing workflow keeps manual status and the DN link', (
+    tester,
+  ) async {
+    api
+      ..status = 'Pending'
+      ..submitted = [_note]
+      ..transitionError = httpError(
+        404,
+        data: {
+          'exc_type': 'DoesNotExistError',
+          '_server_messages': jsonEncode([
+            jsonEncode({
+              'message': 'Workflow None not found',
+              'as_table': false,
+              'title': 'Message',
+              'indicator': 'red',
+              'raise_exception': 1,
+              '__frappe_exc_id':
+                  '0c32f0e51d8a5dc60aed8f54512c153e548436eff85d04a11cecb246',
+            }),
+          ]),
+        },
+      );
+    await pumpForm(tester);
+
+    expect(find.byTooltip('Retry delivery actions'), findsNothing);
+    expect(find.byType(SnackBar), findsNothing);
+    expect(find.text('Workflow None not found'), findsNothing);
+    for (final action in PosDeliveryAction.values) {
+      expect(find.byKey(ValueKey(action)), findsNothing);
+    }
+    final dropdown = find.byType(DropdownButton<String>);
+    final statusField = tester.widget<DropdownButton<String>>(dropdown);
+    expect(statusField.onChanged, isNotNull);
+    expect(statusField.items!.map((item) => item.value), [
+      'Pending',
+      'In Progress',
+      'Completed',
+      'Cancelled',
+    ]);
+
+    await tester.tap(dropdown);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('In Progress').last);
+    await tester.pumpAndSettle();
+    expect(api.statusWrites, [
+      {'status': 'In Progress', 'modified': _revision},
+    ]);
+    expect(
+      tester.widget<DropdownButton<String>>(dropdown).value,
+      'In Progress',
+    );
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+
+    final link = find.text('Delivery Note: $_note');
+    await tester.tap(link);
+    await tester.pumpAndSettle();
+    expect(find.text('Open DN $_note'), findsOneWidget);
+  });
+
+  testWidgets('an unrelated missing document keeps workflow retry available', (
+    tester,
+  ) async {
+    api
+      ..status = 'Pending'
+      ..submitted = [_note]
+      ..transitionError = httpError(
+        404,
+        data: {
+          'exc_type': 'DoesNotExistError',
+          '_server_messages': jsonEncode([
+            jsonEncode({'message': 'POS Upload $_uploadName not found'}),
+          ]),
+        },
+      );
+    await pumpForm(tester);
+
+    expect(find.byTooltip('Retry delivery actions'), findsOneWidget);
+    expect(
+      tester
+          .widget<DropdownButton<String>>(find.byType(DropdownButton<String>))
+          .onChanged,
+      isNull,
+    );
   });
 
   testWidgets('dashboard opens the unique submitted Delivery Note', (
