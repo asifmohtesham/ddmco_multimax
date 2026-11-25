@@ -178,9 +178,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
   }
 
-  Future<void> openFilters(WidgetTester tester) async {
+  Future<void> openFilters(WidgetTester tester, int activeCount) async {
     await tester.tap(
-      find.byTooltip(RegExp(r'filters? active|^Filter$')).hitTestable().first,
+      find.byTooltip('Filters, $activeCount active').hitTestable(),
     );
     await finishAnimation(tester);
   }
@@ -271,7 +271,7 @@ void main() {
     api.pending = Completer<void>();
     await tester.tap(runButton);
     await finishAnimation(tester);
-    await openFilters(tester);
+    await openFilters(tester, controller.activeFilters.length);
     await tester.enterText(
       find.widgetWithText(TextField, 'Item Code *'),
       'Item B',
@@ -363,7 +363,7 @@ void main() {
     api.pending = Completer<void>();
     unawaited(controller.runReport());
     await finishAnimation(tester);
-    await openFilters(tester);
+    await openFilters(tester, controller.activeFilters.length);
     final field = find.ancestor(
       of: find.text('Warehouses'),
       matching: find.byType(InputDecorator),

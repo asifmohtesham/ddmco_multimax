@@ -10,11 +10,17 @@ import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/header_chip_band.dart';
 import 'package:multimax/app/modules/global_widgets/list_header_accessibility.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_controller.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_store.dart';
 import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
 import 'package:multimax/app/modules/stock/reports/stock_ageing/stock_ageing_cache.dart';
 import 'package:multimax/app/modules/stock/reports/stock_ageing/stock_ageing_controller.dart';
+import 'package:multimax/app/modules/stock/reports/stock_ageing/stock_ageing_fields.dart';
 import 'package:multimax/app/modules/stock/reports/stock_ageing/stock_ageing_screen.dart';
 import 'package:multimax/main.dart' show buildAppTheme;
+
+import '../support/report_fields_test_kit.dart';
 
 class _ReportCache extends StockAgeingCache {
   _ReportCache({this.populate = false});
@@ -22,14 +28,45 @@ class _ReportCache extends StockAgeingCache {
   final bool populate;
 
   @override
-  Future<StockAgeingSnapshot?> read() async => StockAgeingSnapshot(
-    fetchedAt: DateTime.now(),
-    columns: const [],
-    rows: [
-      if (populate)
-        for (var i = 0; i < 30; i++) {'item_code': 'Stock item $i', 'qty': i},
-    ],
-    defaults: const {},
+  Future<StockAgeingSnapshot?> read(FieldsScope scope) async =>
+      StockAgeingSnapshot(
+        fetchedAt: DateTime.now(),
+        columns: const [
+          {'fieldname': 'average_age', 'label': 'Average Age'},
+          {'fieldname': 'qty', 'label': 'Available Qty'},
+          {'fieldname': 'range1', 'label': 'Age (0 - 90)'},
+          {'fieldname': 'item_code', 'label': 'Item Code'},
+        ],
+        rows: [
+          if (populate)
+            for (var i = 0; i < 30; i++)
+              {'item_code': 'Stock item $i', 'qty': i},
+        ],
+        defaults: const {},
+      );
+}
+
+StockAgeingController _stockReport({bool populate = false}) {
+  final owner = ReportFieldsTestOwner()..change('https://erp.example', 'Buyer');
+  final store = ScopedReportFieldsStore(
+    database: ReportFieldsTestConfig(),
+    storage: ReportFieldsTestStorage(),
+  );
+  ScopedReportFieldsController fields(ReportFieldsDefinition definition) =>
+      ScopedReportFieldsController(
+        definition: definition,
+        owner: owner,
+        store: store,
+      );
+  return Get.put(
+    StockAgeingController(
+      cache: _ReportCache(populate: populate),
+      fields: fields(stockAgeingFields()),
+      view: fields(stockAgeingView),
+      run: ({filters}) => throw StateError('Unexpected report fetch'),
+      company: () => '',
+      baseUrl: () => '',
+    ),
   );
 }
 
@@ -92,14 +129,7 @@ void main() {
   testWidgets('all four Stock Ageing sorts respond at both vertical edges', (
     tester,
   ) async {
-    final controller = Get.put(
-      StockAgeingController(
-        cache: _ReportCache(),
-        run: ({filters}) => throw StateError('Unexpected report fetch'),
-        loadCardFields: () => null,
-        company: () => '',
-      ),
-    );
+    final controller = _stockReport();
     addTearDown(Get.reset);
     await tester.pumpWidget(
       MaterialApp(
@@ -155,17 +185,10 @@ void main() {
   });
 
   testWidgets(
-    'Stock Ageing puts the Oldest check above its scaled caption in a narrow RTL pane',
+    'Stock Ageing puts the Average Age check above its scaled caption in a narrow RTL pane',
     (tester) async {
       addTearDown(Get.reset);
-      final controller = Get.put(
-        StockAgeingController(
-          cache: _ReportCache(),
-          run: ({filters}) => throw StateError('Unexpected report fetch'),
-          loadCardFields: () => null,
-          company: () => '',
-        ),
-      );
+      final controller = _stockReport();
       final theme = buildAppTheme(AppScheme.light, Brightness.light);
       final stockTheme = theme.copyWith(
         textTheme: theme.textTheme.apply(fontFamily: stockFont),
@@ -175,8 +198,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final oldest = find.byKey(const ValueKey('age'));
-      final choice = tester.widget<HeaderQuickChip>(oldest);
+      final averageAge = find.byKey(const ValueKey('age'));
+      final choice = tester.widget<HeaderQuickChip>(averageAge);
       await tester.pumpWidget(
         MaterialApp(
           theme: stockTheme,
@@ -210,12 +233,12 @@ void main() {
       );
       await tester.pumpAndSettle();
       final tick = find.descendant(
-        of: oldest,
+        of: averageAge,
         matching: find.byIcon(Icons.check),
       );
       final caption = find.descendant(
-        of: oldest,
-        matching: find.text('Oldest'),
+        of: averageAge,
+        matching: find.text('Average Age'),
       );
       expect(controller.sort.value, 'age');
       expect(tick, findsOneWidget);
@@ -227,7 +250,7 @@ void main() {
         lessThanOrEqualTo(tester.getRect(caption).top),
       );
       expect(
-        tester.getRect(oldest).contains(tester.getRect(caption).center),
+        tester.getRect(averageAge).contains(tester.getRect(caption).center),
         isTrue,
       );
     },
@@ -243,15 +266,7 @@ void main() {
     final highlightStrategy = focus.highlightStrategy;
     focus.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
     addTearDown(() => focus.highlightStrategy = highlightStrategy);
-    final controller = Get.put(
-      StockAgeingController(
-        cache: _ReportCache(populate: true),
-        run: ({filters}) => throw StateError('Unexpected report fetch'),
-        loadCardFields: () => null,
-        company: () => '',
-        baseUrl: () => '',
-      ),
-    );
+    final controller = _stockReport(populate: true);
     final theme = buildAppTheme(AppScheme.light, Brightness.light);
     await tester.pumpWidget(
       MaterialApp(
@@ -313,15 +328,7 @@ void main() {
       addTearDown(tester.view.reset);
       addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
       addTearDown(Get.reset);
-      final controller = Get.put(
-        StockAgeingController(
-          cache: _ReportCache(populate: true),
-          run: ({filters}) => throw StateError('Unexpected report fetch'),
-          loadCardFields: () => null,
-          company: () => '',
-          baseUrl: () => '',
-        ),
-      );
+      final controller = _stockReport(populate: true);
       final theme = buildAppTheme(AppScheme.light, Brightness.light);
       await tester.pumpWidget(
         MaterialApp(
@@ -399,10 +406,10 @@ void main() {
             expect(semanticRect.size, rect.size);
           }
           for (final caption in [
-            'Oldest',
-            'Quantity',
-            'Oldest bucket',
-            'Item code',
+            'Average Age',
+            'Available Qty',
+            'Age (0 - 90)',
+            'Item Code',
             ...all.values.take(count),
           ]) {
             final text = find.descendant(
@@ -433,15 +440,7 @@ void main() {
     addTearDown(tester.view.reset);
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     addTearDown(Get.reset);
-    final controller = Get.put(
-      StockAgeingController(
-        cache: _ReportCache(populate: true),
-        run: ({filters}) => throw StateError('Unexpected report fetch'),
-        loadCardFields: () => null,
-        company: () => '',
-        baseUrl: () => '',
-      ),
-    );
+    final controller = _stockReport(populate: true);
     final theme = buildAppTheme(AppScheme.light, Brightness.light);
     await tester.pumpWidget(
       MaterialApp(
@@ -462,19 +461,19 @@ void main() {
     tester,
   ) async {
     await pumpStock(tester, size: const Size(320, 230), scale: 2);
-    final quantity = find.widgetWithText(TextButton, 'Quantity');
-    final oldestBucket = find.widgetWithText(TextButton, 'Oldest bucket');
-    final itemCode = find.widgetWithText(TextButton, 'Item code');
+    final quantity = find.widgetWithText(TextButton, 'Available Qty');
+    final oldestBucket = find.widgetWithText(TextButton, 'Age (0 - 90)');
+    final itemCode = find.widgetWithText(TextButton, 'Item Code');
     final scrollable = Scrollable.of(
       tester.element(quantity),
       axis: Axis.vertical,
     );
     final scroll = scrollable.position;
     final viewport = tester.getRect(find.byWidget(scrollable.widget));
-    // Arrange keyboard traversal from Quantity at the bottom of the viewport.
+    // Arrange keyboard traversal from Available Qty at the bottom of the viewport.
     final quantityFocus = Focus.of(
       tester.element(
-        find.descendant(of: quantity, matching: find.text('Quantity')),
+        find.descendant(of: quantity, matching: find.text('Available Qty')),
       ),
     );
     quantityFocus.requestFocus();
@@ -530,10 +529,10 @@ void main() {
         root,
       ).map((node) => node.label).where(expected.contains).toList();
       const sorts = [
-        'Sort by Oldest',
-        'Sort by Quantity',
-        'Sort by Oldest bucket',
-        'Sort by Item code',
+        'Sort by Average Age',
+        'Sort by Available Qty',
+        'Sort by Age (0 - 90)',
+        'Sort by Item Code',
       ];
       expect(labels(sorts), sorts);
 

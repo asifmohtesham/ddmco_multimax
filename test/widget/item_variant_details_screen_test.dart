@@ -696,15 +696,28 @@ void main() {
       tester.platformDispatcher.textScaleFactorTestValue = 2;
       addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
       await tester.pumpAndSettle();
+      final controller = Get.find<ItemVariantDetailsController>();
+      final reportScroll = find.byWidgetPredicate(
+        (widget) =>
+            widget is Scrollable &&
+            widget.controller == controller.scrollController,
+      );
+      final group = controller.results.value!.groups.first;
+      final heading = find.byKey(ValueKey<Object>((group, 'title', 0)));
+      await tester.scrollUntilVisible(heading, 120, scrollable: reportScroll);
       expect(find.text('Template-0'), findsWidgets);
       expect(tester.takeException(), isNull);
 
-      Get.find<ItemVariantDetailsController>().setAllExpanded(false);
+      controller.setAllExpanded(false);
       await tester.pumpAndSettle();
-      final summary = find.text('1 variant · $caption 3');
-      expect(summary, findsWidgets);
+      await tester.scrollUntilVisible(heading, 120, scrollable: reportScroll);
+      final summary = find.descendant(
+        of: heading,
+        matching: find.text('1 variant · $caption 3'),
+      );
+      expect(summary, findsOneWidget);
       expect(
-        tester.renderObject<RenderParagraph>(summary.first).didExceedMaxLines,
+        tester.renderObject<RenderParagraph>(summary).didExceedMaxLines,
         isFalse,
       );
       expect(tester.takeException(), isNull);

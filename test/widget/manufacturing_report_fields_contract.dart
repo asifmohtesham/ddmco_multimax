@@ -706,7 +706,7 @@ void registerManufacturingReportFieldsTests() {
         const GetMaterialApp(home: BomStockCustomerCodeScreen()),
       );
       await tester.pumpAndSettle();
-      final filter = find.byTooltip('Filter');
+      final filter = find.byTooltip('Filters');
       final add = find.text('Add warehouse');
       await tester.tap(filter);
       await tester.pumpAndSettle();
@@ -1226,19 +1226,20 @@ void registerManufacturingReportFieldsTests() {
         );
         await tester.pumpAndSettle();
         final driver = WidgetReportFieldsDriver(tester, owner);
-        void expectRetainedCards() {
+        Future<void> expectRetainedCards() async {
           expect(_textIn(_row(('JC-1', 0)), 'JC-1'), findsOneWidget);
           expect(_textIn(_row(('Summe', 1)), 'Summe'), findsOneWidget);
           expect(find.text('Summe'), findsOneWidget);
+          await driver.scrollToEnd();
           expect(
             find.text('End of list · Fertiggestellte Menge 12'),
             findsOneWidget,
           );
         }
 
-        expectRetainedCards();
+        await expectRetainedCards();
         await _hide(tester, driver, labels);
-        expectRetainedCards();
+        await expectRetainedCards();
 
         api.message = {
           'columns': columns,
@@ -1250,6 +1251,7 @@ void registerManufacturingReportFieldsTests() {
         await controller.runReport();
         await tester.pumpAndSettle();
         expect(find.text('Total'), findsOneWidget);
+        await driver.scrollToEnd();
         expect(
           find.text('End of list · Fertiggestellte Menge 0.004'),
           findsOneWidget,
@@ -1318,7 +1320,7 @@ void registerManufacturingReportFieldsTests() {
         expect(retry, findsNothing);
         final loadedRequests = api.requests;
 
-        final clear = find.text('Clear all');
+        final clear = find.text('Reset filters');
         await tester.ensureVisible(clear);
         await tester.pumpAndSettle();
         await tester.tap(clear);

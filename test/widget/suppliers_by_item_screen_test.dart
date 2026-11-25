@@ -845,6 +845,9 @@ void main() {
       await controller.setFieldVisible(field, false);
     }
     await tester.pumpAndSettle();
+    scroll.jumpTo(0);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(edge, 150, scrollable: scrollable);
     expect(within(edge, 'KIT'), findsOneWidget);
     expect(within(edge, 'Last Purchase Date 1 Oct 25'), findsNothing);
     await tester.scrollUntilVisible(lockal, 150, scrollable: scrollable);
@@ -1716,6 +1719,12 @@ void main() {
       await tester.tap(find.text('Supply Co'));
       await tester.pumpAndSettle();
       expect(find.text('Purchase Order, Batch'), findsOneWidget);
+      final scroll = reportScroll(tester);
+      final scrollable = find.byWidgetPredicate(
+        (widget) => widget is Scrollable && widget.controller == scroll,
+      );
+      final component = reportRow('component:KIT:PART');
+      await tester.scrollUntilVisible(component, 120, scrollable: scrollable);
       expect(find.text('PART'), findsOneWidget);
       expect(find.text('Kit component'), findsOneWidget);
       expect(find.text('BOM Qty per Unit 2 Nos per Nos'), findsNothing);
@@ -1735,6 +1744,8 @@ void main() {
       );
       Navigator.of(tester.element(sheetScroll)).pop();
       await tester.pumpAndSettle();
+      scroll.jumpTo(0);
+      await tester.pumpAndSettle();
       expect(find.text('Travel kit'), findsOneWidget);
       expect(
         within(reportRow('item:KIT'), 'Balance Qty 4 Nos'),
@@ -1744,6 +1755,7 @@ void main() {
       expect(find.text('Supply Co'), findsOneWidget);
       expect(find.text('Disabled'), findsOneWidget);
       expect(find.text('Purchase Order, Batch'), findsNothing);
+      await tester.scrollUntilVisible(component, 120, scrollable: scrollable);
       expect(find.text('BOM Qty per Unit 2 Nos per Nos'), findsOneWidget);
       expect(api.requests, hasLength(1));
     },
@@ -2772,7 +2784,7 @@ void main() {
       loadTallReorderRows((index) => index >= 36);
       await openReport(
         tester,
-        size: const Size(370, 720),
+        size: const Size(370, 880),
         showFields: [SuppliersByItemField.itemReorderLevel],
       );
       await tester.pumpAndSettle();

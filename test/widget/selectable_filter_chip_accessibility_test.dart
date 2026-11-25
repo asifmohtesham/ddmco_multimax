@@ -494,7 +494,10 @@ void main() {
       _expectTarget(tester, _chip('All'));
       await revealAndTap('WH 11');
       expect(stock.quickWarehouse.value, 'WH 11');
-      await tester.tap(find.text('In stock'));
+      final inStock = find.text('In stock');
+      await Scrollable.ensureVisible(tester.element(inStock), alignment: 0.5);
+      await tester.pumpAndSettle();
+      await tester.tap(inStock.hitTestable());
       await tester.pumpAndSettle();
       expect(stock.quickWarehouse.value, 'WH 11');
       expect(stock.quickState.value, 'instock');

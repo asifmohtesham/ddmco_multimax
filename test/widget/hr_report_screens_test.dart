@@ -1229,12 +1229,14 @@ void registerHrReportFieldsTests() {
         expect(bar().label, submitted);
         expect(bar().selected, submittedPreset);
         expect(find.text('Test Person One'), findsOneWidget);
-        expect(
-          find.textContaining('Total Working Hours 3h 55m'),
-          findsOneWidget,
+        await _expectFooter(
+          tester,
+          'End of list · 2 records · 2 employees · Total Working Hours '
+          '3h 55m · 1 late · 1 missing a punch',
         );
         expect(api.calls, hasLength(1));
 
+        controller.scrollController.jumpTo(0);
         await controller.runReport();
         await tester.pumpAndSettle();
         expect(bar().label, periodLabel('2025-01-01', '2025-01-07'));
@@ -1428,7 +1430,7 @@ void registerHrReportFieldsTests() {
       final footer = tester.widget<ListEndFooter>(find.byType(ListEndFooter));
       expect(footer.label, contains('1 employee'));
 
-      await tester.tap(find.byTooltip('1 filter active — tap to edit'));
+      await tester.tap(find.byTooltip('Filters, 1 active'));
       await tester.pumpAndSettle();
       final summarized = find.text('Summarized');
       await tester.ensureVisible(summarized);

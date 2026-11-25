@@ -208,21 +208,23 @@ void main() {
     await tester.pumpAndSettle();
     final revision = controller.resultRevision.value;
 
-    void expectBadge(int count, String tooltip) {
-      expect(
-        tester.widget<CountBadge>(find.byType(CountBadge).hitTestable()).count,
-        count,
+    void expectBadge(int count) {
+      final filter = find.byTooltip('Filters, $count active').hitTestable();
+      expect(filter, findsOneWidget);
+      final badge = find.descendant(
+        of: filter,
+        matching: find.byType(CountBadge),
       );
-      expect(find.byTooltip(tooltip).hitTestable(), findsOneWidget);
+      expect(tester.widget<CountBadge>(badge).count, count);
     }
 
-    expectBadge(2, '2 filters active — tap to edit');
+    expectBadge(2);
     final groupChip = find.widgetWithText(FilterChipWidget, 'Groups: 1');
     await tester.tap(
       find.descendant(of: groupChip, matching: find.byIcon(Icons.close)),
     );
     await tester.pumpAndSettle();
-    expectBadge(1, '1 filter active — tap to edit');
+    expectBadge(1);
     expect(groupChip, findsNothing);
     expect(controller.customerGroups, isEmpty);
     expect(controller.resultRevision.value, revision);
