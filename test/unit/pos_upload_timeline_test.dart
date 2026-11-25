@@ -18,23 +18,24 @@ List<TimelineCheckpoint> _dnTimeline({
   int packedItems = 0,
   int totalSerials = 0,
   Map<String, dynamic>? deliveryDocInfo,
-}) => buildPosUploadTimeline(
-  isStockEntryUpload: false,
-  posUploadCreation: '2026-06-30 08:00:00',
-  itemCount: 20,
-  isLoadingLinked: isLoadingLinked,
-  hasLinkedDoc: hasLinkedDoc,
-  linkedDocName: linkedDocName,
-  linkedDocCreation: linkedDocCreation,
-  orderedQty: orderedQty,
-  deliveredQty: deliveredQty,
-  isLoadingPackingSlips: isLoadingPackingSlips,
-  packingSlipCount: packingSlipCount,
-  earliestPackingSlipCreation: earliestPackingSlipCreation,
-  packedItems: packedItems,
-  totalSerials: totalSerials,
-  deliveryDocInfo: deliveryDocInfo,
-);
+}) =>
+    buildPosUploadTimeline(
+      isStockEntryUpload: false,
+      posUploadCreation: '2026-06-30 08:00:00',
+      itemCount: 20,
+      isLoadingLinked: isLoadingLinked,
+      hasLinkedDoc: hasLinkedDoc,
+      linkedDocName: linkedDocName,
+      linkedDocCreation: linkedDocCreation,
+      orderedQty: orderedQty,
+      deliveredQty: deliveredQty,
+      isLoadingPackingSlips: isLoadingPackingSlips,
+      packingSlipCount: packingSlipCount,
+      earliestPackingSlipCreation: earliestPackingSlipCreation,
+      packedItems: packedItems,
+      totalSerials: totalSerials,
+      deliveryDocInfo: deliveryDocInfo,
+    );
 
 Map<String, dynamic> _returnVersion({
   required String commentId,
@@ -195,24 +196,21 @@ void main() {
       expect(t[2].state, CheckpointState.upcoming);
     });
 
-    test(
-      'DN present: node 2 reached with delivered/ordered qty and percent',
-      () {
-        final t = _dnTimeline(
-          hasLinkedDoc: true,
-          linkedDocName: 'ML-DN-0042',
-          linkedDocCreation: '2026-06-30 09:00:00',
-          orderedQty: 600,
-          deliveredQty: 540,
-        );
+    test('DN present: node 2 reached with delivered/ordered qty and percent', () {
+      final t = _dnTimeline(
+        hasLinkedDoc: true,
+        linkedDocName: 'ML-DN-0042',
+        linkedDocCreation: '2026-06-30 09:00:00',
+        orderedQty: 600,
+        deliveredQty: 540,
+      );
 
-        expect(t[1].state, CheckpointState.reached);
-        expect(t[1].docName, 'ML-DN-0042');
-        expect(t[1].timestamp, '2026-06-30 09:00:00');
-        expect(t[1].detail, '540 / 600 qty · 90%');
-        expect(t[1].progress, closeTo(0.9, 1e-9));
-      },
-    );
+      expect(t[1].state, CheckpointState.reached);
+      expect(t[1].docName, 'ML-DN-0042');
+      expect(t[1].timestamp, '2026-06-30 09:00:00');
+      expect(t[1].detail, '540 / 600 qty · 90%');
+      expect(t[1].progress, closeTo(0.9, 1e-9));
+    });
 
     test('PS present: node 3 reached with slip count and packed items', () {
       final t = _dnTimeline(
@@ -244,20 +242,17 @@ void main() {
       expect(t[2].detail, '1 slip · 6 / 20 items packed');
     });
 
-    test(
-      'divide-by-zero: ordered qty 0 → reached, no percent, null progress',
-      () {
-        final t = _dnTimeline(
-          hasLinkedDoc: true,
-          linkedDocName: 'ML-DN-0042',
-          orderedQty: 0,
-          deliveredQty: 0,
-        );
-        expect(t[1].state, CheckpointState.reached);
-        expect(t[1].progress, isNull);
-        expect(t[1].detail, isNot(contains('%')));
-      },
-    );
+    test('divide-by-zero: ordered qty 0 → reached, no percent, null progress', () {
+      final t = _dnTimeline(
+        hasLinkedDoc: true,
+        linkedDocName: 'ML-DN-0042',
+        orderedQty: 0,
+        deliveredQty: 0,
+      );
+      expect(t[1].state, CheckpointState.reached);
+      expect(t[1].progress, isNull);
+      expect(t[1].detail, isNot(contains('%')));
+    });
 
     test('percent clamps to 100 when delivered exceeds ordered', () {
       final t = _dnTimeline(
@@ -291,20 +286,21 @@ void main() {
       bool hasLinkedDoc = false,
       String linkedDocName = '',
       String linkedDocCreation = '',
-    }) => buildPosUploadTimeline(
-      isStockEntryUpload: true,
-      posUploadCreation: '2026-06-30 08:00:00',
-      itemCount: 12,
-      isLoadingLinked: isLoadingLinked,
-      hasLinkedDoc: hasLinkedDoc,
-      linkedDocName: linkedDocName,
-      linkedDocCreation: linkedDocCreation,
-      isLoadingPackingSlips: false,
-      packingSlipCount: 0,
-      earliestPackingSlipCreation: null,
-      packedItems: 0,
-      totalSerials: 0,
-    );
+    }) =>
+        buildPosUploadTimeline(
+          isStockEntryUpload: true,
+          posUploadCreation: '2026-06-30 08:00:00',
+          itemCount: 12,
+          isLoadingLinked: isLoadingLinked,
+          hasLinkedDoc: hasLinkedDoc,
+          linkedDocName: linkedDocName,
+          linkedDocCreation: linkedDocCreation,
+          isLoadingPackingSlips: false,
+          packingSlipCount: 0,
+          earliestPackingSlipCreation: null,
+          packedItems: 0,
+          totalSerials: 0,
+        );
 
     test('two nodes only, no packing-slip checkpoint', () {
       final t = seTimeline();

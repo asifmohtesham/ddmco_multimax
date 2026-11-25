@@ -31,7 +31,11 @@ class PackingSlipInfo {
   final String psName;
   final int? fromCaseNo;
   final int? toCaseNo;
-  const PackingSlipInfo({required this.psName, this.fromCaseNo, this.toCaseNo});
+  const PackingSlipInfo({
+    required this.psName,
+    this.fromCaseNo,
+    this.toCaseNo,
+  });
 }
 
 /// Represents a selectable case-range option in the case filter.
@@ -49,8 +53,7 @@ class CaseOption {
   });
 
   String get label {
-    if (fromCaseNo != null && toCaseNo != null)
-      return 'Cases $fromCaseNo – $toCaseNo';
+    if (fromCaseNo != null && toCaseNo != null) return 'Cases $fromCaseNo – $toCaseNo';
     if (fromCaseNo != null) return 'Case $fromCaseNo';
     return psName;
   }
@@ -83,14 +86,14 @@ class PsItemEntry {
 // sharePackingSlipExcel and _rowComparator.
 typedef _PSRow = ({
   CellValue caseCell,
-  String caseKey,
-  int serial,
-  String refCode,
-  String variantOf,
-  String itemCode,
-  String itemName,
-  double qty,
-  String country,
+  String    caseKey,
+  int       serial,
+  String    refCode,
+  String    variantOf,
+  String    itemCode,
+  String    itemName,
+  double    qty,
+  String    country,
 });
 
 typedef _PSCol = (String, CellValue Function(_PSRow));
@@ -98,7 +101,7 @@ typedef _PSCol = (String, CellValue Function(_PSRow));
 /// Public record for a single Delivery Note export row.
 /// Public (unlike _PSRow) so unit tests can call buildDnRows directly.
 typedef DnRow = ({
-  int serial,
+  int    serial,
   String refCode,
   String variantOf,
   String itemCode,
@@ -139,36 +142,36 @@ List<int> _buildPackingSlipExcel(_PackingSlipExcelParams p) {
 
   var columns = p.compact
       ? <_PSCol>[
-          ('Case #', (r) => r.caseCell),
-          ('Invoice Serial #', (r) => IntCellValue(r.serial)),
-          ('Ref Code', (r) => TextCellValue(r.refCode)),
-          ('Item Name', (r) => TextCellValue(r.itemName)),
-          ('Qty', (r) => DoubleCellValue(r.qty)),
+          ('Case #',            (r) => r.caseCell),
+          ('Invoice Serial #',  (r) => IntCellValue(r.serial)),
+          ('Ref Code',          (r) => TextCellValue(r.refCode)),
+          ('Item Name',         (r) => TextCellValue(r.itemName)),
+          ('Qty',               (r) => DoubleCellValue(r.qty)),
           ('Country of Origin', (r) => TextCellValue(r.country)),
         ]
       : <_PSCol>[
-          ('Case #', (r) => r.caseCell),
-          ('Invoice Serial #', (r) => IntCellValue(r.serial)),
-          ('Ref Code', (r) => TextCellValue(r.refCode)),
-          ('Variant Of', (r) => TextCellValue(r.variantOf)),
-          ('Item Code', (r) => TextCellValue(r.itemCode)),
-          ('Item Name', (r) => TextCellValue(r.itemName)),
-          ('Qty', (r) => DoubleCellValue(r.qty)),
+          ('Case #',            (r) => r.caseCell),
+          ('Invoice Serial #',  (r) => IntCellValue(r.serial)),
+          ('Ref Code',          (r) => TextCellValue(r.refCode)),
+          ('Variant Of',        (r) => TextCellValue(r.variantOf)),
+          ('Item Code',         (r) => TextCellValue(r.itemCode)),
+          ('Item Name',         (r) => TextCellValue(r.itemName)),
+          ('Qty',               (r) => DoubleCellValue(r.qty)),
           ('Country of Origin', (r) => TextCellValue(r.country)),
         ];
 
   final rowMap = <String, _PSRow>{};
   for (final ps in p.packingSlips) {
     final caseCell = PosUploadFormController.psCaseCell(ps);
-    final caseKey = PosUploadFormController._psCaseKey(ps);
+    final caseKey  = PosUploadFormController._psCaseKey(ps);
     for (final psItem in ps.items) {
       final posItemName =
           p.itemNameByIdx[psItem.customInvoiceSerialNumber] ?? psItem.itemName;
-      final serial = int.tryParse(psItem.customInvoiceSerialNumber ?? '') ?? 0;
-      final refCode = p.refCodeByIdx[psItem.customInvoiceSerialNumber] ?? '';
+      final serial    = int.tryParse(psItem.customInvoiceSerialNumber ?? '') ?? 0;
+      final refCode   = p.refCodeByIdx[psItem.customInvoiceSerialNumber] ?? '';
       final variantOf = psItem.customVariantOf ?? '';
-      final itemCode = psItem.itemCode;
-      final country = psItem.customCountryOfOrigin ?? '';
+      final itemCode  = psItem.itemCode;
+      final country   = psItem.customCountryOfOrigin ?? '';
 
       final key = p.compact
           ? '$caseKey\x00$serial\x00$posItemName\x00$country'
@@ -177,26 +180,26 @@ List<int> _buildPackingSlipExcel(_PackingSlipExcelParams p) {
       final existing = rowMap[key];
       rowMap[key] = existing == null
           ? (
-              caseCell: caseCell,
-              caseKey: caseKey,
-              serial: serial,
-              refCode: refCode,
+              caseCell:  caseCell,
+              caseKey:   caseKey,
+              serial:    serial,
+              refCode:   refCode,
               variantOf: variantOf,
-              itemCode: itemCode,
-              itemName: posItemName,
-              qty: psItem.qty,
-              country: country,
+              itemCode:  itemCode,
+              itemName:  posItemName,
+              qty:       psItem.qty,
+              country:   country,
             )
           : (
-              caseCell: existing.caseCell,
-              caseKey: existing.caseKey,
-              serial: existing.serial,
-              refCode: existing.refCode,
+              caseCell:  existing.caseCell,
+              caseKey:   existing.caseKey,
+              serial:    existing.serial,
+              refCode:   existing.refCode,
               variantOf: existing.variantOf,
-              itemCode: existing.itemCode,
-              itemName: existing.itemName,
-              qty: existing.qty + psItem.qty,
-              country: existing.country,
+              itemCode:  existing.itemCode,
+              itemName:  existing.itemName,
+              qty:       existing.qty + psItem.qty,
+              country:   existing.country,
             );
     }
   }
@@ -206,8 +209,7 @@ List<int> _buildPackingSlipExcel(_PackingSlipExcelParams p) {
     final sortIdx = columns.indexWhere((c) => c.$1 == p.sortByColumn);
     if (sortIdx >= 0) {
       sortedRows.sort(
-        (a, b) => PosUploadFormController._rowComparator(p.sortByColumn!, a, b),
-      );
+          (a, b) => PosUploadFormController._rowComparator(p.sortByColumn!, a, b));
       if (sortIdx > 0) {
         final col = columns.removeAt(sortIdx);
         columns.insert(0, col);
@@ -311,19 +313,19 @@ List<int> buildDeliveryNoteExcelBytes(DeliveryNoteExcelParams p) {
 
   var columns = p.compact
       ? <_DnCol>[
-          ('Invoice Serial #', (r) => IntCellValue(r.serial)),
-          ('Ref Code', (r) => TextCellValue(r.refCode)),
-          ('Item Name', (r) => TextCellValue(r.itemName)),
-          ('Qty', (r) => DoubleCellValue(r.qty)),
+          ('Invoice Serial #',  (r) => IntCellValue(r.serial)),
+          ('Ref Code',          (r) => TextCellValue(r.refCode)),
+          ('Item Name',         (r) => TextCellValue(r.itemName)),
+          ('Qty',               (r) => DoubleCellValue(r.qty)),
           ('Country of Origin', (r) => TextCellValue(r.country)),
         ]
       : <_DnCol>[
-          ('Invoice Serial #', (r) => IntCellValue(r.serial)),
-          ('Ref Code', (r) => TextCellValue(r.refCode)),
-          ('Variant Of', (r) => TextCellValue(r.variantOf)),
-          ('Item Code', (r) => TextCellValue(r.itemCode)),
-          ('Item Name', (r) => TextCellValue(r.itemName)),
-          ('Qty', (r) => DoubleCellValue(r.qty)),
+          ('Invoice Serial #',  (r) => IntCellValue(r.serial)),
+          ('Ref Code',          (r) => TextCellValue(r.refCode)),
+          ('Variant Of',        (r) => TextCellValue(r.variantOf)),
+          ('Item Code',         (r) => TextCellValue(r.itemCode)),
+          ('Item Name',         (r) => TextCellValue(r.itemName)),
+          ('Qty',               (r) => DoubleCellValue(r.qty)),
           ('Country of Origin', (r) => TextCellValue(r.country)),
         ];
 
@@ -427,14 +429,10 @@ class PosUploadFormController extends GetxController
   final String mode = Get.arguments['mode'];
 
   // ── RealtimeSyncMixin requirements ─────────────────────────────────────────
-  @override
-  String get realtimeDoctype => 'POS Upload';
-  @override
-  String get realtimeDocname => name;
-  @override
-  var isDirty = false.obs;
-  @override
-  var isSaving = false.obs;
+  @override String get realtimeDoctype => 'POS Upload';
+  @override String get realtimeDocname => name;
+  @override var isDirty = false.obs;
+  @override var isSaving = false.obs;
 
   /// Status changes commit immediately via [updateStatus]; nothing else on
   /// this screen is editable, so auto-save has nothing to do.
@@ -476,7 +474,6 @@ class PosUploadFormController extends GetxController
   // ── Linked document (DN or SE) ─────────────────────────────────────────────
   var linkedDocType = LinkedDocType.none.obs;
   var linkedDocName = ''.obs;
-
   /// Server `creation` timestamp of the linked DN/SE — drives the timeline's
   /// relative-time for that checkpoint. Empty until the linked doc loads.
   var linkedDocCreation = ''.obs;
@@ -508,7 +505,8 @@ class PosUploadFormController extends GetxController
   // ── Number formatter ───────────────────────────────────────────────────────
   static final _numFmt = NumberFormat('#,##0.00');
 
-  static String fmtAmount(double? v) => v == null ? '0.00' : _numFmt.format(v);
+  static String fmtAmount(double? v) =>
+      v == null ? '0.00' : _numFmt.format(v);
 
   static String fmtQty(double? v) =>
       v == null ? '0' : v.toStringAsFixed(v.truncateToDouble() == v ? 0 : 2);
@@ -523,14 +521,12 @@ class PosUploadFormController extends GetxController
       if (ps.customPoNo != posUploadName) continue;
       for (final psItem in ps.items) {
         if (psItem.customInvoiceSerialNumber == itemIdx.toString()) {
-          entries.add(
-            PsItemEntry(
-              psName: ps.name,
-              fromCaseNo: ps.fromCaseNo,
-              toCaseNo: ps.toCaseNo,
-              item: psItem,
-            ),
-          );
+          entries.add(PsItemEntry(
+            psName: ps.name,
+            fromCaseNo: ps.fromCaseNo,
+            toCaseNo: ps.toCaseNo,
+            item: psItem,
+          ));
         }
       }
     }
@@ -598,11 +594,11 @@ class PosUploadFormController extends GetxController
       final serialStr = dnItem.customInvoiceSerialNumber ?? '';
       final itemName =
           itemNameByIdx[serialStr] ?? dnItem.itemName ?? dnItem.itemCode;
-      final serial = int.tryParse(serialStr) ?? 0;
-      final refCode = refCodeByIdx[serialStr] ?? '';
+      final serial    = int.tryParse(serialStr) ?? 0;
+      final refCode   = refCodeByIdx[serialStr] ?? '';
       final variantOf = dnItem.customVariantOf ?? '';
-      final itemCode = dnItem.itemCode;
-      final country = dnItem.countryOfOrigin ?? '';
+      final itemCode  = dnItem.itemCode;
+      final country   = dnItem.countryOfOrigin ?? '';
 
       final key = compact
           ? '$serial\x00$itemName\x00$country'
@@ -611,22 +607,22 @@ class PosUploadFormController extends GetxController
       final existing = rowMap[key];
       rowMap[key] = existing == null
           ? (
-              serial: serial,
-              refCode: refCode,
+              serial:    serial,
+              refCode:   refCode,
               variantOf: variantOf,
-              itemCode: itemCode,
-              itemName: itemName,
-              qty: dnItem.qty,
-              country: country,
+              itemCode:  itemCode,
+              itemName:  itemName,
+              qty:       dnItem.qty,
+              country:   country,
             )
           : (
-              serial: existing.serial,
-              refCode: existing.refCode,
+              serial:    existing.serial,
+              refCode:   existing.refCode,
               variantOf: existing.variantOf,
-              itemCode: existing.itemCode,
-              itemName: existing.itemName,
-              qty: existing.qty + dnItem.qty,
-              country: existing.country,
+              itemCode:  existing.itemCode,
+              itemName:  existing.itemName,
+              qty:       existing.qty + dnItem.qty,
+              country:   existing.country,
             );
     }
 
@@ -840,8 +836,7 @@ class PosUploadFormController extends GetxController
         );
       } else {
         GlobalSnackbar.error(
-          message:
-              'Unable to confirm the delivery action. Check the POS Upload before trying again.',
+          message: 'Unable to confirm the delivery action. Check the POS Upload before trying again.',
         );
       }
     } else {
@@ -885,7 +880,8 @@ class PosUploadFormController extends GetxController
     final request = ++_linkedDocumentRequest;
     bool isCurrent() =>
         _isCurrentDocument(generation) && request == _linkedDocumentRequest;
-    final prefix = name.length >= 2 ? name.substring(0, 2).toUpperCase() : '';
+    final prefix =
+        name.length >= 2 ? name.substring(0, 2).toUpperCase() : '';
     if (prefix == 'ML' || prefix == 'KA') {
       await _fetchDeliveryNote(upload, isCurrent);
     } else if (prefix == 'MX' || prefix == 'KX') {
@@ -937,8 +933,7 @@ class PosUploadFormController extends GetxController
         posItems: upload.items,
         matchSerial: (idx) => dn.items
             .firstWhereOrNull(
-              (i) => i.customInvoiceSerialNumber == idx.toString(),
-            )
+                (i) => i.customInvoiceSerialNumber == idx.toString())
             ?.customInvoiceSerialNumber,
       );
       _buildDnQtyMap(
@@ -973,17 +968,17 @@ class PosUploadFormController extends GetxController
     linkedDocType.value = LinkedDocType.stockEntry;
     try {
       final listResp = await _seProvider.getStockEntries(
-        limit: 1,
-        filters: {'custom_reference_no': name},
-      );
+          limit: 1, filters: {'custom_reference_no': name});
       if (!isCurrent()) return;
       if (listResp.statusCode == 200 &&
           (listResp.data['data'] as List?)?.isNotEmpty == true) {
-        final seName = (listResp.data['data'] as List).first['name'].toString();
+        final seName =
+            (listResp.data['data'] as List).first['name'].toString();
         linkedDocName.value = seName;
         final detailResp = await _seProvider.getStockEntry(seName);
         if (!isCurrent()) return;
-        if (detailResp.statusCode == 200 && detailResp.data['data'] != null) {
+        if (detailResp.statusCode == 200 &&
+            detailResp.data['data'] != null) {
           final se = StockEntry.fromJson(detailResp.data['data']);
           linkedDocCreation.value =
               detailResp.data['data']['creation']?.toString() ?? '';
@@ -1027,8 +1022,8 @@ class PosUploadFormController extends GetxController
       if (psList.isEmpty) return;
 
       final responses = await Future.wait(
-        psList.map((ps) => _psProvider.getPackingSlip(ps['name'].toString())),
-      );
+          psList.map((ps) =>
+              _psProvider.getPackingSlip(ps['name'].toString())));
       if (!isCurrent()) return;
 
       final slips = <PackingSlip>[];
@@ -1037,7 +1032,7 @@ class PosUploadFormController extends GetxController
           slips.add(PackingSlip.fromJson(resp.data['data']));
         }
       }
-      slips.removeWhere((ps) => ps.docstatus == 2); // exclude Cancelled
+      slips.removeWhere((ps) => ps.docstatus == 2);   // exclude Cancelled
       packingSlips.assignAll(slips);
 
       // Build idx → PackingSlipInfo.
@@ -1081,15 +1076,18 @@ class PosUploadFormController extends GetxController
       // of the PS's own item quantities so the chip shows how many units are
       // packed in that case.
       caseOptions.assignAll(
-        slips.map((ps) {
-          final psQty = ps.items.fold<double>(0, (s, psItem) => s + psItem.qty);
-          return CaseOption(
-            psName: ps.name,
-            fromCaseNo: ps.fromCaseNo,
-            toCaseNo: ps.toCaseNo,
-            totalQty: psQty,
-          );
-        }).toList(),
+        slips
+            .map((ps) {
+              final psQty = ps.items
+                  .fold<double>(0, (s, psItem) => s + psItem.qty);
+              return CaseOption(
+                psName: ps.name,
+                fromCaseNo: ps.fromCaseNo,
+                toCaseNo: ps.toCaseNo,
+                totalQty: psQty,
+              );
+            })
+            .toList(),
       );
     } catch (_) {
     } finally {
@@ -1203,7 +1201,10 @@ class PosUploadFormController extends GetxController
 
   Set<String> _userRoles() {
     if (!Get.isRegistered<AuthenticationController>()) return const {};
-    return Get.find<AuthenticationController>().currentUser.value?.roles
+    return Get.find<AuthenticationController>()
+            .currentUser
+            .value
+            ?.roles
             .toSet() ??
         const {};
   }
@@ -1214,7 +1215,8 @@ class PosUploadFormController extends GetxController
     required bool canWritePerm,
     required bool isSaving,
     required bool isStale,
-  }) => canWritePerm && !isSaving && !isStale;
+  }) =>
+      canWritePerm && !isSaving && !isStale;
 
   bool get canEditStatus =>
       manualStatusOptions.contains(posUpload.value?.status) &&
@@ -1262,8 +1264,7 @@ class PosUploadFormController extends GetxController
         } else {
           statusEditRevision.value++;
           GlobalSnackbar.error(
-            message: 'Status change was rejected by the server',
-          );
+              message: 'Status change was rejected by the server');
         }
       } else {
         statusEditRevision.value++;
@@ -1302,9 +1303,8 @@ class PosUploadFormController extends GetxController
       refCodeByIdx: {
         for (final item in upload.items) item.idx.toString(): item.refCode,
       },
-      packingSlips: packingSlips
-          .where((p) => p.customPoNo == upload.name)
-          .toList(),
+      packingSlips:
+          packingSlips.where((p) => p.customPoNo == upload.name).toList(),
       compact: compact,
       sortByColumn: sortByColumn,
     );
@@ -1313,10 +1313,10 @@ class PosUploadFormController extends GetxController
     final fileBytes = await compute(_buildPackingSlipExcel, params);
 
     final timestamp = DateFormat('yyyyMMdd HHmmss').format(DateTime.now());
-    final safeName = upload.name.replaceAll('/', '_');
-    final fileName = 'POS Upload - $safeName - Packing Slip - $timestamp';
-    final tempDir = await getTemporaryDirectory();
-    final filePath = '${tempDir.path}/$fileName.xlsx';
+    final safeName  = upload.name.replaceAll('/', '_');
+    final fileName  = 'POS Upload - $safeName - Packing Slip - $timestamp';
+    final tempDir   = await getTemporaryDirectory();
+    final filePath  = '${tempDir.path}/$fileName.xlsx';
     await File(filePath).writeAsBytes(Uint8List.fromList(fileBytes));
 
     return filePath;
@@ -1352,10 +1352,10 @@ class PosUploadFormController extends GetxController
     final fileBytes = await compute(buildDeliveryNoteExcelBytes, params);
 
     final timestamp = DateFormat('yyyyMMdd HHmmss').format(DateTime.now());
-    final safeName = upload.name.replaceAll('/', '_');
-    final fileName = 'POS Upload - $safeName - Delivery Note - $timestamp';
-    final tempDir = await getTemporaryDirectory();
-    final filePath = '${tempDir.path}/$fileName.xlsx';
+    final safeName  = upload.name.replaceAll('/', '_');
+    final fileName  = 'POS Upload - $safeName - Delivery Note - $timestamp';
+    final tempDir   = await getTemporaryDirectory();
+    final filePath  = '${tempDir.path}/$fileName.xlsx';
     await File(filePath).writeAsBytes(Uint8List.fromList(fileBytes));
 
     return filePath;
@@ -1392,8 +1392,7 @@ class PosUploadFormController extends GetxController
     final lastDataRow = tableStartRow + 1 + dataRowCount;
     sheet.cell(idx(qtyCol, totalsRow))
       ..value = FormulaCellValue(
-        'SUBTOTAL(109,$colLetter$firstDataRow:$colLetter$lastDataRow)',
-      )
+          'SUBTOTAL(109,$colLetter$firstDataRow:$colLetter$lastDataRow)')
       ..cellStyle = style;
   }
 
@@ -1413,8 +1412,7 @@ class PosUploadFormController extends GetxController
     final archive = ZipDecoder().decodeBytes(xlsxBytes);
     final colCount = columnNames.length;
     final lastCol = _excelColLetter(colCount - 1);
-    final hasTotals =
-        sumColumnName != null &&
+    final hasTotals = sumColumnName != null &&
         dataRowCount > 0 &&
         columnNames.contains(sumColumnName);
     // tableStartRow is 0-based; Excel refs are 1-based.
@@ -1429,8 +1427,7 @@ class PosUploadFormController extends GetxController
     final colsBuffer = StringBuffer();
     for (int i = 0; i < colCount; i++) {
       colsBuffer.write(
-        '<tableColumn id="${i + 1}" name="${_xmlEscape(columnNames[i])}"',
-      );
+          '<tableColumn id="${i + 1}" name="${_xmlEscape(columnNames[i])}"');
       if (hasTotals && columnNames[i] == sumColumnName) {
         colsBuffer.write(' totalsRowFunction="sum"');
       } else if (hasTotals && i == 0) {
@@ -1439,8 +1436,7 @@ class PosUploadFormController extends GetxController
       colsBuffer.write('/>');
     }
 
-    final tableXml =
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    final tableXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
         ' id="1" name="$tableName" displayName="$tableName"'
         ' ref="$ref" ${hasTotals ? 'totalsRowCount="1"' : 'totalsRowShown="0"'}>'
@@ -1450,8 +1446,7 @@ class PosUploadFormController extends GetxController
         ' showLastColumn="0" showRowStripes="1" showColumnStripes="0"/>'
         '</table>';
 
-    const relsXml =
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    const relsXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
         '<Relationship Id="rId1"'
         ' Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/table"'
@@ -1485,9 +1480,8 @@ class PosUploadFormController extends GetxController
     }
 
     archive.addFile(ArchiveFile.string('xl/tables/table1.xml', tableXml));
-    archive.addFile(
-      ArchiveFile.string('xl/worksheets/_rels/sheet1.xml.rels', relsXml),
-    );
+    archive.addFile(ArchiveFile.string(
+        'xl/worksheets/_rels/sheet1.xml.rels', relsXml));
 
     return ZipEncoder().encode(archive) ?? xlsxBytes;
   }

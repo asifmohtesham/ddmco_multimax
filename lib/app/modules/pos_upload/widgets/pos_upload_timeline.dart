@@ -91,14 +91,7 @@ List<TimelineCheckpoint> buildPosUploadTimeline({
   if (isStockEntryUpload) {
     return [
       node1,
-      _linkedNode(
-        'Stock Entry',
-        'Linked',
-        isLoadingLinked,
-        hasLinkedDoc,
-        linkedDocName,
-        linkedDocCreation,
-      ),
+      _linkedNode('Stock Entry', 'Linked', isLoadingLinked, hasLinkedDoc, linkedDocName, linkedDocCreation),
       ...deliveryHistory,
     ];
   }
@@ -135,16 +128,15 @@ List<TimelineCheckpoint> buildPosUploadTimeline({
   final CheckpointState psState = isLoadingPackingSlips
       ? CheckpointState.loading
       : (packingSlipCount > 0
-            ? CheckpointState.reached
-            : CheckpointState.upcoming);
+          ? CheckpointState.reached
+          : CheckpointState.upcoming);
 
   final node3 = TimelineCheckpoint(
     title: 'Packing Slips',
     statusLabel: 'Packing',
     state: psState,
-    timestamp: psState == CheckpointState.reached
-        ? earliestPackingSlipCreation
-        : null,
+    timestamp:
+        psState == CheckpointState.reached ? earliestPackingSlipCreation : null,
     detail: psState == CheckpointState.reached
         ? '$packingSlipCount slip${packingSlipCount == 1 ? '' : 's'} · $packedItems / $totalSerials items packed'
         : null,
@@ -484,41 +476,27 @@ class _TimelineRow extends StatelessWidget {
         );
       }
       if (checkpoint.detail != null) {
-        rows.add(
-          Text(
-            checkpoint.detail!,
-            style: theme.textTheme.labelSmall?.copyWith(color: muted),
-          ),
-        );
+        rows.add(Text(
+          checkpoint.detail!,
+          style: theme.textTheme.labelSmall?.copyWith(color: muted),
+        ));
       }
       if (checkpoint.progress != null) {
-        rows.add(
-          Padding(
-            padding: const EdgeInsets.only(top: 4, right: 8),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(2),
-              child: LinearProgressIndicator(
-                value: checkpoint.progress,
-                minHeight: 4,
-              ),
-            ),
+        rows.add(Padding(
+          padding: const EdgeInsets.only(top: 4, right: 8),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: LinearProgressIndicator(
+                value: checkpoint.progress, minHeight: 4),
           ),
-        );
+        ));
       }
     } else if (loading) {
-      rows.add(
-        Text(
-          '${checkpoint.statusLabel}…',
-          style: theme.textTheme.labelSmall?.copyWith(color: muted),
-        ),
-      );
+      rows.add(Text('${checkpoint.statusLabel}…',
+          style: theme.textTheme.labelSmall?.copyWith(color: muted)));
     } else {
-      rows.add(
-        Text(
-          'Awaiting',
-          style: theme.textTheme.labelSmall?.copyWith(color: muted),
-        ),
-      );
+      rows.add(Text('Awaiting',
+          style: theme.textTheme.labelSmall?.copyWith(color: muted)));
     }
 
     return Column(

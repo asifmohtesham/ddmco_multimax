@@ -45,30 +45,17 @@ import 'package:multimax/app/data/providers/attendance_provider.dart';
 import 'package:multimax/app/modules/hr/attendance/attendance_logic.dart';
 import 'package:multimax/app/modules/notification_settings/notification_settings_controller.dart';
 
-enum ActiveScreen {
-  home,
-  purchaseReceipt,
-  stockEntry,
-  deliveryNote,
-  packingSlip,
-  posUpload,
-  todo,
-  item,
-  batch,
-  bom,
-}
+enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item, batch, bom }
 
 class HomeController extends GetxController {
-  final AuthenticationController _authController =
-      Get.find<AuthenticationController>();
+  final AuthenticationController _authController = Get.find<AuthenticationController>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final ItemProvider _itemProvider = Get.find<ItemProvider>();
   final JobCardProvider _jcProvider = Get.find<JobCardProvider>();
   final UserProvider _userProvider = Get.find<UserProvider>();
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
   final StockEntryProvider _stockEntryProvider = Get.find<StockEntryProvider>();
-  final DeliveryNoteProvider _deliveryNoteProvider =
-      Get.find<DeliveryNoteProvider>();
+  final DeliveryNoteProvider _deliveryNoteProvider = Get.find<DeliveryNoteProvider>();
   final ScanService _scanService = Get.find<ScanService>();
   final DataWedgeService _dataWedgeService = Get.find<DataWedgeService>();
   final ToDoProvider _todoProvider = Get.find<ToDoProvider>();
@@ -81,15 +68,15 @@ class HomeController extends GetxController {
   /// other provider.
   PackingSlipProvider get _packingSlipProvider =>
       Get.isRegistered<PackingSlipProvider>()
-      ? Get.find<PackingSlipProvider>()
-      : Get.put(PackingSlipProvider());
+          ? Get.find<PackingSlipProvider>()
+          : Get.put(PackingSlipProvider());
 
   /// Same lazy pattern as [_packingSlipProvider]: home_binding registers one,
   /// controller unit tests need not.
   AttendanceProvider get _attendanceProvider =>
       Get.isRegistered<AttendanceProvider>()
-      ? Get.find<AttendanceProvider>()
-      : Get.put(AttendanceProvider());
+          ? Get.find<AttendanceProvider>()
+          : Get.put(AttendanceProvider());
 
   /// Worker that routes hardware (DataWedge) scans to [onScan].
   /// Disposed in [onClose].
@@ -108,8 +95,8 @@ class HomeController extends GetxController {
 
   var selectedDailyDate = DateTime.now().obs;
   var selectedWeeklyRange = DateTimeRange(
-    start: DateTime.now().subtract(const Duration(days: 28)),
-    end: DateTime.now(),
+      start: DateTime.now().subtract(const Duration(days: 28)),
+      end: DateTime.now()
   ).obs;
 
   var userList = <User>[].obs;
@@ -125,7 +112,7 @@ class HomeController extends GetxController {
   var activeBomCount = 0.obs;
 
   /// Active WIP Job Card for the session employee (null if none).
-  final activeWipJcName = RxnString();
+  final activeWipJcName      = RxnString();
   final activeWipJcOperation = RxnString();
 
   /// Actionable open ToDos for the selected user — soonest due date first,
@@ -204,11 +191,8 @@ class HomeController extends GetxController {
 
   /// Before the day's first cut-off (the Morning's on a two-shift day).
   bool get beforeAttendanceCutoff => DateTime.now().isBefore(
-    (_attendanceDayShifts.isEmpty
-            ? attendanceShift.value
-            : _attendanceDayShifts.first)
-        .cutoffOn(DateTime.now()),
-  );
+      (_attendanceDayShifts.isEmpty ? attendanceShift.value : _attendanceDayShifts.first)
+          .cutoffOn(DateTime.now()));
 
   /// Past the cut-off with zero punches for anyone → the terminal has most
   /// likely not uploaded; before the cut-off an empty day is normal.
@@ -267,50 +251,37 @@ class HomeController extends GetxController {
     final me = myAttendance;
     if (me == null || !me.employee.isTracked) return;
     final now = DateTime.now();
-    Get.toNamed(
-      AppRoutes.ATTENDANCE_MONTH,
-      arguments: {
-        'employee': me.employee,
-        'month': DateTime(now.year, now.month),
-        'today': me,
-        'shift': attendanceShift.value,
-        'holidays': attendanceHolidays.toSet(),
-        'catalog': Map<String, ShiftRules>.of(attendanceCatalog),
-      },
-    );
+    Get.toNamed(AppRoutes.ATTENDANCE_MONTH, arguments: {
+      'employee': me.employee,
+      'month': DateTime(now.year, now.month),
+      'today': me,
+      'shift': attendanceShift.value,
+      'holidays': attendanceHolidays.toSet(),
+      'catalog': Map<String, ShiftRules>.of(attendanceCatalog),
+    });
   }
 
   /// A failed read keeps the last assignments successfully loaded for this
   /// same day rather than dropping to `[]` and collapsing everyone to a
   /// single fallback shift; `[]` only when nothing has ever loaded for today.
-  Future<List<ShiftAssignmentRow>> _fetchTodayAssignments(
-    DateTime today,
-  ) async {
+  Future<List<ShiftAssignmentRow>> _fetchTodayAssignments(DateTime today) async {
     try {
-      final result = await _attendanceProvider.fetchShiftAssignments(
-        today,
-        today,
-      );
+      final result = await _attendanceProvider.fetchShiftAssignments(today, today);
       _lastAttendanceAssignments = result;
       _lastAttendanceAssignmentsDay = today;
       return result;
     } catch (_) {
-      return _lastAttendanceAssignmentsDay == today
-          ? _lastAttendanceAssignments
-          : const [];
+      return _lastAttendanceAssignmentsDay == today ? _lastAttendanceAssignments : const [];
     }
   }
 
   /// Reads the Shift Types among [names] not cached yet.
   Future<void> _ensureAttendanceCatalog(Iterable<String> names) async {
-    final missing = names
-        .where((n) => n.isNotEmpty && !attendanceCatalog.containsKey(n))
-        .toSet();
+    final missing =
+        names.where((n) => n.isNotEmpty && !attendanceCatalog.containsKey(n)).toSet();
     if (missing.isEmpty) return;
     try {
-      attendanceCatalog.addAll(
-        await _attendanceProvider.fetchShiftTypes(missing),
-      );
+      attendanceCatalog.addAll(await _attendanceProvider.fetchShiftTypes(missing));
     } catch (_) {}
   }
 
@@ -322,14 +293,9 @@ class HomeController extends GetxController {
     if (_attendanceHolidaysLoaded) return;
     final list = _attendanceDayShifts
         .map((s) => s.holidayList)
-        .firstWhere(
-          (h) => h.isNotEmpty,
-          orElse: () => _attendanceDefaultShift.holidayList,
-        );
+        .firstWhere((h) => h.isNotEmpty, orElse: () => _attendanceDefaultShift.holidayList);
     try {
-      attendanceHolidays.assignAll(
-        await _attendanceProvider.fetchHolidays(list),
-      );
+      attendanceHolidays.assignAll(await _attendanceProvider.fetchHolidays(list));
       _attendanceHolidaysLoaded = true;
     } catch (_) {}
   }
@@ -371,13 +337,11 @@ class HomeController extends GetxController {
             .trim();
         try {
           _attendanceDefaultShift = await _attendanceProvider.fetchShiftRules(
-            shiftName.isEmpty ? ShiftRules.fallback.name : shiftName,
-          );
+              shiftName.isEmpty ? ShiftRules.fallback.name : shiftName);
         } catch (_) {
           _attendanceDefaultShift = ShiftRules.fallback;
         }
-        attendanceCatalog[_attendanceDefaultShift.name] =
-            _attendanceDefaultShift;
+        attendanceCatalog[_attendanceDefaultShift.name] = _attendanceDefaultShift;
         attendanceShift.value = _attendanceDefaultShift;
         _attendanceMasterLoaded = true;
       }
@@ -395,13 +359,11 @@ class HomeController extends GetxController {
       await _ensureAttendanceCatalog([
         for (final a in _attendanceAssignments) a.shiftType,
         for (final r in ledger) r.shift,
-        for (final r in myMonthLedger.value ?? const <AttendanceRecord>[])
-          r.shift,
+        for (final r in myMonthLedger.value ?? const <AttendanceRecord>[]) r.shift,
       ]);
       if (checkins.isEmpty) {
         try {
-          attendanceLatestPunch.value = await _attendanceProvider
-              .fetchLatestCheckin();
+          attendanceLatestPunch.value = await _attendanceProvider.fetchLatestCheckin();
         } catch (_) {}
       }
       final byEmp = <String, List<EmployeeCheckin>>{};
@@ -418,16 +380,15 @@ class HomeController extends GetxController {
       // when no assignment covers it — HRMS already wrote them, so a stale/
       // failed assignment read doesn't collapse a two-shift day to General.
       List<ShiftRules> shiftsFor(TrackedEmployee e) => resolveShifts(
-        employee: e,
-        day: today,
-        assignments: _attendanceAssignments,
-        catalog: attendanceCatalog,
-        fallback: _attendanceDefaultShift,
-        ledgerNames: (ledgerByEmp[e.name] ?? const []).map((r) => r.shift),
-      );
-      _attendanceDayShifts = distinctShifts(
-        _attendanceEmployees.where((e) => e.isTracked).map(shiftsFor),
-      );
+            employee: e,
+            day: today,
+            assignments: _attendanceAssignments,
+            catalog: attendanceCatalog,
+            fallback: _attendanceDefaultShift,
+            ledgerNames: (ledgerByEmp[e.name] ?? const []).map((r) => r.shift),
+          );
+      _attendanceDayShifts =
+          distinctShifts(_attendanceEmployees.where((e) => e.isTracked).map(shiftsFor));
       if (_attendanceDayShifts.isNotEmpty) {
         attendanceShift.value = focusShift(_attendanceDayShifts, today, now);
       }
@@ -447,7 +408,8 @@ class HomeController extends GetxController {
           punches: byEmp[e.name] ?? const [],
           ledgers: ledgerByEmp[e.name] ?? const [],
         );
-      }).toList()..sort(compareDayStatus);
+      }).toList()
+        ..sort(compareDayStatus);
       attendanceRows.assignAll(rows);
       attendanceLoadedAt.value = DateTime.now();
     } catch (e) {
@@ -461,9 +423,9 @@ class HomeController extends GetxController {
 
   /// Display names for owner resolution, keyed by email, from the loaded users.
   Map<String, String> get namesByEmail => {
-    for (final u in userList)
-      if (u.email.isNotEmpty) u.email: u.name,
-  };
+        for (final u in userList)
+          if (u.email.isNotEmpty) u.email: u.name,
+      };
 
   /// Quick Create card layout — 1 or 2 columns, persisted across sessions.
   var dashboardColumns = 1.obs;
@@ -490,11 +452,9 @@ class HomeController extends GetxController {
     super.onInit();
     dashboardColumns.value = _storageService.getDashboardColumns();
     tasksFirst.value = _storageService.getDashboardTasksFirst(
-      _authController.currentUser.value?.email ?? '',
-    );
-    actionableScope.value = actionableScopeFromString(
-      _storageService.getDashboardActionableScope(),
-    );
+        _authController.currentUser.value?.email ?? '');
+    actionableScope.value =
+        actionableScopeFromString(_storageService.getDashboardActionableScope());
     _updateActiveScreenForRoute(Get.currentRoute);
     _initDashboard();
     unawaited(_maybePromptAttendancePermission());
@@ -513,13 +473,9 @@ class HomeController extends GetxController {
   /// turn it on later.
   Future<void> _maybePromptAttendancePermission() async {
     final user = _authController.currentUser.value;
-    final isAndroid =
-        !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+    final isAndroid = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
     if (!shouldPromptAttendancePermission(
-      user: user,
-      isAndroid: isAndroid,
-      storage: _storageService,
-    )) {
+        user: user, isAndroid: isAndroid, storage: _storageService)) {
       return;
     }
     await _storageService.saveAttendancePermissionPrompted(user!.id);
@@ -577,9 +533,7 @@ class HomeController extends GetxController {
     if (selectedFilterUser.value == null) {
       final myEmail = _authController.currentUser.value?.email;
       if (myEmail != null) {
-        selectedFilterUser.value = userList.firstWhereOrNull(
-          (u) => u.email == myEmail,
-        );
+        selectedFilterUser.value = userList.firstWhereOrNull((u) => u.email == myEmail);
       }
       if (selectedFilterUser.value == null && userList.isNotEmpty) {
         selectedFilterUser.value = userList.first;
@@ -598,19 +552,14 @@ class HomeController extends GetxController {
         final response = await _userProvider.getDirectReports(empId);
         if (response.statusCode == 200 && response.data['data'] != null) {
           final data = response.data['data'] as List;
-          final reports = data
-              .map(
-                (e) => User(
-                  id: e['user_id'] ?? '',
-                  name: e['employee_name'] ?? 'Unknown',
-                  email: e['user_id'] ?? '',
-                  roles: [],
-                  employeeId: e['name'],
-                ),
-              )
-              .toList();
-          if (currentUser != null &&
-              !reports.any((u) => u.email == currentUser.email)) {
+          final reports = data.map((e) => User(
+            id: e['user_id'] ?? '',
+            name: e['employee_name'] ?? 'Unknown',
+            email: e['user_id'] ?? '',
+            roles: [],
+            employeeId: e['name'],
+          )).toList();
+          if (currentUser != null && !reports.any((u) => u.email == currentUser.email)) {
             reports.insert(0, currentUser);
           }
           userList.assignAll(reports);
@@ -652,13 +601,13 @@ class HomeController extends GetxController {
 
       final results = await Future.wait([
         _apiProvider.getDocumentCount('Work Order', filters: woFilters),
-        _apiProvider.getDocumentCount('Job Card', filters: jcFilters),
-        _apiProvider.getDocumentCount('BOM', filters: bomFilters),
+        _apiProvider.getDocumentCount('Job Card',   filters: jcFilters),
+        _apiProvider.getDocumentCount('BOM',        filters: bomFilters),
       ]);
 
       activeWorkOrdersCount.value = _extractCount(results[0]);
-      activeJobCardsCount.value = _extractCount(results[1]);
-      activeBomCount.value = _extractCount(results[2]);
+      activeJobCardsCount.value   = _extractCount(results[1]);
+      activeBomCount.value        = _extractCount(results[2]);
 
       await Future.wait([
         _fetchActiveWipJc(),
@@ -680,8 +629,7 @@ class HomeController extends GetxController {
   /// [selectUpcomingTodos] reorders them to the end and caps the list.
   Future<void> fetchUpcomingTodos() async {
     try {
-      final email =
-          selectedFilterUser.value?.email ??
+      final email = selectedFilterUser.value?.email ??
           _authController.currentUser.value?.email;
       if (email == null || email.isEmpty) {
         upcomingTodos.clear();
@@ -717,8 +665,7 @@ class HomeController extends GetxController {
   /// user-independent. Only DocTypes the user can read are queried (no 403s).
   Future<void> fetchActionableCounts({bool force = false}) async {
     final scope = actionableScope.value;
-    final email =
-        selectedFilterUser.value?.email ??
+    final email = selectedFilterUser.value?.email ??
         _authController.currentUser.value?.email;
     final key = actionableCacheKey(scope, email);
 
@@ -739,12 +686,10 @@ class HomeController extends GetxController {
       for (final cfg in kActionableDocConfigs) {
         if (perm.hasAccess(cfg.doctype) != true) continue;
         doctypes.add(cfg.doctype);
-        requests.add(
-          _apiProvider.getDocumentCount(
-            cfg.doctype,
-            filters: actionableFiltersFor(cfg.doctype, scope, email),
-          ),
-        );
+        requests.add(_apiProvider.getDocumentCount(
+          cfg.doctype,
+          filters: actionableFiltersFor(cfg.doctype, scope, email),
+        ));
       }
       final responses = await Future.wait(requests);
       final counts = <String, int>{};
@@ -774,16 +719,13 @@ class HomeController extends GetxController {
   /// todos land.
   void _applyDefaultSelection() {
     final current = selectedActionable.value;
-    final stillHasWork =
-        current != null &&
+    final stillHasWork = current != null &&
         (current == 'ToDo'
             ? openTodoCount.value > 0
             : (actionableCounts[current] ?? 0) > 0);
     if (!stillHasWork) {
-      selectedActionable.value = defaultActionableSelection(
-        actionableCounts,
-        openTodoCount.value,
-      );
+      selectedActionable.value =
+          defaultActionableSelection(actionableCounts, openTodoCount.value);
     }
     fetchPreviewDocs(force: true);
   }
@@ -801,9 +743,7 @@ class HomeController extends GetxController {
       isLoadingPreview.value = false;
       return;
     }
-    final cfg = kActionableDocConfigs.firstWhereOrNull(
-      (c) => c.doctype == doctype,
-    );
+    final cfg = kActionableDocConfigs.firstWhereOrNull((c) => c.doctype == doctype);
     if (cfg == null) {
       previewDocs.clear();
       isLoadingPreview.value = false;
@@ -811,8 +751,7 @@ class HomeController extends GetxController {
     }
 
     final scope = actionableScope.value;
-    final email =
-        selectedFilterUser.value?.email ??
+    final email = selectedFilterUser.value?.email ??
         _authController.currentUser.value?.email;
     final key = '$doctype::${actionableCacheKey(scope, email)}';
 
@@ -838,20 +777,15 @@ class HomeController extends GetxController {
         final names = namesByEmail;
         for (final e in (res.data['data'] as List)) {
           final json = Map<String, dynamic>.from(e as Map);
-          rows.add(
-            docRowFor(
-              doctype,
-              json,
-              (owner) => ownerLabelFor(owner, names),
-              onTap: () => Get.toNamed(
-                cfg.formRoute,
-                arguments: {
-                  'name': (json['name'] ?? '').toString(),
-                  'mode': 'view',
-                },
-              ),
+          rows.add(docRowFor(
+            doctype,
+            json,
+            (owner) => ownerLabelFor(owner, names),
+            onTap: () => Get.toNamed(
+              cfg.formRoute,
+              arguments: {'name': (json['name'] ?? '').toString(), 'mode': 'view'},
             ),
-          );
+          ));
         }
       }
       _previewCache[key] = rows;
@@ -872,9 +806,7 @@ class HomeController extends GetxController {
   Future<void> setActionableScope(ActionableScope scope) async {
     if (actionableScope.value == scope) return;
     actionableScope.value = scope;
-    _storageService.saveDashboardActionableScope(
-      actionableScopeToString(scope),
-    );
+    _storageService.saveDashboardActionableScope(actionableScopeToString(scope));
     await fetchActionableCounts();
     // Guard against a scope flip landing before this fetch returns — mirrors
     // the fetchActionableCounts/fetchPreviewDocs guards above.
@@ -885,19 +817,14 @@ class HomeController extends GetxController {
   /// Opens [doctype]'s list pre-filtered to Draft (+ owner under Mine), via the
   /// list controller's onReady `filters` hook (Task 4).
   void openActionableList(String doctype) {
-    final cfg = kActionableDocConfigs.firstWhereOrNull(
-      (c) => c.doctype == doctype,
-    );
+    final cfg =
+        kActionableDocConfigs.firstWhereOrNull((c) => c.doctype == doctype);
     if (cfg == null) return;
-    final email =
-        selectedFilterUser.value?.email ??
+    final email = selectedFilterUser.value?.email ??
         _authController.currentUser.value?.email;
-    Get.toNamed(
-      cfg.listRoute,
-      arguments: {
-        'filters': actionableFiltersFor(doctype, actionableScope.value, email),
-      },
-    );
+    Get.toNamed(cfg.listRoute, arguments: {
+      'filters': actionableFiltersFor(doctype, actionableScope.value, email),
+    });
   }
 
   /// Recomputes the section-order verdict from the logged-in user's roles
@@ -918,8 +845,7 @@ class HomeController extends GetxController {
     );
     tasksFirst.value = v;
     final email = user?.email;
-    final isViewingSelf =
-        selectedFilterUser.value == null ||
+    final isViewingSelf = selectedFilterUser.value == null ||
         selectedFilterUser.value?.email == email;
     if (email != null && email.isNotEmpty && isViewingSelf) {
       _storageService.saveDashboardTasksFirst(email, v);
@@ -933,23 +859,14 @@ class HomeController extends GetxController {
       final res = await _jcProvider.getJobCards(
         filters: {
           'status': 'Work In Progress',
-          '__child__Job Card Time Log': [
-            'Job Card Time Log',
-            'employee',
-            '=',
-            empId,
-          ],
+          '__child__Job Card Time Log': ['Job Card Time Log', 'employee', '=', empId],
         },
         limit: 1,
       );
       if (res.statusCode == 200) {
         final list = (res.data['data'] as List?) ?? [];
-        activeWipJcName.value = list.isNotEmpty
-            ? list.first['name']?.toString()
-            : null;
-        activeWipJcOperation.value = list.isNotEmpty
-            ? list.first['operation']?.toString()
-            : null;
+        activeWipJcName.value      = list.isNotEmpty ? list.first['name']?.toString() : null;
+        activeWipJcOperation.value = list.isNotEmpty ? list.first['operation']?.toString() : null;
       }
     } catch (_) {}
   }
@@ -974,9 +891,7 @@ class HomeController extends GetxController {
   Future<void> fetchPerformanceData() async {
     isLoadingTimeline.value = true;
     try {
-      final email =
-          selectedFilterUser.value?.email ??
-          _authController.currentUser.value?.email;
+      final email = selectedFilterUser.value?.email ?? _authController.currentUser.value?.email;
       if (email == null) return;
 
       DateTime startDate;
@@ -988,10 +903,8 @@ class HomeController extends GetxController {
         endDate = selectedWeeklyRange.value.end;
         DateTime current = startDate;
         while (current.isBefore(endDate) || current.isAtSameMomentAs(endDate)) {
-          final key =
-              '${current.year}-${current.month}-W${_getWeekOfMonth(current)}';
-          final label =
-              '${DateFormat('MMM').format(current)} W${_getWeekOfMonth(current)}';
+          final key = '${current.year}-${current.month}-W${_getWeekOfMonth(current)}';
+          final label = '${DateFormat('MMM').format(current)} W${_getWeekOfMonth(current)}';
           if (!buckets.containsKey(key)) {
             buckets[key] = TimelinePoint(label: label, date: current);
           }
@@ -1017,42 +930,21 @@ class HomeController extends GetxController {
       }
 
       final dateStr = DateFormat('yyyy-MM-dd').format(startDate);
-      final filters = {
-        'owner': email,
-        'docstatus': ['<', 2],
-      };
+      final filters = {'owner': email, 'docstatus': ['<', 2]};
 
       if (timelineViewMode.value == 'Hourly') {
-        filters['creation'] = [
-          'between',
-          [
-            DateFormat('yyyy-MM-dd 00:00:00').format(startDate),
-            DateFormat('yyyy-MM-dd 23:59:59').format(startDate),
-          ],
-        ];
+        filters['creation'] = ['between', [
+          DateFormat('yyyy-MM-dd 00:00:00').format(startDate),
+          DateFormat('yyyy-MM-dd 23:59:59').format(startDate)
+        ]];
       } else {
         filters['creation'] = ['>=', dateStr];
       }
 
       final results = await Future.wait([
-        _apiProvider.getDocumentList(
-          'Delivery Note',
-          filters: filters,
-          fields: ['creation', 'total_qty', 'customer'],
-          limit: 100,
-        ),
-        _apiProvider.getDocumentList(
-          'Stock Entry',
-          filters: filters,
-          fields: ['creation', 'custom_total_qty'],
-          limit: 100,
-        ),
-        _apiProvider.getDocumentList(
-          'Purchase Receipt',
-          filters: filters,
-          fields: ['creation', 'total_qty'],
-          limit: 100,
-        ),
+        _apiProvider.getDocumentList('Delivery Note', filters: filters, fields: ['creation', 'total_qty', 'customer'], limit: 100),
+        _apiProvider.getDocumentList('Stock Entry', filters: filters, fields: ['creation', 'custom_total_qty'], limit: 100),
+        _apiProvider.getDocumentList('Purchase Receipt', filters: filters, fields: ['creation', 'total_qty'], limit: 100),
       ]);
 
       final dnList = _extractList(results[0]);
@@ -1062,9 +954,7 @@ class HomeController extends GetxController {
       void fillBucket(List<dynamic> list, String type) {
         for (var item in list) {
           final date = DateTime.parse(item['creation']);
-          if (timelineViewMode.value != 'Hourly' &&
-              date.isAfter(endDate.add(const Duration(days: 1))))
-            continue;
+          if (timelineViewMode.value != 'Hourly' && date.isAfter(endDate.add(const Duration(days: 1)))) continue;
 
           String key;
           if (timelineViewMode.value == 'Weekly') {
@@ -1078,12 +968,9 @@ class HomeController extends GetxController {
           if (buckets.containsKey(key)) {
             final existing = buckets[key]!;
             double qty = 0.0;
-            if (type == 'DN')
-              qty = _safeParseDouble(item['total_qty']);
-            else if (type == 'SE')
-              qty = _safeParseDouble(item['custom_total_qty']);
-            else if (type == 'PR')
-              qty = _safeParseDouble(item['total_qty']);
+            if (type == 'DN') qty = _safeParseDouble(item['total_qty']);
+            else if (type == 'SE') qty = _safeParseDouble(item['custom_total_qty']);
+            else if (type == 'PR') qty = _safeParseDouble(item['total_qty']);
 
             int custCount = (type == 'DN' && item['customer'] != null) ? 1 : 0;
             buckets[key] = TimelinePoint(
@@ -1131,26 +1018,20 @@ class HomeController extends GetxController {
 
       if (result.type == ScanType.rack && result.rackId != null) {
         await _handleRackScan(result.rackId!);
-      } else if (result.isSuccess &&
-          (result.type == ScanType.item || result.type == ScanType.batch) &&
-          result.itemData != null) {
-        _openItemDetailSheet(
-          result.itemData!.itemCode,
-          batchNo: result.batchNo,
-        );
-      } else if (result.type == ScanType.variant_of) {
+      }
+      else if (result.isSuccess && (result.type == ScanType.item || result.type == ScanType.batch) && result.itemData != null) {
+        _openItemDetailSheet(result.itemData!.itemCode, batchNo: result.batchNo);
+      }
+      else if (result.type == ScanType.variant_of) {
         barcodeController.clear();
-        Get.toNamed(
-          AppRoutes.ITEM,
-          arguments: {
-            'filters': {
-              'variant_of': ['like', '%${result.rawCode}%'],
-            },
-            'pageTitle': 'Variant: ${result.rawCode}',
+        Get.toNamed(AppRoutes.ITEM, arguments: {
+          'filters': {
+            'variant_of': ['like', '%${result.rawCode}%']
           },
-        );
-      } else if (result.type == ScanType.multiple &&
-          result.candidates != null) {
+          'pageTitle': 'Variant: ${result.rawCode}'
+        });
+      }
+      else if (result.type == ScanType.multiple && result.candidates != null) {
         barcodeController.clear();
         Get.bottomSheet(
           MultiItemSelectionSheet(
@@ -1161,10 +1042,7 @@ class HomeController extends GetxController {
           backgroundColor: Colors.transparent,
         );
       } else {
-        GlobalSnackbar.error(
-          title: 'Not Found',
-          message: result.message ?? 'Item not found',
-        );
+        GlobalSnackbar.error(title: 'Not Found', message: result.message ?? 'Item not found');
       }
     } catch (e) {
       GlobalSnackbar.error(title: 'Scan Error', message: '$e');
@@ -1214,8 +1092,7 @@ class HomeController extends GetxController {
 
       final response = await _itemProvider.getWarehouseStock(warehouse);
 
-      if (response.statusCode == 200 &&
-          response.data['message']?['result'] != null) {
+      if (response.statusCode == 200 && response.data['message']?['result'] != null) {
         final List<dynamic> data = response.data['message']['result'];
 
         final rackItems = data.where((row) {
@@ -1224,10 +1101,7 @@ class HomeController extends GetxController {
         }).toList();
 
         if (rackItems.isEmpty) {
-          GlobalSnackbar.info(
-            title: 'Empty Rack',
-            message: 'No items found in rack $rackCode',
-          );
+          GlobalSnackbar.info(title: 'Empty Rack', message: 'No items found in rack $rackCode');
         } else {
           Get.bottomSheet(
             RackContentsSheet(rackId: rackCode, items: rackItems),
@@ -1236,9 +1110,7 @@ class HomeController extends GetxController {
           );
         }
       } else {
-        GlobalSnackbar.error(
-          message: 'Failed to fetch stock for warehouse $warehouse',
-        );
+        GlobalSnackbar.error(message: 'Failed to fetch stock for warehouse $warehouse');
       }
     } catch (e) {
       GlobalSnackbar.error(message: 'Invalid Rack QR or Network Error');
@@ -1261,27 +1133,18 @@ class HomeController extends GetxController {
     if (isFetchingOpenSalesOrders.value) return;
     isFetchingOpenSalesOrders.value = true;
     try {
-      final res = await _apiProvider.getDocumentList(
-        'Sales Order',
-        limit: 200,
-        filters: {
-          'docstatus': 1,
-          'status': [
-            'in',
-            ['To Deliver and Bill', 'To Deliver'],
+      final res = await _apiProvider.getDocumentList('Sales Order',
+          limit: 200,
+          filters: {
+            'docstatus': 1,
+            'status': ['in', ['To Deliver and Bill', 'To Deliver']],
+            'per_delivered': ['<', 100],
+          },
+          fields: const [
+            'name', 'customer', 'customer_name', 'delivery_date',
+            'per_delivered', 'total_qty',
           ],
-          'per_delivered': ['<', 100],
-        },
-        fields: const [
-          'name',
-          'customer',
-          'customer_name',
-          'delivery_date',
-          'per_delivered',
-          'total_qty',
-        ],
-        orderBy: 'delivery_date asc, modified desc',
-      );
+          orderBy: 'delivery_date asc, modified desc');
       final data = res.data is Map ? res.data['data'] : null;
       if (res.statusCode == 200 && data is List) {
         _allOpenSalesOrders = data
@@ -1298,9 +1161,8 @@ class HomeController extends GetxController {
 
   void filterOpenSalesOrders(String query) {
     openSalesOrderQuery.value = query;
-    openSalesOrders.assignAll(
-      _allOpenSalesOrders.where((o) => o.matches(query)),
-    );
+    openSalesOrders
+        .assignAll(_allOpenSalesOrders.where((o) => o.matches(query)));
   }
 
   Future<void> showSalesOrderPickSheet() async {
@@ -1319,10 +1181,8 @@ class HomeController extends GetxController {
     if (openingSalesOrder.value != null) return;
     openingSalesOrder.value = so.name;
     try {
-      final draft = await SoDeliveryLauncher.open(
-        so.name,
-        beforeNavigate: Get.back,
-      );
+      final draft =
+          await SoDeliveryLauncher.open(so.name, beforeNavigate: Get.back);
       if (draft != null) GlobalSnackbar.info(message: 'Resuming draft $draft');
     } catch (e) {
       GlobalSnackbar.error(message: 'Could not open ${so.name}: $e');
@@ -1336,23 +1196,14 @@ class HomeController extends GetxController {
     isFetchingFulfillmentList.value = true;
     try {
       final response = await _posUploadProvider.getPosUploads(
-        limit: 100,
-        filters: {
-          'status': [
-            'in',
-            ['Pending', 'In Progress'],
-          ],
-        },
-        orderBy: 'modified desc',
+          limit: 100, filters: {'status': ['in', ['Pending', 'In Progress']]}, orderBy: 'modified desc'
       );
-      if (response.statusCode == 200 && response.data['data'] != null) {
+      if(response.statusCode == 200 && response.data['data'] != null) {
         final data = response.data['data'];
-        _allFulfillmentUploads = (data as List)
-            .map((e) => PosUpload.fromJson(e))
-            .toList();
+        _allFulfillmentUploads = (data as List).map((e)=>PosUpload.fromJson(e)).toList();
         filterFulfillmentList(fulfillmentSearchQuery.value);
       }
-    } catch (e) {
+    } catch(e){
       GlobalSnackbar.error(message: 'Error fetching fulfillment list');
     } finally {
       isFetchingFulfillmentList.value = false;
@@ -1373,20 +1224,15 @@ class HomeController extends GetxController {
 
     if (_fulfillmentPrefixFilters.isNotEmpty) {
       filtered = filtered.where((doc) {
-        return _fulfillmentPrefixFilters.any(
-          (prefix) => doc.name.startsWith(prefix),
-        );
+        return _fulfillmentPrefixFilters.any((prefix) => doc.name.startsWith(prefix));
       }).toList();
     }
 
     if (query.isNotEmpty) {
-      filtered = filtered
-          .where(
-            (d) =>
-                d.name.toLowerCase().contains(query.toLowerCase()) ||
-                d.customer.toLowerCase().contains(query.toLowerCase()),
-          )
-          .toList();
+      filtered = filtered.where((d) =>
+      d.name.toLowerCase().contains(query.toLowerCase()) ||
+          d.customer.toLowerCase().contains(query.toLowerCase())
+      ).toList();
     }
 
     fulfillmentPosUploads.assignAll(filtered);
@@ -1414,9 +1260,7 @@ class HomeController extends GetxController {
     final PosUpload? upload = await _fetchPosUploadByName(name);
     if (upload == null) {
       GlobalSnackbar.error(
-        title: 'Not Found',
-        message: 'POS Upload "$name" was not found.',
-      );
+          title: 'Not Found', message: 'POS Upload "$name" was not found.');
       return;
     }
 
@@ -1457,26 +1301,19 @@ class HomeController extends GetxController {
   Future<void> _openLinkedStockEntry(PosUpload posUpload) async {
     try {
       final res = await _stockEntryProvider.getStockEntries(
-        limit: 1,
-        filters: {'custom_reference_no': posUpload.name},
-      );
+          limit: 1, filters: {'custom_reference_no': posUpload.name});
       if (res.statusCode == 200 &&
           res.data['data'] != null &&
           (res.data['data'] as List).isNotEmpty) {
-        Get.toNamed(
-          AppRoutes.STOCK_ENTRY_FORM,
-          arguments: {'name': res.data['data'][0]['name'], 'mode': 'edit'},
-        );
+        Get.toNamed(AppRoutes.STOCK_ENTRY_FORM,
+            arguments: {'name': res.data['data'][0]['name'], 'mode': 'edit'});
       } else {
-        Get.toNamed(
-          AppRoutes.STOCK_ENTRY_FORM,
-          arguments: {
-            'name': '',
-            'mode': 'new',
-            'stockEntryType': 'Material Issue',
-            'customReferenceNo': posUpload.name,
-          },
-        );
+        Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
+          'name': '',
+          'mode': 'new',
+          'stockEntryType': 'Material Issue',
+          'customReferenceNo': posUpload.name
+        });
       }
     } catch (e) {
       GlobalSnackbar.error(message: 'Error processing Stock Entry');
@@ -1489,10 +1326,8 @@ class HomeController extends GetxController {
         posUpload,
       );
       if (link.name != null) {
-        Get.toNamed(
-          AppRoutes.DELIVERY_NOTE_FORM,
-          arguments: {'name': link.name, 'mode': 'edit'},
-        );
+        Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM,
+            arguments: {'name': link.name, 'mode': 'edit'});
         return;
       }
       if (link.status != PosUploadDeliveryNoteStatus.missing ||
@@ -1505,21 +1340,17 @@ class HomeController extends GetxController {
       if (so != null) {
         final draft = await SoDeliveryLauncher.open(so);
         GlobalSnackbar.info(
-          message: draft != null
-              ? '${posUpload.name} belongs to $so — resuming draft $draft'
-              : '${posUpload.name} belongs to $so',
-        );
+            message: draft != null
+                ? '${posUpload.name} belongs to $so — resuming draft $draft'
+                : '${posUpload.name} belongs to $so');
         return;
       }
-      Get.toNamed(
-        AppRoutes.DELIVERY_NOTE_FORM,
-        arguments: {
-          'name': '',
-          'mode': 'new',
-          'posUploadCustomer': posUpload.customer,
-          'posUploadName': posUpload.name,
-        },
-      );
+      Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {
+        'name': '',
+        'mode': 'new',
+        'posUploadCustomer': posUpload.customer,
+        'posUploadName': posUpload.name
+      });
     } catch (e) {
       GlobalSnackbar.error(message: 'Error processing Delivery Note');
     }
@@ -1540,19 +1371,14 @@ class HomeController extends GetxController {
 
   /// Submitted, still-deliverable Sales Order whose po_no names [upload].
   Future<String?> _salesOrderForUpload(String upload) async {
-    final res = await _apiProvider.getDocumentList(
-      'Sales Order',
-      limit: 1,
-      fields: const ['name'],
-      filters: {
-        'po_no': upload,
-        'docstatus': 1,
-        'status': [
-          'in',
-          ['To Deliver and Bill', 'To Deliver'],
-        ],
-      },
-    );
+    final res = await _apiProvider.getDocumentList('Sales Order',
+        limit: 1,
+        fields: const ['name'],
+        filters: {
+          'po_no': upload,
+          'docstatus': 1,
+          'status': ['in', ['To Deliver and Bill', 'To Deliver']],
+        });
     final data = res.data is Map ? res.data['data'] : null;
     return (data is List && data.isNotEmpty)
         ? (data.first as Map)['name']?.toString()
@@ -1576,10 +1402,9 @@ class HomeController extends GetxController {
       }
 
       final psRes = await _packingSlipProvider.getPackingSlips(
-        limit: 0,
-        filters: {'delivery_note': dnName},
-        orderBy: 'from_case_no asc',
-      );
+          limit: 0,
+          filters: {'delivery_note': dnName},
+          orderBy: 'from_case_no asc');
       if (psRes.statusCode != 200) {
         GlobalSnackbar.error(message: 'Failed to load Packing Slips');
         return;
@@ -1590,13 +1415,12 @@ class HomeController extends GetxController {
       if (psList.isEmpty) {
         _openNewPackingSlip(dnName, posUpload.name, 1);
       } else if (psList.length == 1) {
-        Get.toNamed(
-          AppRoutes.PACKING_SLIP_FORM,
-          arguments: {'name': psList.first['name'].toString(), 'mode': 'edit'},
-        );
+        Get.toNamed(AppRoutes.PACKING_SLIP_FORM, arguments: {
+          'name': psList.first['name'].toString(),
+          'mode': 'edit'
+        });
       } else {
-        final nextCase =
-            psList
+        final nextCase = psList
                 .map((e) => (e['to_case_no'] as num?)?.toInt() ?? 0)
                 .fold<int>(0, (a, b) => a > b ? a : b) +
             1;
@@ -1607,10 +1431,8 @@ class HomeController extends GetxController {
             packingSlips: psList,
             onSelect: (psName) {
               Get.back();
-              Get.toNamed(
-                AppRoutes.PACKING_SLIP_FORM,
-                arguments: {'name': psName, 'mode': 'edit'},
-              );
+              Get.toNamed(AppRoutes.PACKING_SLIP_FORM,
+                  arguments: {'name': psName, 'mode': 'edit'});
             },
             onNewCase: () {
               Get.back();
@@ -1627,16 +1449,13 @@ class HomeController extends GetxController {
   }
 
   void _openNewPackingSlip(String dnName, String poNo, int nextCaseNo) {
-    Get.toNamed(
-      AppRoutes.PACKING_SLIP_FORM,
-      arguments: {
-        'name': '',
-        'mode': 'new',
-        'deliveryNote': dnName,
-        'customPoNo': poNo,
-        'nextCaseNo': nextCaseNo,
-      },
-    );
+    Get.toNamed(AppRoutes.PACKING_SLIP_FORM, arguments: {
+      'name': '',
+      'mode': 'new',
+      'deliveryNote': dnName,
+      'customPoNo': poNo,
+      'nextCaseNo': nextCaseNo,
+    });
   }
 
   // Helpers
@@ -1644,21 +1463,18 @@ class HomeController extends GetxController {
     int week = ((date.day - 1) / 7).floor() + 1;
     return week > 4 ? 4 : week;
   }
-
   double _safeParseDouble(dynamic value) {
     if (value == null) return 0.0;
     if (value is num) return value.toDouble();
     if (value is String) return double.tryParse(value) ?? 0.0;
     return 0.0;
   }
-
   List<dynamic> _extractList(Response response) {
     if (response.statusCode == 200 && response.data['data'] != null) {
       return response.data['data'] as List;
     }
     return [];
   }
-
   int _extractCount(dynamic response) {
     if (response is Response &&
         response.statusCode == 200 &&
@@ -1668,60 +1484,22 @@ class HomeController extends GetxController {
     return 0;
   }
 
-  void updateActiveScreen(String route) {
-    _updateActiveScreenForRoute(route);
-  }
+  void updateActiveScreen(String route) { _updateActiveScreenForRoute(route); }
 
   void _updateActiveScreenForRoute(String route) {
     switch (route) {
-      case AppRoutes.HOME:
-        activeScreen.value = ActiveScreen.home;
-        selectedDrawerIndex.value = 0;
-        break;
-      case AppRoutes.STOCK_ENTRY:
-        activeScreen.value = ActiveScreen.stockEntry;
-        selectedDrawerIndex.value = 1;
-        break;
-      case AppRoutes.DELIVERY_NOTE:
-        activeScreen.value = ActiveScreen.deliveryNote;
-        selectedDrawerIndex.value = 2;
-        break;
-      case AppRoutes.PACKING_SLIP:
-        activeScreen.value = ActiveScreen.packingSlip;
-        selectedDrawerIndex.value = 3;
-        break;
-      case AppRoutes.PURCHASE_RECEIPT:
-        activeScreen.value = ActiveScreen.purchaseReceipt;
-        selectedDrawerIndex.value = 4;
-        break;
-      case AppRoutes.POS_UPLOAD:
-        activeScreen.value = ActiveScreen.posUpload;
-        selectedDrawerIndex.value = 5;
-        break;
-      case AppRoutes.TODO:
-        activeScreen.value = ActiveScreen.todo;
-        selectedDrawerIndex.value = 6;
-        break;
-      case AppRoutes.ITEM:
-        activeScreen.value = ActiveScreen.item;
-        selectedDrawerIndex.value = 7;
-        break;
-      case AppRoutes.WORK_ORDER:
-        activeScreen.value = ActiveScreen.home;
-        selectedDrawerIndex.value = 8;
-        break;
-      case AppRoutes.JOB_CARD:
-        activeScreen.value = ActiveScreen.home;
-        selectedDrawerIndex.value = 9;
-        break;
-      case AppRoutes.BATCH:
-        activeScreen.value = ActiveScreen.batch;
-        selectedDrawerIndex.value = 10;
-        break;
-      case AppRoutes.BOM:
-        activeScreen.value = ActiveScreen.bom;
-        selectedDrawerIndex.value = 11;
-        break;
+      case AppRoutes.HOME:             activeScreen.value = ActiveScreen.home;            selectedDrawerIndex.value = 0;  break;
+      case AppRoutes.STOCK_ENTRY:      activeScreen.value = ActiveScreen.stockEntry;      selectedDrawerIndex.value = 1;  break;
+      case AppRoutes.DELIVERY_NOTE:    activeScreen.value = ActiveScreen.deliveryNote;    selectedDrawerIndex.value = 2;  break;
+      case AppRoutes.PACKING_SLIP:     activeScreen.value = ActiveScreen.packingSlip;     selectedDrawerIndex.value = 3;  break;
+      case AppRoutes.PURCHASE_RECEIPT: activeScreen.value = ActiveScreen.purchaseReceipt; selectedDrawerIndex.value = 4;  break;
+      case AppRoutes.POS_UPLOAD:       activeScreen.value = ActiveScreen.posUpload;       selectedDrawerIndex.value = 5;  break;
+      case AppRoutes.TODO:             activeScreen.value = ActiveScreen.todo;            selectedDrawerIndex.value = 6;  break;
+      case AppRoutes.ITEM:             activeScreen.value = ActiveScreen.item;            selectedDrawerIndex.value = 7;  break;
+      case AppRoutes.WORK_ORDER:       activeScreen.value = ActiveScreen.home;            selectedDrawerIndex.value = 8;  break;
+      case AppRoutes.JOB_CARD:         activeScreen.value = ActiveScreen.home;            selectedDrawerIndex.value = 9;  break;
+      case AppRoutes.BATCH:            activeScreen.value = ActiveScreen.batch;           selectedDrawerIndex.value = 10; break;
+      case AppRoutes.BOM:              activeScreen.value = ActiveScreen.bom;             selectedDrawerIndex.value = 11; break;
     }
   }
 
@@ -1733,16 +1511,16 @@ class HomeController extends GetxController {
     }
   }
 
-  void goToHome() => changeDrawerPage(0, AppRoutes.HOME);
-  void goToStockEntry() => changeDrawerPage(1, AppRoutes.STOCK_ENTRY);
-  void goToDeliveryNote() => changeDrawerPage(2, AppRoutes.DELIVERY_NOTE);
-  void goToPackingSlip() => changeDrawerPage(3, AppRoutes.PACKING_SLIP);
-  void goToPurchaseReceipt() => changeDrawerPage(4, AppRoutes.PURCHASE_RECEIPT);
-  void goToPosUpload() => changeDrawerPage(5, AppRoutes.POS_UPLOAD);
-  void goToToDo() => changeDrawerPage(6, AppRoutes.TODO);
-  void goToItem() => changeDrawerPage(7, AppRoutes.ITEM);
-  void goToWorkOrder() => changeDrawerPage(8, AppRoutes.WORK_ORDER);
-  void goToJobCard() => changeDrawerPage(9, AppRoutes.JOB_CARD);
-  void goToBatch() => changeDrawerPage(10, AppRoutes.BATCH);
-  void goToBOM() => changeDrawerPage(11, AppRoutes.BOM);
+  void goToHome()            => changeDrawerPage(0,  AppRoutes.HOME);
+  void goToStockEntry()      => changeDrawerPage(1,  AppRoutes.STOCK_ENTRY);
+  void goToDeliveryNote()    => changeDrawerPage(2,  AppRoutes.DELIVERY_NOTE);
+  void goToPackingSlip()     => changeDrawerPage(3,  AppRoutes.PACKING_SLIP);
+  void goToPurchaseReceipt() => changeDrawerPage(4,  AppRoutes.PURCHASE_RECEIPT);
+  void goToPosUpload()       => changeDrawerPage(5,  AppRoutes.POS_UPLOAD);
+  void goToToDo()            => changeDrawerPage(6,  AppRoutes.TODO);
+  void goToItem()            => changeDrawerPage(7,  AppRoutes.ITEM);
+  void goToWorkOrder()       => changeDrawerPage(8,  AppRoutes.WORK_ORDER);
+  void goToJobCard()         => changeDrawerPage(9,  AppRoutes.JOB_CARD);
+  void goToBatch()           => changeDrawerPage(10, AppRoutes.BATCH);
+  void goToBOM()             => changeDrawerPage(11, AppRoutes.BOM);
 }

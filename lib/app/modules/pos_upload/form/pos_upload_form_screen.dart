@@ -30,16 +30,15 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
       final title = controller.posUpload.value?.name.isNotEmpty == true
           ? controller.posUpload.value!.name
           : controller.name.isNotEmpty
-          ? controller.name
-          : 'POS Upload';
-      final isLoading = controller.isLoading.value;
-      final posUpload = controller.posUpload.value;
+              ? controller.name
+              : 'POS Upload';
+      final isLoading  = controller.isLoading.value;
+      final posUpload  = controller.posUpload.value;
       final hasDeliveryActions = controller.deliveryActions.isNotEmpty;
       // Gate on the loaded DN object (not linkedDocName): if the DN detail
       // fetch failed, deliveryNote stays null and the export stays disabled
       // instead of throwing when the sheet opens.
-      final canShare =
-          controller.deliveryNote.value != null ||
+      final canShare = controller.deliveryNote.value != null ||
           controller.packingSlips.isNotEmpty;
 
       return DefaultTabController(
@@ -48,8 +47,8 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
           body: NestedScrollView(
             headerSliverBuilder: (ctx, _) => [
               DocTypeFormHeader(
-                title: title,
-                docType: 'POS Upload',
+                title:       title,
+                docType:     'POS Upload',
                 statusLabel: posUpload?.status,
                 onShare: canShare ? () => _showShareSheet(context) : null,
                 extraActions: [
@@ -66,7 +65,7 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                   }),
                   RealtimeSyncStatusIcon(
                     isConnected: controller.isRealtimeConnected,
-                    isSyncing: controller.isRemoteSyncing,
+                    isSyncing:   controller.isRemoteSyncing,
                   ),
                 ],
                 bottom: hasDeliveryActions
@@ -84,29 +83,25 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
             body: isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : posUpload == null
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.error_outline,
-                          size: 48,
-                          color: Theme.of(context).colorScheme.error,
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.error_outline,
+                                size: 48,
+                                color: Theme.of(context).colorScheme.error),
+                            const SizedBox(height: 12),
+                            const Text('POS Upload not found.',
+                                style: TextStyle(fontSize: 16)),
+                          ],
                         ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          'POS Upload not found.',
-                          style: TextStyle(fontSize: 16),
-                        ),
-                      ],
-                    ),
-                  )
-                : TabBarView(
-                    children: [
-                      _DetailsTab(controller: controller),
-                      _ItemsTab(controller: controller),
-                    ],
-                  ),
+                      )
+                    : TabBarView(
+                        children: [
+                          _DetailsTab(controller: controller),
+                          _ItemsTab(controller: controller),
+                        ],
+                      ),
           ),
         ),
       );
@@ -168,13 +163,7 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
   static List<String> _columnNames(ExportDocType docType, bool compact) {
     // Ref Code resolves from the POS Upload items by invoice serial.
     final base = compact
-        ? [
-            'Invoice Serial #',
-            'Ref Code',
-            'Item Name',
-            'Qty',
-            'Country of Origin',
-          ]
+        ? ['Invoice Serial #', 'Ref Code', 'Item Name', 'Qty', 'Country of Origin']
         : [
             'Invoice Serial #',
             'Ref Code',
@@ -205,9 +194,8 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
         final hasDn = controller.deliveryNote.value != null;
         final hasPs = controller.packingSlips.isNotEmpty;
         // Default to the most-used export when available.
-        var docType = hasPs
-            ? ExportDocType.packingSlip
-            : ExportDocType.deliveryNote;
+        var docType =
+            hasPs ? ExportDocType.packingSlip : ExportDocType.deliveryNote;
         var compact = true;
         String? sortByColumn;
         var isExporting = false;
@@ -243,17 +231,15 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                     onSelectionChanged: isExporting
                         ? null
                         : (selection) => setState(() {
-                            docType = selection.first;
-                            // Reset sort only if the column doesn't exist
-                            // for the new doc type (Case # is PS-only).
-                            if (sortByColumn != null &&
-                                !_columnNames(
-                                  docType,
-                                  compact,
-                                ).contains(sortByColumn)) {
-                              sortByColumn = null;
-                            }
-                          }),
+                              docType = selection.first;
+                              // Reset sort only if the column doesn't exist
+                              // for the new doc type (Case # is PS-only).
+                              if (sortByColumn != null &&
+                                  !_columnNames(docType, compact)
+                                      .contains(sortByColumn)) {
+                                sortByColumn = null;
+                              }
+                            }),
                   ),
                   if (!hasPs || !hasDn) ...[
                     const SizedBox(height: 6),
@@ -262,26 +248,25 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                           ? 'No packing slips yet'
                           : 'Delivery note not available',
                       style: Theme.of(ctx).textTheme.labelSmall?.copyWith(
-                        color: Theme.of(ctx).colorScheme.onSurfaceVariant,
-                      ),
+                            color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                          ),
                     ),
                   ],
                   const SizedBox(height: 8),
                   SwitchListTile(
                     title: const Text('Compact'),
                     subtitle: Text(
-                      _columnNames(
-                        docType,
-                        compact,
-                      ).map((c) => _shortLabels[c]!).join(' · '),
+                      _columnNames(docType, compact)
+                          .map((c) => _shortLabels[c]!)
+                          .join(' · '),
                     ),
                     value: compact,
                     onChanged: isExporting
                         ? null
                         : (v) => setState(() {
-                            compact = v;
-                            sortByColumn = null;
-                          }),
+                              compact = v;
+                              sortByColumn = null;
+                            }),
                     contentPadding: EdgeInsets.zero,
                   ),
                   const SizedBox(height: 8),
@@ -326,26 +311,25 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                             setState(() => isExporting = true);
                             final docLabel =
                                 docType == ExportDocType.packingSlip
-                                ? 'Packing Slip'
-                                : 'Delivery Note';
+                                    ? 'Packing Slip'
+                                    : 'Delivery Note';
                             try {
                               final filePath =
                                   docType == ExportDocType.packingSlip
-                                  ? await controller.buildPackingSlipExcel(
-                                      compact: compact,
-                                      sortByColumn: sortByColumn,
-                                    )
-                                  : await controller.buildDeliveryNoteExcel(
-                                      compact: compact,
-                                      sortByColumn: sortByColumn,
-                                    );
+                                      ? await controller.buildPackingSlipExcel(
+                                          compact: compact,
+                                          sortByColumn: sortByColumn,
+                                        )
+                                      : await controller.buildDeliveryNoteExcel(
+                                          compact: compact,
+                                          sortByColumn: sortByColumn,
+                                        );
                               if (ctx.mounted) Navigator.of(ctx).pop();
                               await Share.shareXFiles(
                                 [
                                   XFile(
                                     filePath,
-                                    mimeType:
-                                        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                                    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                                   ),
                                 ],
                                 subject:
@@ -359,8 +343,7 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                               // ctx — safe even after the sheet was popped
                               // (e.g. Share.shareXFiles throws post-pop).
                               GlobalSnackbar.error(
-                                message: 'Export failed: $e',
-                              );
+                                  message: 'Export failed: $e');
                             }
                           },
                   ),
@@ -398,11 +381,9 @@ class _DetailsTabState extends State<_DetailsTab> {
     final upload = ctrl.posUpload.value;
 
     _amountCtrl = TextEditingController(
-      text: PosUploadFormController.fmtAmount(upload?.totalAmount),
-    );
+        text: PosUploadFormController.fmtAmount(upload?.totalAmount));
     _qtyCtrl = TextEditingController(
-      text: PosUploadFormController.fmtQty(upload?.totalQty),
-    );
+        text: PosUploadFormController.fmtQty(upload?.totalQty));
 
     // Sync text controllers when the document is reloaded (fix #2)
     _posUploadWorker = ever(ctrl.posUpload, (PosUpload? updated) {
@@ -518,10 +499,7 @@ class _DetailsTabState extends State<_DetailsTab> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (linkedBanner != null) ...[
-                linkedBanner,
-                const SizedBox(height: 8),
-              ],
+              if (linkedBanner != null) ...[linkedBanner, const SizedBox(height: 8)],
               if (psBanner != null) ...[psBanner, const SizedBox(height: 16)],
 
               _ReadOnlyField(label: 'Name', value: upload.name),
@@ -618,11 +596,7 @@ class _DetailsTabState extends State<_DetailsTab> {
                   border: const OutlineInputBorder(),
                   filled: true,
                   fillColor: cs.surfaceContainerHighest,
-                  suffixIcon: const Icon(
-                    Icons.lock,
-                    size: 16,
-                    color: Colors.grey,
-                  ),
+                  suffixIcon: const Icon(Icons.lock, size: 16, color: Colors.grey),
                 ),
               ),
               const SizedBox(height: 16),
@@ -635,11 +609,7 @@ class _DetailsTabState extends State<_DetailsTab> {
                   border: const OutlineInputBorder(),
                   filled: true,
                   fillColor: cs.surfaceContainerHighest,
-                  suffixIcon: const Icon(
-                    Icons.lock,
-                    size: 16,
-                    color: Colors.grey,
-                  ),
+                  suffixIcon: const Icon(Icons.lock, size: 16, color: Colors.grey),
                 ),
               ),
               const SizedBox(height: 24),
@@ -649,9 +619,10 @@ class _DetailsTabState extends State<_DetailsTab> {
               const SizedBox(height: 16),
               Text(
                 'Progress',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 12),
               PosUploadTimeline(checkpoints: _buildCheckpoints(ctrl, upload)),
@@ -667,28 +638,23 @@ class _DetailsTabState extends State<_DetailsTab> {
   /// timeline checkpoints. Called inside the tab's [Obx] so every observable
   /// touched here re-triggers a rebuild.
   List<TimelineCheckpoint> _buildCheckpoints(
-    PosUploadFormController ctrl,
-    PosUpload upload,
-  ) {
-    final prefix = upload.name.length >= 2
-        ? upload.name.substring(0, 2).toUpperCase()
-        : '';
+      PosUploadFormController ctrl, PosUpload upload) {
+    final prefix =
+        upload.name.length >= 2 ? upload.name.substring(0, 2).toUpperCase() : '';
     final isStockEntryUpload = prefix == 'MX' || prefix == 'KX';
 
     final slips = ctrl.packingSlips;
     final earliestPsCreation = slips.isEmpty
         ? null
         : slips
-              .map((p) => p.creation)
-              .where((c) => c.isNotEmpty)
-              .fold<String?>(
-                null,
-                (min, c) => (min == null || c.compareTo(min) < 0) ? c : min,
-              );
+            .map((p) => p.creation)
+            .where((c) => c.isNotEmpty)
+            .fold<String?>(null, (min, c) =>
+                (min == null || c.compareTo(min) < 0) ? c : min);
 
     final hasLinkedDoc = isStockEntryUpload
         ? (ctrl.linkedDocType.value == LinkedDocType.stockEntry &&
-              ctrl.linkedDocName.value.isNotEmpty)
+            ctrl.linkedDocName.value.isNotEmpty)
         : ctrl.deliveryNote.value != null;
 
     return buildPosUploadTimeline(
@@ -704,9 +670,8 @@ class _DetailsTabState extends State<_DetailsTab> {
       isLoadingPackingSlips: ctrl.isLoadingPackingSlips.value,
       packingSlipCount: slips.length,
       earliestPackingSlipCreation: earliestPsCreation,
-      packedItems: ctrl.resolvedPackingSlips.values
-          .where((v) => v != null)
-          .length,
+      packedItems:
+          ctrl.resolvedPackingSlips.values.where((v) => v != null).length,
       totalSerials: ctrl.resolvedSerials.length,
       deliveryDocInfo: ctrl.posDeliveryDocinfo.value,
     );
@@ -745,27 +710,25 @@ class _ItemsTabState extends State<_ItemsTab> {
         // ── Search bar with clear button (fix #8) ───────────────────────────
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: Obx(
-            () => TextField(
-              controller: _searchCtrl,
-              onChanged: ctrl.filterByText,
-              decoration: InputDecoration(
-                labelText: 'Search Items',
-                prefixIcon: const Icon(Icons.search),
-                border: const OutlineInputBorder(),
-                isDense: true,
-                suffixIcon: ctrl.searchQuery.value.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          _searchCtrl.clear();
-                          ctrl.filterByText('');
-                        },
-                      )
-                    : null,
-              ),
-            ),
-          ),
+          child: Obx(() => TextField(
+                controller: _searchCtrl,
+                onChanged: ctrl.filterByText,
+                decoration: InputDecoration(
+                  labelText: 'Search Items',
+                  prefixIcon: const Icon(Icons.search),
+                  border: const OutlineInputBorder(),
+                  isDense: true,
+                  suffixIcon: ctrl.searchQuery.value.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            _searchCtrl.clear();
+                            ctrl.filterByText('');
+                          },
+                        )
+                      : null,
+                ),
+              )),
         ),
 
         // ── Case filter chips (ML/KA only, fix NEW) ──────────────────────────
@@ -807,7 +770,8 @@ class _ItemsTabState extends State<_ItemsTab> {
                       color: isAll
                           ? cs.onPrimaryContainer
                           : cs.onSurfaceVariant,
-                      fontWeight: isAll ? FontWeight.w600 : FontWeight.normal,
+                      fontWeight:
+                          isAll ? FontWeight.w600 : FontWeight.normal,
                     ),
                   );
                 }
@@ -821,20 +785,18 @@ class _ItemsTabState extends State<_ItemsTab> {
                         ? cs.onPrimaryContainer
                         : cs.onSurfaceVariant,
                   ),
-                  label: Text(
-                    '${opt.label} • ${PosUploadFormController.fmtQty(opt.totalQty)}',
-                  ),
+                  label: Text('${opt.label} • ${PosUploadFormController.fmtQty(opt.totalQty)}'),
                   selected: isSelected,
-                  onSelected: (_) => ctrl.filterByCase(isSelected ? null : opt),
+                  onSelected: (_) =>
+                      ctrl.filterByCase(isSelected ? null : opt),
                   selectedColor: cs.primaryContainer,
                   checkmarkColor: cs.onPrimaryContainer,
                   labelStyle: TextStyle(
                     color: isSelected
                         ? cs.onPrimaryContainer
                         : cs.onSurfaceVariant,
-                    fontWeight: isSelected
-                        ? FontWeight.w600
-                        : FontWeight.normal,
+                    fontWeight:
+                        isSelected ? FontWeight.w600 : FontWeight.normal,
                   ),
                 );
               },
@@ -862,8 +824,7 @@ class _ItemsTabState extends State<_ItemsTab> {
                   ),
                   const SizedBox(height: 4),
                   LinearProgressIndicator(
-                    borderRadius: BorderRadius.circular(4),
-                  ),
+                      borderRadius: BorderRadius.circular(4)),
                 ],
               ),
             );
@@ -912,7 +873,8 @@ class _ItemsTabState extends State<_ItemsTab> {
               return _EmptyState(
                 icon: Icons.search_off,
                 title: 'No results',
-                subtitle: 'No items match "${ctrl.searchQuery.value}".',
+                subtitle:
+                    'No items match "${ctrl.searchQuery.value}".',
                 actionLabel: 'Clear search',
                 onAction: () {
                   _searchCtrl.clear();
@@ -927,37 +889,33 @@ class _ItemsTabState extends State<_ItemsTab> {
               child: ListView.separated(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: EdgeInsets.fromLTRB(
-                  16,
-                  4,
-                  16,
-                  24 + MediaQuery.of(context).padding.bottom,
-                ),
+                    16, 4, 16, 24 + MediaQuery.of(context).padding.bottom),
                 itemCount: items.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
                   final item = items[index];
                   return Obx(() {
-                    final allPsItems = ctrl.resolvedPsItems[item.idx] ?? [];
-                    final cf = ctrl.activeCaseFilter.value;
-                    final visiblePsItems = cf == null
-                        ? allPsItems
-                        : allPsItems
-                              .where((e) => e.psName == cf.psName)
-                              .toList();
-                    return _ItemCard(
-                      key: ValueKey(item.idx),
-                      item: item,
-                      displayIndex: item.idx,
-                      isLoadingLinked: ctrl.isLoadingLinked.value,
-                      isLoadingPS: ctrl.isLoadingPackingSlips.value,
-                      linkedDocType: ctrl.linkedDocType.value,
-                      resolvedSerial: ctrl.resolvedSerials[item.idx],
-                      packingSlipInfo: ctrl.resolvedPackingSlips[item.idx],
-                      hasLinkedDoc: ctrl.resolvedSerials.isNotEmpty,
-                      dnQty: ctrl.resolvedDnQty[item.idx],
-                      psItems: visiblePsItems,
-                    );
-                  });
+                        final allPsItems = ctrl.resolvedPsItems[item.idx] ?? [];
+                        final cf = ctrl.activeCaseFilter.value;
+                        final visiblePsItems = cf == null
+                            ? allPsItems
+                            : allPsItems
+                                .where((e) => e.psName == cf.psName)
+                                .toList();
+                        return _ItemCard(
+                          key: ValueKey(item.idx),
+                          item: item,
+                          displayIndex: item.idx,
+                          isLoadingLinked: ctrl.isLoadingLinked.value,
+                          isLoadingPS: ctrl.isLoadingPackingSlips.value,
+                          linkedDocType: ctrl.linkedDocType.value,
+                          resolvedSerial: ctrl.resolvedSerials[item.idx],
+                          packingSlipInfo: ctrl.resolvedPackingSlips[item.idx],
+                          hasLinkedDoc: ctrl.resolvedSerials.isNotEmpty,
+                          dnQty: ctrl.resolvedDnQty[item.idx],
+                          psItems: visiblePsItems,
+                        );
+                      });
                 },
               ),
             );
@@ -1019,7 +977,8 @@ class _ItemCardState extends State<_ItemCard> {
       !widget.isLoadingPS &&
       widget.psItems.isNotEmpty;
 
-  double get _packedQty => widget.psItems.fold(0.0, (s, e) => s + e.item.qty);
+  double get _packedQty =>
+      widget.psItems.fold(0.0, (s, e) => s + e.item.qty);
 
   double? _progressRatioFor(double packedQty) {
     final dq = widget.dnQty;
@@ -1047,56 +1006,47 @@ class _ItemCardState extends State<_ItemCard> {
     final chips = <Widget>[];
 
     if (widget.resolvedSerial != null && widget.resolvedSerial!.isNotEmpty) {
-      chips.add(
-        _InfoChip(
-          icon: Icons.tag,
-          label: '#${widget.resolvedSerial!}',
-          backgroundColor: cs.secondaryContainer,
-          foregroundColor: cs.onSecondaryContainer,
-          tooltip: 'Invoice serial: ${widget.resolvedSerial!}',
-        ),
-      );
+      chips.add(_InfoChip(
+        icon: Icons.tag,
+        label: '#${widget.resolvedSerial!}',
+        backgroundColor: cs.secondaryContainer,
+        foregroundColor: cs.onSecondaryContainer,
+        tooltip: 'Invoice serial: ${widget.resolvedSerial!}',
+      ));
     }
 
-    if (widget.isLoadingPS &&
-        widget.linkedDocType == LinkedDocType.deliveryNote) {
-      chips.add(
-        _InfoChip(
-          icon: Icons.hourglass_top_rounded,
-          label: 'PS…',
-          backgroundColor: Colors.blue.withValues(alpha: 0.12),
-          foregroundColor: Colors.blue.shade700,
-          isSpinner: true,
-        ),
-      );
+    if (widget.isLoadingPS && widget.linkedDocType == LinkedDocType.deliveryNote) {
+      chips.add(_InfoChip(
+        icon: Icons.hourglass_top_rounded,
+        label: 'PS…',
+        backgroundColor: Colors.blue.withValues(alpha: 0.12),
+        foregroundColor: Colors.blue.shade700,
+        isSpinner: true,
+      ));
     } else if (widget.packingSlipInfo != null) {
       final from = widget.packingSlipInfo!.fromCaseNo;
       final to = widget.packingSlipInfo!.toCaseNo;
       final caseLabel = (from != null && to != null)
           ? 'Cases $from – $to'
           : (from != null ? 'Case $from' : widget.packingSlipInfo!.psName);
-      chips.add(
-        _InfoChip(
-          icon: Icons.inventory_outlined,
-          label: caseLabel,
-          backgroundColor: cs.secondaryContainer,
-          foregroundColor: cs.onSecondaryContainer,
-          tooltip: 'Packing Slip: ${widget.packingSlipInfo!.psName}',
-        ),
-      );
+      chips.add(_InfoChip(
+        icon: Icons.inventory_outlined,
+        label: caseLabel,
+        backgroundColor: cs.secondaryContainer,
+        foregroundColor: cs.onSecondaryContainer,
+        tooltip: 'Packing Slip: ${widget.packingSlipInfo!.psName}',
+      ));
     } else if (!widget.isLoadingPS &&
         widget.linkedDocType == LinkedDocType.deliveryNote &&
         widget.resolvedSerial != null &&
         widget.resolvedSerial!.isNotEmpty) {
-      chips.add(
-        _InfoChip(
-          icon: Icons.inventory_outlined,
-          label: 'No PS',
-          backgroundColor: cs.errorContainer,
-          foregroundColor: cs.onErrorContainer,
-          tooltip: 'No matching Packing Slip found',
-        ),
-      );
+      chips.add(_InfoChip(
+        icon: Icons.inventory_outlined,
+        label: 'No PS',
+        backgroundColor: cs.errorContainer,
+        foregroundColor: cs.onErrorContainer,
+        tooltip: 'No matching Packing Slip found',
+      ));
     }
 
     return Card(
@@ -1144,9 +1094,8 @@ class _ItemCardState extends State<_ItemCard> {
                             Expanded(
                               child: Text(
                                 widget.item.itemName,
-                                style: theme.textTheme.bodyLarge?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                ),
+                                style: theme.textTheme.bodyLarge
+                                    ?.copyWith(fontWeight: FontWeight.w600),
                               ),
                             ),
                             if (widget.psItems.isNotEmpty) ...[
@@ -1172,9 +1121,8 @@ class _ItemCardState extends State<_ItemCard> {
                           const SizedBox(height: 2),
                           Text(
                             _progressLabelFor(packedQty),
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: cs.onSurfaceVariant,
-                            ),
+                            style: theme.textTheme.labelSmall
+                                ?.copyWith(color: cs.onSurfaceVariant),
                           ),
                         ] else if (matchStatus != null) ...[
                           // Falls through to matchStatus (e.g. "Matched") while PS is loading
@@ -1182,17 +1130,12 @@ class _ItemCardState extends State<_ItemCard> {
                           const SizedBox(height: 2),
                           Row(
                             children: [
-                              Icon(
-                                matchStatus.icon,
-                                size: 12,
-                                color: matchStatus.color,
-                              ),
+                              Icon(matchStatus.icon, size: 12, color: matchStatus.color),
                               const SizedBox(width: 3),
                               Text(
                                 matchStatus.label,
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: matchStatus.color,
-                                ),
+                                style: theme.textTheme.labelSmall
+                                    ?.copyWith(color: matchStatus.color),
                               ),
                             ],
                           ),
@@ -1215,18 +1158,15 @@ class _ItemCardState extends State<_ItemCard> {
                     value: PosUploadFormController.fmtQty(widget.item.quantity),
                   ),
                   _Stat(
-                    label: 'Rate',
-                    value: PosUploadFormController.fmtAmount(widget.item.rate),
-                  ),
+                      label: 'Rate',
+                      value: PosUploadFormController.fmtAmount(widget.item.rate)),
                   _Stat(
                     label: 'UOM',
                     value: widget.item.uom.isEmpty ? '—' : widget.item.uom,
                   ),
                   _Stat(
                     label: 'Amount',
-                    value: PosUploadFormController.fmtAmount(
-                      widget.item.amount,
-                    ),
+                    value: PosUploadFormController.fmtAmount(widget.item.amount),
                     highlight: true,
                     colorScheme: cs,
                   ),
@@ -1326,24 +1266,23 @@ class _ItemCardState extends State<_ItemCard> {
             Expanded(
               child: Text(
                 psItem.itemName,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(fontWeight: FontWeight.w600),
               ),
             ),
             const SizedBox(width: 8),
             Text(
               PosUploadFormController.fmtQty(psItem.qty),
-              style: theme.textTheme.bodyMedium?.copyWith(color: cs.tertiary),
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: cs.tertiary),
             ),
           ],
         ),
         // Subline: code · variant · country
         Text(
           subParts.join(' · '),
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: cs.onSurfaceVariant,
-          ),
+          style: theme.textTheme.labelSmall
+              ?.copyWith(color: cs.onSurfaceVariant),
         ),
       ],
     );
@@ -1354,30 +1293,26 @@ class _ItemCardState extends State<_ItemCard> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     if (widget.isLoadingLinked) {
       return _MatchStatus(
-        icon: Icons.hourglass_top,
-        label: 'Checking…',
-        color: isDark ? AppColors.orange300 : AppColors.orange700,
-      );
+          icon: Icons.hourglass_top,
+          label: 'Checking…',
+          color: isDark ? AppColors.orange300 : AppColors.orange700);
     }
     if (widget.resolvedSerial != null && widget.resolvedSerial!.isNotEmpty) {
       return _MatchStatus(
-        icon: Icons.check_circle,
-        label: 'Matched',
-        color: isDark ? AppColors.green300 : AppColors.green700,
-      );
+          icon: Icons.check_circle,
+          label: 'Matched',
+          color: isDark ? AppColors.green300 : AppColors.green700);
     }
     if (widget.resolvedSerial != null) {
       return _MatchStatus(
-        icon: Icons.check_circle_outline,
-        label: 'Matched – no serial',
-        color: isDark ? AppColors.cyan300 : AppColors.cyan700,
-      );
+          icon: Icons.check_circle_outline,
+          label: 'Matched – no serial',
+          color: isDark ? AppColors.cyan300 : AppColors.cyan700);
     }
     return _MatchStatus(
-      icon: Icons.cancel_outlined,
-      label: 'Not found',
-      color: isDark ? AppColors.red300 : AppColors.red700,
-    );
+        icon: Icons.cancel_outlined,
+        label: 'Not found',
+        color: isDark ? AppColors.red300 : AppColors.red700);
   }
 }
 
@@ -1385,11 +1320,8 @@ class _MatchStatus {
   final IconData icon;
   final String label;
   final Color color;
-  const _MatchStatus({
-    required this.icon,
-    required this.label,
-    required this.color,
-  });
+  const _MatchStatus(
+      {required this.icon, required this.label, required this.color});
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1420,29 +1352,26 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 52,
-              color: cs.onSurfaceVariant.withValues(alpha: 0.4),
-            ),
+            Icon(icon, size: 52, color: cs.onSurfaceVariant.withValues(alpha: 0.4)),
             const SizedBox(height: 16),
-            Text(
-              title,
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-            ),
+            Text(title,
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w600)),
             const SizedBox(height: 6),
-            Text(
-              subtitle,
-              textAlign: TextAlign.center,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-            ),
+            Text(subtitle,
+                textAlign: TextAlign.center,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: cs.onSurfaceVariant)),
             if (actionLabel != null && onAction != null) ...[
               const SizedBox(height: 16),
-              OutlinedButton(onPressed: onAction, child: Text(actionLabel!)),
+              OutlinedButton(
+                onPressed: onAction,
+                child: Text(actionLabel!),
+              ),
             ],
           ],
         ),
@@ -1479,9 +1408,7 @@ class _InfoChip extends StatelessWidget {
             width: 12,
             height: 12,
             child: CircularProgressIndicator(
-              strokeWidth: 1.5,
-              color: foregroundColor,
-            ),
+                strokeWidth: 1.5, color: foregroundColor),
           )
         : Icon(icon, size: 13, color: foregroundColor);
 
@@ -1507,7 +1434,9 @@ class _InfoChip extends StatelessWidget {
         ],
       ),
     );
-    return tooltip != null ? Tooltip(message: tooltip!, child: chip) : chip;
+    return tooltip != null
+        ? Tooltip(message: tooltip!, child: chip)
+        : chip;
   }
 }
 
@@ -1529,18 +1458,17 @@ class _Stat extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: Theme.of(
-            context,
-          ).textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant),
-        ),
+        Text(label,
+            style: Theme.of(context)
+                .textTheme
+                .labelSmall
+                ?.copyWith(color: cs.onSurfaceVariant)),
         Text(
           value,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-            color: highlight ? cs.tertiary : null,
-          ),
+                fontWeight: FontWeight.w600,
+                color: highlight ? cs.tertiary : null,
+              ),
         ),
       ],
     );
@@ -1600,19 +1528,16 @@ class _StatusBanner extends StatelessWidget {
                   width: 16,
                   height: 16,
                   child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: color,
-                  ),
-                )
+                      strokeWidth: 2, color: color))
               : Icon(icon, size: 16, color: color),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               text,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: color,
-                fontWeight: FontWeight.w600,
-              ),
+                    color: color,
+                    fontWeight: FontWeight.w600,
+                  ),
             ),
           ),
           if (trailing != null) trailing!,
@@ -1623,8 +1548,7 @@ class _StatusBanner extends StatelessWidget {
         ? InkWell(
             onTap: onTap,
             borderRadius: BorderRadius.circular(10),
-            child: content,
-          )
+            child: content)
         : content;
   }
 }

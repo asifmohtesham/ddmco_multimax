@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:path/path.dart' as p;
 import 'package:dio/dio.dart';
 import 'package:cookie_jar/cookie_jar.dart';
@@ -46,14 +47,12 @@ class ApiProvider {
   String? _erpNextVersion;
 
   Future<bool> _getStockBalanceUsesListFilters() async {
-    if (_stockBalanceUsesListFilters != null)
-      return _stockBalanceUsesListFilters!;
+    if (_stockBalanceUsesListFilters != null) return _stockBalanceUsesListFilters!;
     try {
       if (!_dioInitialised) await _initDio();
       _erpNextVersion = await _fetchErpNextVersion();
-      _stockBalanceUsesListFilters = stockBalanceUsesListFilters(
-        _erpNextVersion,
-      );
+      _stockBalanceUsesListFilters =
+          stockBalanceUsesListFilters(_erpNextVersion);
     } catch (_) {
       _stockBalanceUsesListFilters = true;
     }
@@ -78,23 +77,17 @@ class ApiProvider {
   /// Fallback: get_change_log (different code path, reads markdown files).
   Future<String?> _fetchErpNextVersion() async {
     try {
-      final r = await _dio.get(
-        '/api/method/frappe.utils.change_log.get_versions',
-      );
+      final r = await _dio.get('/api/method/frappe.utils.change_log.get_versions');
       final msg = r.data['message'] as Map<String, dynamic>?;
-      final v =
-          (msg?['erpnext'] as Map<String, dynamic>?)?['version'] as String?;
+      final v = (msg?['erpnext'] as Map<String, dynamic>?)?['version'] as String?;
       if (v != null && v.isNotEmpty) return v;
     } catch (_) {}
     try {
-      final r = await _dio.get(
-        '/api/method/frappe.utils.change_log.get_change_log',
-      );
+      final r = await _dio.get('/api/method/frappe.utils.change_log.get_change_log');
       final entries = r.data['message'];
       if (entries is List) {
         for (final e in entries) {
-          if (e is Map &&
-              (e['title'] as String?)?.contains('ERPNext') == true) {
+          if (e is Map && (e['title'] as String?)?.contains('ERPNext') == true) {
             final v = e['version'] as String?;
             if (v != null && v.isNotEmpty) return v;
           }
@@ -132,14 +125,12 @@ class ApiProvider {
     // — querying /api/resource/Item Customer Detail directly returns 403.
     final rows = await getList(
       null,
-      doctype: 'Item',
-      fields: ['name'],
-      filters: {
-        'ref_code': ['like', '%$query%'],
-      },
+      doctype:       'Item',
+      fields:        ['name'],
+      filters:       {'ref_code': ['like', '%$query%']},
       filterDoctype: 'Item Customer Detail',
-      limit: 0, // 0 = no page limit (all matches)
-      orderBy: 'name asc',
+      limit:         0, // 0 = no page limit (all matches)
+      orderBy:       'name asc',
     );
     return rows
         .map((r) => (r['name'] ?? '').toString())
@@ -154,9 +145,7 @@ class ApiProvider {
   /// same way the web report's "Add Column" feature does, via
   /// `query_report.get_data_for_custom_field`. Returns a map of item code →
   /// customer code; empty on any failure (display-only enrichment).
-  Future<Map<String, String>> getItemCustomerCodes(
-    List<String> itemCodes,
-  ) async {
+  Future<Map<String, String>> getItemCustomerCodes(List<String> itemCodes) async {
     final names = itemCodes.where((c) => c.isNotEmpty).toSet().toList();
     if (names.isEmpty) return <String, String>{};
     if (!_dioInitialised) await _initDio();
@@ -165,8 +154,8 @@ class ApiProvider {
         '/api/method/frappe.desk.query_report.get_data_for_custom_field',
         data: {
           'doctype': 'Item',
-          'field': 'customer_code',
-          'names': json.encode(names),
+          'field'  : 'customer_code',
+          'names'  : json.encode(names),
         },
         options: Options(contentType: Headers.formUrlEncodedContentType),
       );
@@ -216,26 +205,19 @@ class ApiProvider {
     }
     final appSupportDir = await getApplicationSupportDirectory();
     final cookiePath = '${appSupportDir.path}/.cookies/';
-    _cookieJar = PersistCookieJar(
-      ignoreExpires: true,
-      storage: FileStorage(cookiePath),
-    );
-    _dio = Dio(
-      BaseOptions(
-        baseUrl: _baseUrl,
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 20),
-      ),
-    );
+    _cookieJar = PersistCookieJar(ignoreExpires: true, storage: FileStorage(cookiePath));
+    _dio = Dio(BaseOptions(
+      baseUrl: _baseUrl,
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 20),
+    ));
     _dio.interceptors.add(CookieManager(_cookieJar));
     _dio.interceptors.add(CsrfInterceptor(dio: _dio));
-    _dio.interceptors.add(
-      SessionExpiryInterceptor(
-        dio: _dio,
-        hasActiveSession: () => hasActiveSession(),
-        onSessionExpired: () => onSessionExpired(),
-      ),
-    );
+    _dio.interceptors.add(SessionExpiryInterceptor(
+      dio: _dio,
+      hasActiveSession: () => hasActiveSession(),
+      onSessionExpired: () => onSessionExpired(),
+    ));
     // Debug builds only: release builds skip the formatting work as well.
     if (kDebugMode) {
       _dio.interceptors.add(SafeLogInterceptor());
@@ -247,8 +229,7 @@ class ApiProvider {
   // GENERIC METHODS
   // ---------------------------------------------------------------------------
 
-  Future<Response> getDocumentList(
-    String doctype, {
+  Future<Response> getDocumentList(String doctype, {
     int limit = 20,
     int limitStart = 0,
     List<String>? fields,
@@ -324,8 +305,7 @@ class ApiProvider {
   }
 
   // Support for Frappe Desk Report View (allows advanced joins/filtering)
-  Future<Response> getReportView(
-    String doctype, {
+  Future<Response> getReportView(String doctype, {
     int start = 0,
     int pageLength = 20,
     List<String>? fields,
@@ -343,14 +323,13 @@ class ApiProvider {
       'page_length': pageLength,
       'view': 'List',
       'group_by': '`tab$doctype`.`name`',
-      'with_comment_count': 1,
+      'with_comment_count': 1
     };
 
     // Using POST as per standard ReportView usage
-    return await _dio.post(
-      '/api/method/frappe.desk.reportview.get',
-      data: data,
-      options: Options(contentType: Headers.formUrlEncodedContentType),
+    return await _dio.post('/api/method/frappe.desk.reportview.get',
+        data: data,
+        options: Options(contentType: Headers.formUrlEncodedContentType)
     );
   }
 
@@ -359,19 +338,12 @@ class ApiProvider {
     return await _dio.get('/api/resource/$doctype/$name');
   }
 
-  Future<Response> createDocument(
-    String doctype,
-    Map<String, dynamic> data,
-  ) async {
+  Future<Response> createDocument(String doctype, Map<String, dynamic> data) async {
     if (!_dioInitialised) await _initDio();
     return await _dio.post('/api/resource/$doctype', data: data);
   }
 
-  Future<Response> updateDocument(
-    String doctype,
-    String name,
-    Map<String, dynamic> data,
-  ) async {
+  Future<Response> updateDocument(String doctype, String name, Map<String, dynamic> data) async {
     if (!_dioInitialised) await _initDio();
     return await _dio.put('/api/resource/$doctype/$name', data: data);
   }
@@ -384,17 +356,11 @@ class ApiProvider {
   /// Submit a document (change docstatus from 0 to 1) in ERP.
   Future<Response> submitDocument(String doctype, String name) async {
     if (!_dioInitialised) await _initDio();
-    return await _dio.put(
-      '/api/resource/$doctype/$name',
-      data: {'docstatus': 1},
-    );
+    return await _dio.put('/api/resource/$doctype/$name', data: {'docstatus': 1});
   }
 
   /// Call a Frappe whitelisted method via GET with query parameters.
-  Future<Response> callMethod(
-    String method, {
-    Map<String, dynamic>? params,
-  }) async {
+  Future<Response> callMethod(String method, {Map<String, dynamic>? params}) async {
     if (!_dioInitialised) await _initDio();
     return await _dio.get('/api/method/$method', queryParameters: params);
   }
@@ -456,16 +422,13 @@ class ApiProvider {
   /// Frappe v15 requires a docname for this method, so it is only meaningful
   /// for already-saved documents (e.g. submitting a saved draft).
   Future<Response> hasDocPermission(
-    String doctype,
-    String name,
-    String ptype,
-  ) async {
+      String doctype, String name, String ptype) async {
     if (!_dioInitialised) await _initDio();
     return await _dio.get(
       '/api/method/frappe.client.has_permission',
       queryParameters: {
-        'doctype': doctype,
-        'docname': name,
+        'doctype':   doctype,
+        'docname':   name,
         'perm_type': ptype,
       },
     );
@@ -504,7 +467,8 @@ class ApiProvider {
   /// the role sets empty and wrongly hide their create/edit buttons; getdoctype
   /// is gated on the target doctype instead, so those users get the rows.
   Future<({Set<String> create, Set<String> write, String? module})>
-  fetchDocTypeRoles(String doctype) async {
+      fetchDocTypeRoles(
+      String doctype) async {
     final response = await callMethod(
       'frappe.desk.form.load.getdoctype',
       params: {'doctype': doctype, 'with_parent': 1},
@@ -521,9 +485,9 @@ class ApiProvider {
   /// without read access on the DocType doctype). Returns the raw method
   /// response; callers pull the target doc from `data['docs']`.
   Future<Response> getDocTypeMeta(String doctype) => callMethod(
-    'frappe.desk.form.load.getdoctype',
-    params: {'doctype': doctype, 'with_parent': 1},
-  );
+        'frappe.desk.form.load.getdoctype',
+        params: {'doctype': doctype, 'with_parent': 1},
+      );
 
   /// Extracts the roles granting [permKey] (`create`, `write`, …) at
   /// [permlevel] (default 0) for [doctype] from a `getdoctype` response.
@@ -533,11 +497,8 @@ class ApiProvider {
   /// any unexpected shape yields an empty set. Exposed as a public static
   /// method so unit tests can exercise it without a live HTTP connection.
   static Set<String> rolesWithPermission(
-    dynamic data,
-    String doctype,
-    String permKey, {
-    int permlevel = 0,
-  }) {
+      dynamic data, String doctype, String permKey,
+      {int permlevel = 0}) {
     final roles = <String>{};
     final meta = _docTypeMeta(data, doctype);
     final perms = meta?['permissions'];
@@ -578,21 +539,13 @@ class ApiProvider {
   /// [PermissionService.roleGrants]. Fail-closed: unparseable meta or a
   /// missing field denies.
   static bool fieldWriteGranted(
-    dynamic data,
-    String doctype,
-    String fieldname,
-    Set<String> userRoles,
-  ) {
+      dynamic data, String doctype, String fieldname, Set<String> userRoles) {
     final permlevel = fieldPermlevel(data, doctype, fieldname);
     if (permlevel == null) return false;
     if (permlevel == 0) return true;
     if (userRoles.contains('System Manager')) return true;
-    final writers = rolesWithPermission(
-      data,
-      doctype,
-      'write',
-      permlevel: permlevel,
-    );
+    final writers =
+        rolesWithPermission(data, doctype, 'write', permlevel: permlevel);
     return writers.any(userRoles.contains);
   }
 
@@ -606,8 +559,7 @@ class ApiProvider {
   /// or `null` when the shape is unexpected.
   static Map? _docTypeMeta(dynamic data, String doctype) {
     if (data is! Map) return null;
-    final docs =
-        data['docs'] ??
+    final docs = data['docs'] ??
         (data['message'] is Map ? data['message']['docs'] : null);
     if (docs is! List) return null;
     for (final doc in docs) {
@@ -659,27 +611,22 @@ class ApiProvider {
 
     try {
       if (!_dioInitialised) await _initDio();
-      final response = await _dio.get(
-        '/api/resource/$dt',
-        queryParameters: {
-          if (fields != null)
-            'fields': json.encode(fields)
-          else
-            'fields': json.encode(['name']),
-          'limit_page_length': limit,
-          'order_by': orderBy,
-          if (groupBy!.isNotEmpty) 'group_by': groupBy,
-          if (filters != null && filters.isNotEmpty)
-            'filters': json.encode(
-              filters.entries.map((e) {
-                if (e.value is List && (e.value as List).length == 2) {
-                  return [filterDt, e.key, e.value[0], e.value[1]];
-                }
-                return [filterDt, e.key, '=', e.value];
-              }).toList(),
-            ),
-        },
-      );
+      final response = await _dio.get('/api/resource/$dt', queryParameters: {
+        if (fields != null) 'fields': json.encode(fields)
+        else 'fields': json.encode(['name']),
+        'limit_page_length': limit,
+        'order_by': orderBy,
+        if (groupBy!.isNotEmpty) 'group_by': groupBy,
+        if (filters != null && filters.isNotEmpty)
+          'filters': json.encode(
+            filters.entries.map((e) {
+              if (e.value is List && (e.value as List).length == 2) {
+                return [filterDt, e.key, e.value[0], e.value[1]];
+              }
+              return [filterDt, e.key, '=', e.value];
+            }).toList(),
+          ),
+      });
       if (response.statusCode == 200 && response.data['data'] != null) {
         return (response.data['data'] as List)
             .map((e) => Map<String, dynamic>.from(e as Map))
@@ -696,18 +643,13 @@ class ApiProvider {
   Future<List<String>> getListSimple(String doctype) async {
     try {
       if (!_dioInitialised) await _initDio();
-      final response = await _dio.get(
-        '/api/resource/$doctype',
-        queryParameters: {
-          'fields': json.encode(['name']),
-          'limit_page_length': 0,
-          'order_by': 'name asc',
-        },
-      );
+      final response = await _dio.get('/api/resource/$doctype', queryParameters: {
+        'fields': json.encode(['name']),
+        'limit_page_length': 0,
+        'order_by': 'name asc'
+      });
       if (response.statusCode == 200 && response.data['data'] != null) {
-        return (response.data['data'] as List)
-            .map((e) => e['name'] as String)
-            .toList();
+        return (response.data['data'] as List).map((e) => e['name'] as String).toList();
       }
     } catch (e) {
       print('Error fetching list for $doctype: $e');
@@ -743,17 +685,12 @@ class ApiProvider {
     if (warehouse.isEmpty) return [];
     try {
       if (!_dioInitialised) await _initDio();
-      final response = await _dio.get(
-        '/api/resource/Rack',
-        queryParameters: {
-          'fields': json.encode(['name']),
-          'filters': json.encode([
-            ['Rack', 'warehouse', '=', warehouse],
-          ]),
-          'limit_page_length': 0,
-          'order_by': 'name asc',
-        },
-      );
+      final response = await _dio.get('/api/resource/Rack', queryParameters: {
+        'fields':            json.encode(['name']),
+        'filters':           json.encode([['Rack', 'warehouse', '=', warehouse]]),
+        'limit_page_length': 0,
+        'order_by':          'name asc',
+      });
       return parseRacksByWarehouseResponse(response.data);
     } catch (_) {
       return [];
@@ -782,8 +719,7 @@ class ApiProvider {
       final response = await getDocument('Rack', rack);
       if (response.statusCode == 200 && response.data != null) {
         return RackWarehouseLookup.found(
-          parseRackWarehouseResponse(response.data),
-        );
+            parseRackWarehouseResponse(response.data));
       }
       return const RackWarehouseLookup.error();
     } on DioException catch (e) {
@@ -796,20 +732,16 @@ class ApiProvider {
     }
   }
 
-  Future<Response> getReport(
-    String reportName, {
-    Map<String, dynamic>? filters,
-  }) async {
+  Future<Response> getReport(String reportName, {Map<String, dynamic>? filters}) async {
     if (!_dioInitialised) await _initDio();
 
-    return await _dio.get(
-      '/api/method/frappe.desk.query_report.run',
-      queryParameters: {
-        'report_name': reportName,
-        'filters': json.encode(filters ?? {}),
-        'ignore_prepared_report': 'true',
-        '_': DateTime.now().millisecondsSinceEpoch,
-      },
+    return await _dio.get('/api/method/frappe.desk.query_report.run',
+        queryParameters: {
+          'report_name': reportName,
+          'filters': json.encode(filters ?? {}),
+          'ignore_prepared_report': 'true',
+          '_': DateTime.now().millisecondsSinceEpoch
+        }
     );
   }
 
@@ -839,21 +771,20 @@ class ApiProvider {
       "valuation_field_type": "Currency",
       "rack": rack != null && rack.isNotEmpty ? [rack] : [],
       "show_variant_attributes": 1,
-      "show_dimension_wise_stock": 1,
+      "show_dimension_wise_stock": 1
     };
 
     if (batchNo != null && batchNo.isNotEmpty) {
       filters["batch_no"] = batchNo;
     }
 
-    return await _dio.get(
-      '/api/method/frappe.desk.query_report.run',
-      queryParameters: {
-        'report_name': 'Stock Balance',
-        'filters': json.encode(filters),
-        'ignore_prepared_report': 'true',
-        '_': DateTime.now().millisecondsSinceEpoch,
-      },
+    return await _dio.get('/api/method/frappe.desk.query_report.run',
+        queryParameters: {
+          'report_name': 'Stock Balance',
+          'filters': json.encode(filters),
+          'ignore_prepared_report': 'true',
+          '_': DateTime.now().millisecondsSinceEpoch
+        }
     );
   }
 
@@ -879,40 +810,40 @@ class ApiProvider {
     String? warehouseType,
     String? rack,
     String? includeUom,
-    bool showDimensionWise = false,
-    bool showVariantAttributes = false,
-    bool showStockAgeing = false,
-    bool ignoreClosingBalance = false,
-    bool includeZeroStockItems = false,
+    bool showDimensionWise      = false,
+    bool showVariantAttributes  = false,
+    bool showStockAgeing        = false,
+    bool ignoreClosingBalance   = false,
+    bool includeZeroStockItems  = false,
   }) {
-    final whs =
-        warehouses?.where((w) => w.trim().isNotEmpty).toList() ?? const [];
+    final whs = warehouses?.where((w) => w.trim().isNotEmpty).toList() ?? const [];
     return <String, dynamic>{
-      'company': company,
-      'from_date': fromDate,
-      'to_date': toDate,
+      'company'             : company,
+      'from_date'           : fromDate,
+      'to_date'             : toDate,
       'valuation_field_type': 'Currency',
-      if (itemCodeFilter != null) 'item_code': itemCodeFilter,
-      if (whs.length == 1) 'warehouse': whs.first,
-      if (whs.length > 1) 'warehouse': whs,
-      if (itemGroup != null && itemGroup.isNotEmpty) 'item_group': itemGroup,
+      if (itemCodeFilter != null)
+        'item_code'         : itemCodeFilter,
+      if (whs.length == 1)  'warehouse'      : whs.first,
+      if (whs.length > 1)   'warehouse'      : whs,
+      if (itemGroup != null && itemGroup.isNotEmpty)
+        'item_group'        : itemGroup,
       if (warehouseType != null && warehouseType.isNotEmpty)
-        'warehouse_type': warehouseType,
-      if (rack != null && rack.isNotEmpty) 'rack': [rack],
+        'warehouse_type'    : warehouseType,
+      if (rack != null && rack.isNotEmpty)
+        'rack'              : [rack],
       if (includeUom != null && includeUom.isNotEmpty)
-        'include_uom': includeUom,
-      if (showDimensionWise) 'show_dimension_wise_stock': 1,
-      if (showVariantAttributes) 'show_variant_attributes': 1,
-      if (showStockAgeing) 'show_stock_ageing_data': 1,
-      if (ignoreClosingBalance) 'ignore_closing_balance': 1,
-      if (includeZeroStockItems) 'include_zero_stock_items': 1,
+        'include_uom'       : includeUom,
+      if (showDimensionWise)     'show_dimension_wise_stock': 1,
+      if (showVariantAttributes) 'show_variant_attributes'  : 1,
+      if (showStockAgeing)       'show_stock_ageing_data'   : 1,
+      if (ignoreClosingBalance)  'ignore_closing_balance'   : 1,
+      if (includeZeroStockItems) 'include_zero_stock_items' : 1,
     };
   }
 
-  Future<
-    ({List<Map<String, dynamic>> columns, List<Map<String, dynamic>> rows})
-  >
-  getStockBalanceReport({
+  Future<({List<Map<String, dynamic>> columns, List<Map<String, dynamic>> rows})>
+      getStockBalanceReport({
     required String fromDate,
     required String toDate,
     List<String>? itemCodes,
@@ -921,11 +852,11 @@ class ApiProvider {
     String? warehouseType,
     String? rack,
     String? includeUom,
-    bool showDimensionWise = false,
-    bool showVariantAttributes = false,
-    bool showStockAgeing = false,
-    bool ignoreClosingBalance = false,
-    bool includeZeroStockItems = false,
+    bool showDimensionWise      = false,
+    bool showVariantAttributes  = false,
+    bool showStockAgeing        = false,
+    bool ignoreClosingBalance   = false,
+    bool includeZeroStockItems  = false,
   }) async {
     if (!_dioInitialised) await _initDio();
 
@@ -947,19 +878,19 @@ class ApiProvider {
     }
 
     final filters = buildStockBalanceFilters(
-      company: storage.getCompany(),
-      fromDate: fromDate,
-      toDate: toDate,
-      itemCodeFilter: itemCodeFilter,
-      warehouses: warehouses,
-      itemGroup: itemGroup,
-      warehouseType: warehouseType,
-      rack: rack,
-      includeUom: includeUom,
-      showDimensionWise: showDimensionWise,
+      company:               storage.getCompany(),
+      fromDate:              fromDate,
+      toDate:                toDate,
+      itemCodeFilter:        itemCodeFilter,
+      warehouses:            warehouses,
+      itemGroup:             itemGroup,
+      warehouseType:         warehouseType,
+      rack:                  rack,
+      includeUom:            includeUom,
+      showDimensionWise:     showDimensionWise,
       showVariantAttributes: showVariantAttributes,
-      showStockAgeing: showStockAgeing,
-      ignoreClosingBalance: ignoreClosingBalance,
+      showStockAgeing:       showStockAgeing,
+      ignoreClosingBalance:  ignoreClosingBalance,
       includeZeroStockItems: includeZeroStockItems,
     );
 
@@ -968,10 +899,10 @@ class ApiProvider {
       response = await _dio.get(
         '/api/method/frappe.desk.query_report.run',
         queryParameters: {
-          'report_name': 'Stock Balance',
-          'filters': json.encode(filters),
+          'report_name'           : 'Stock Balance',
+          'filters'               : json.encode(filters),
           'ignore_prepared_report': 'true',
-          '_': DateTime.now().millisecondsSinceEpoch,
+          '_'                     : DateTime.now().millisecondsSinceEpoch,
         },
       );
     } on DioException {
@@ -981,10 +912,7 @@ class ApiProvider {
     }
 
     if (response.statusCode != 200) {
-      return (
-        columns: <Map<String, dynamic>>[],
-        rows: <Map<String, dynamic>>[],
-      );
+      return (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
     }
 
     return parseStockBalanceResponse(
@@ -1031,26 +959,25 @@ class ApiProvider {
         (d == null || d.trim().isEmpty) ? today : d.trim();
 
     final Map<String, dynamic> filters = {
-      "company": company,
-      "from_date": dateOrToday(fromDate),
-      "to_date": dateOrToday(toDate),
-      "item_code": itemCode,
+      "company"   : company,
+      "from_date" : dateOrToday(fromDate),
+      "to_date"   : dateOrToday(toDate),
+      "item_code" : itemCode,
     };
 
-    if (batchNo != null && batchNo.isNotEmpty) filters["batch_no"] = batchNo;
-    if (warehouse != null && warehouse.isNotEmpty)
-      filters["warehouse"] = warehouse;
+    if (batchNo   != null && batchNo.isNotEmpty)   filters["batch_no"]  = batchNo;
+    if (warehouse != null && warehouse.isNotEmpty) filters["warehouse"] = warehouse;
 
     late final Response response;
     try {
       response = await _dio.get(
         '/api/method/frappe.desk.query_report.run',
         queryParameters: {
-          'report_name': 'Batch-Wise Balance History',
-          'filters': json.encode(filters),
+          'report_name'           : 'Batch-Wise Balance History',
+          'filters'               : json.encode(filters),
           'ignore_prepared_report': 'true',
-          'are_default_filters': 'false',
-          '_': DateTime.now().millisecondsSinceEpoch,
+          'are_default_filters'   : 'false',
+          '_'                     : DateTime.now().millisecondsSinceEpoch,
         },
       );
     } on DioException {
@@ -1073,13 +1000,16 @@ class ApiProvider {
         // Fix 1: Map rows from Batch-Wise Balance History report carry the
         // balance under 'balance_qty', not 'qty'.  Normalise to 'qty' so
         // fetchBatchBalance() (which reads r['qty']) gets the correct value.
-        return rawRows.whereType<Map>().map((r) {
-          final m = Map<String, dynamic>.from(r);
-          m['qty'] ??= _toDouble(
-            m['balance_qty'] ?? m['bal_qty'] ?? m['balance'],
-          );
-          return m;
-        }).toList();
+        return rawRows
+            .whereType<Map>()
+            .map((r) {
+              final m = Map<String, dynamic>.from(r);
+              m['qty'] ??= _toDouble(
+                m['balance_qty'] ?? m['bal_qty'] ?? m['balance'],
+              );
+              return m;
+            })
+            .toList();
       }
 
       // List rows — resolve column indices
@@ -1087,34 +1017,34 @@ class ApiProvider {
       if (rawColumns == null) return [];
 
       String fn(dynamic col) {
-        if (col is Map)
-          return (col['fieldname'] as String? ?? '').toLowerCase();
+        if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
         final s = col.toString().toLowerCase();
         final lastDot = s.lastIndexOf('.');
-        return lastDot >= 0 ? s.substring(lastDot + 1).replaceAll('`', '') : s;
+        return lastDot >= 0
+            ? s.substring(lastDot + 1).replaceAll('`', '')
+            : s;
       }
 
-      final cols = rawColumns.map(fn).toList();
-      final batchIdx = cols.indexWhere((c) => c.contains('batch'));
-      final balIdx = cols.indexWhere((c) => c.contains('balance'));
-      final whIdx = cols.indexWhere((c) => c.contains('warehouse'));
-      final expiryIdx = cols.indexWhere(
-        (c) => c.contains('expiry') || c.contains('expiration'),
-      );
+      final cols      = rawColumns.map(fn).toList();
+      final batchIdx  = cols.indexWhere((c) => c.contains('batch'));
+      final balIdx    = cols.indexWhere((c) => c.contains('balance'));
+      final whIdx     = cols.indexWhere((c) => c.contains('warehouse'));
+      final expiryIdx = cols.indexWhere((c) => c.contains('expiry') || c.contains('expiration'));
 
       if (batchIdx == -1 || balIdx == -1) return [];
 
-      return rawRows.whereType<List>().where((r) => r.isNotEmpty).map((r) {
-        final row = <String, dynamic>{};
-        if (batchIdx < r.length)
-          row['batch_no'] = r[batchIdx]?.toString() ?? '';
-        if (balIdx < r.length) row['qty'] = _toDouble(r[balIdx]);
-        if (whIdx >= 0 && whIdx < r.length)
-          row['warehouse'] = r[whIdx]?.toString() ?? '';
-        if (expiryIdx >= 0 && expiryIdx < r.length)
-          row['expiry_date'] = r[expiryIdx]?.toString();
-        return row;
-      }).toList();
+      return rawRows
+          .whereType<List>()
+          .where((r) => r.isNotEmpty)
+          .map((r) {
+            final row = <String, dynamic>{};
+            if (batchIdx < r.length) row['batch_no']   = r[batchIdx]?.toString() ?? '';
+            if (balIdx   < r.length) row['qty']        = _toDouble(r[balIdx]);
+            if (whIdx >= 0 && whIdx < r.length) row['warehouse'] = r[whIdx]?.toString() ?? '';
+            if (expiryIdx >= 0 && expiryIdx < r.length) row['expiry_date'] = r[expiryIdx]?.toString();
+            return row;
+          })
+          .toList();
     } catch (_) {
       return [];
     }
@@ -1129,10 +1059,8 @@ class ApiProvider {
   ///
   /// Returns both column definitions (dynamic per item template) and row data
   /// so the UI can render attribute columns generically at runtime.
-  Future<
-    ({List<Map<String, dynamic>> columns, List<Map<String, dynamic>> rows})
-  >
-  getItemVariantDetails(String itemCode) async {
+  Future<({List<Map<String, dynamic>> columns, List<Map<String, dynamic>> rows})>
+      getItemVariantDetails(String itemCode) async {
     if (!_dioInitialised) await _initDio();
 
     late final Response response;
@@ -1140,29 +1068,20 @@ class ApiProvider {
       response = await _dio.get(
         '/api/method/frappe.desk.query_report.run',
         queryParameters: {
-          'report_name': 'Item Variant Details',
-          'filters': json.encode({'item': itemCode}),
+          'report_name'           : 'Item Variant Details',
+          'filters'               : json.encode({'item': itemCode}),
           'ignore_prepared_report': 'true',
-          '_': DateTime.now().millisecondsSinceEpoch,
+          '_'                     : DateTime.now().millisecondsSinceEpoch,
         },
       );
     } on DioException {
-      return (
-        columns: <Map<String, dynamic>>[],
-        rows: <Map<String, dynamic>>[],
-      );
+      return (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
     } catch (_) {
-      return (
-        columns: <Map<String, dynamic>>[],
-        rows: <Map<String, dynamic>>[],
-      );
+      return (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
     }
 
     if (response.statusCode != 200) {
-      return (
-        columns: <Map<String, dynamic>>[],
-        rows: <Map<String, dynamic>>[],
-      );
+      return (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
     }
 
     return parseItemVariantDetailsResponse(
@@ -1173,15 +1092,12 @@ class ApiProvider {
   /// Exposed as a public static method so unit tests can exercise the parsing
   /// logic without a live HTTP connection or GetX service registration.
   static ({List<Map<String, dynamic>> columns, List<Map<String, dynamic>> rows})
-  parseItemVariantDetailsResponse(Map<String, dynamic>? message) {
-    const empty = (
-      columns: <Map<String, dynamic>>[],
-      rows: <Map<String, dynamic>>[],
-    );
+      parseItemVariantDetailsResponse(Map<String, dynamic>? message) {
+    const empty = (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
     if (message == null) return empty;
     try {
       final rawCols = message['columns'] as List<dynamic>? ?? [];
-      final rawRows = message['result'] as List<dynamic>? ?? [];
+      final rawRows = message['result']  as List<dynamic>? ?? [];
       final columns = rawCols
           .whereType<Map>()
           .map((c) => Map<String, dynamic>.from(c))
@@ -1197,23 +1113,21 @@ class ApiProvider {
   }
 
   static ({List<Map<String, dynamic>> columns, List<Map<String, dynamic>> rows})
-  parseStockBalanceResponse(Map<String, dynamic>? message) {
-    const empty = (
-      columns: <Map<String, dynamic>>[],
-      rows: <Map<String, dynamic>>[],
-    );
+      parseStockBalanceResponse(Map<String, dynamic>? message) {
+    const empty = (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
     if (message == null) return empty;
     try {
       final rawCols = message['columns'] as List<dynamic>? ?? [];
-      final rawRows = message['result'] as List<dynamic>? ?? [];
+      final rawRows = message['result']  as List<dynamic>? ?? [];
       if (rawRows.isEmpty) return empty;
 
       String fn(dynamic col) {
-        if (col is Map)
-          return (col['fieldname'] as String? ?? '').toLowerCase();
-        final s = col.toString().toLowerCase();
+        if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
+        final s       = col.toString().toLowerCase();
         final lastDot = s.lastIndexOf('.');
-        return lastDot >= 0 ? s.substring(lastDot + 1).replaceAll('`', '') : s;
+        return lastDot >= 0
+            ? s.substring(lastDot + 1).replaceAll('`', '')
+            : s;
       }
 
       String lbl(dynamic col) {
@@ -1230,10 +1144,7 @@ class ApiProvider {
       // conflicts with the list element type and throws at runtime.
       dynamic firstRow;
       for (final r in rawRows) {
-        if (r != null) {
-          firstRow = r;
-          break;
-        }
+        if (r != null) { firstRow = r; break; }
       }
 
       if (firstRow is Map) {
@@ -1245,13 +1156,16 @@ class ApiProvider {
       }
 
       final fieldnames = rawCols.map(fn).toList();
-      final rows = rawRows.whereType<List>().map((r) {
-        final row = <String, dynamic>{};
-        for (var i = 0; i < fieldnames.length && i < r.length; i++) {
-          row[fieldnames[i]] = r[i];
-        }
-        return row;
-      }).toList();
+      final rows = rawRows
+          .whereType<List>()
+          .map((r) {
+            final row = <String, dynamic>{};
+            for (var i = 0; i < fieldnames.length && i < r.length; i++) {
+              row[fieldnames[i]] = r[i];
+            }
+            return row;
+          })
+          .toList();
 
       return (columns: columns, rows: rows);
     } catch (_) {
@@ -1288,15 +1202,12 @@ class ApiProvider {
   }) async {
     if (!_dioInitialised) await _initDio();
     final formData = FormData.fromMap({
-      'file': await MultipartFile.fromFile(
-        filePath,
-        filename: p.basename(filePath),
-      ),
-      'doctype': doctype,
-      'docname': docname,
-      'fieldname': fieldname,
+      'file'      : await MultipartFile.fromFile(filePath, filename: p.basename(filePath)),
+      'doctype'   : doctype,
+      'docname'   : docname,
+      'fieldname' : fieldname,
       'is_private': isPrivate ? '1' : '0',
-      'folder': 'Home/Attachments',
+      'folder'    : 'Home/Attachments',
     });
     final response = await _dio.post('/api/method/upload_file', data: formData);
     if (response.statusCode != 200) {
@@ -1323,24 +1234,21 @@ class ApiProvider {
   /// Returns a map of item code → {item_name, item_group, image?}.
   /// The image value is null when the field is unset.
   Future<Map<String, Map<String, dynamic>>> getItemDetails(
-    List<String> itemCodes,
-  ) async {
+      List<String> itemCodes) async {
     if (itemCodes.isEmpty) return {};
     try {
       final rows = await getList(
         null,
         doctype: 'Item',
-        fields: ['name', 'item_name', 'item_group', 'image'],
-        filters: {
-          'name': ['in', itemCodes],
-        },
-        limit: itemCodes.length + 1,
+        fields:  ['name', 'item_name', 'item_group', 'image'],
+        filters: {'name': ['in', itemCodes]},
+        limit:   itemCodes.length + 1,
         orderBy: 'name asc',
       );
       return {
         for (final r in rows)
           r['name'].toString(): {
-            'item_name': r['item_name']?.toString() ?? '',
+            'item_name':  r['item_name']?.toString()  ?? '',
             'item_group': r['item_group']?.toString() ?? '',
             'image': (r['image']?.toString().isNotEmpty ?? false)
                 ? r['image'].toString()
@@ -1365,11 +1273,9 @@ class ApiProvider {
       final rows = await getList(
         null,
         doctype: 'Item',
-        fields: ['name', 'image'],
-        filters: {
-          'name': ['in', itemCodes],
-        },
-        limit: itemCodes.length + 1,
+        fields:  ['name', 'image'],
+        filters: {'name': ['in', itemCodes]},
+        limit:   itemCodes.length + 1,
         orderBy: 'name asc',
       );
       return {
@@ -1412,30 +1318,29 @@ class ApiProvider {
 
     final storage = Get.find<StorageService>();
     final company = storage.getCompany();
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final today   = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
     final filters = <String, dynamic>{
-      'company': company,
-      'from_date': today,
-      'to_date': today,
-      'item_code': await stockBalanceItemCodeFilter(itemCode),
-      'show_variant_attributes': 1,
+      'company'                  : company,
+      'from_date'                : today,
+      'to_date'                  : today,
+      'item_code'                : await stockBalanceItemCodeFilter(itemCode),
+      'show_variant_attributes'  : 1,
       'show_dimension_wise_stock': 1,
     };
-    if (warehouse != null && warehouse.isNotEmpty)
-      filters['warehouse'] = warehouse;
-    if (batchNo != null && batchNo.isNotEmpty) filters['batch_no'] = batchNo;
+    if (warehouse != null && warehouse.isNotEmpty) filters['warehouse'] = warehouse;
+    if (batchNo   != null && batchNo.isNotEmpty)   filters['batch_no']  = batchNo;
 
     late final Response response;
     try {
       response = await _dio.get(
         '/api/method/frappe.desk.query_report.run',
         queryParameters: {
-          'report_name': 'Stock Balance',
-          'filters': json.encode(filters),
+          'report_name'           : 'Stock Balance',
+          'filters'               : json.encode(filters),
           'ignore_prepared_report': 'true',
-          'are_default_filters': 'false',
-          '_': DateTime.now().millisecondsSinceEpoch,
+          'are_default_filters'   : 'false',
+          '_'                     : DateTime.now().millisecondsSinceEpoch,
         },
       );
     } on DioException {
@@ -1452,10 +1357,7 @@ class ApiProvider {
       final rawRows = message['result'] as List<dynamic>?;
       if (rawRows == null || rawRows.isEmpty) return [];
 
-      final firstDataRow = rawRows.firstWhere(
-        (r) => r != null,
-        orElse: () => null,
-      );
+      final firstDataRow = rawRows.firstWhere((r) => r != null, orElse: () => null);
 
       // ── Fix 2a: Map rows (key-based) ──────────────────────────────────────
       // Accept both 'rack' key spellings for resilience.
@@ -1466,9 +1368,7 @@ class ApiProvider {
             .whereType<Map>()
             .map((r) {
               final rack = (r['rack'] ?? '').toString().trim();
-              final qty = _toDouble(
-                r['bal_qty'] ?? r['qty'] ?? r['balance_qty'],
-              );
+              final qty  = _toDouble(r['bal_qty'] ?? r['qty'] ?? r['balance_qty']);
               return <String, dynamic>{'rack': rack, 'qty': qty};
             })
             .where((r) => (r['rack'] as String).isNotEmpty)
@@ -1484,14 +1384,15 @@ class ApiProvider {
       if (rawColumns == null) return [];
 
       String fn(dynamic col) {
-        if (col is Map)
-          return (col['fieldname'] as String? ?? '').toLowerCase();
+        if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
         final s = col.toString().toLowerCase();
         final lastDot = s.lastIndexOf('.');
-        return lastDot >= 0 ? s.substring(lastDot + 1).replaceAll('`', '') : s;
+        return lastDot >= 0
+            ? s.substring(lastDot + 1).replaceAll('`', '')
+            : s;
       }
 
-      final cols = rawColumns.map(fn).toList();
+      final cols    = rawColumns.map(fn).toList();
       final rackIdx = cols.indexWhere((c) => c == 'rack');
 
       // Prefer exact 'bal_qty' column; fall back to any column containing
@@ -1508,7 +1409,7 @@ class ApiProvider {
           .where((r) => r.length > rackIdx && r.length > balIdx)
           .map((r) {
             final rack = r[rackIdx]?.toString().trim() ?? '';
-            final qty = _toDouble(r[balIdx]);
+            final qty  = _toDouble(r[balIdx]);
             return <String, dynamic>{'rack': rack, 'qty': qty};
           })
           .where((r) => (r['rack'] as String).isNotEmpty)
@@ -1528,13 +1429,13 @@ class ApiProvider {
 
     final storage = Get.find<StorageService>();
     final company = storage.getCompany();
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final today   = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
     final filters = <String, dynamic>{
-      'company': company,
-      'from_date': today,
-      'to_date': today,
-      'item_code': itemCode,
+      'company'   : company,
+      'from_date' : today,
+      'to_date'   : today,
+      'item_code' : itemCode,
     };
     if (warehouse != null && warehouse.isNotEmpty) {
       filters['warehouse'] = warehouse;
@@ -1545,11 +1446,11 @@ class ApiProvider {
       response = await _dio.get(
         '/api/method/frappe.desk.query_report.run',
         queryParameters: {
-          'report_name': 'Batch-Wise Balance History',
-          'filters': json.encode(filters),
+          'report_name'           : 'Batch-Wise Balance History',
+          'filters'               : json.encode(filters),
           'ignore_prepared_report': 'true',
-          'are_default_filters': 'false',
-          '_': DateTime.now().millisecondsSinceEpoch,
+          'are_default_filters'   : 'false',
+          '_'                     : DateTime.now().millisecondsSinceEpoch,
         },
       );
     } on DioException {
@@ -1578,13 +1479,8 @@ class ApiProvider {
         for (final row in rawRows) {
           if (row is! Map) continue;
 
-          final batchNo =
-              (row['batch'] ?? row['batch_no'] ?? row['batch_id'] ?? '')
-                  .toString()
-                  .trim();
-          final balanceQty = _toDouble(
-            row['balance_qty'] ?? row['bal_qty'] ?? row['balance'],
-          );
+          final batchNo    = (row['batch'] ?? row['batch_no'] ?? row['batch_id'] ?? '').toString().trim();
+          final balanceQty = _toDouble(row['balance_qty'] ?? row['bal_qty'] ?? row['balance']);
 
           if (batchNo.isEmpty || balanceQty <= 0) continue;
 
@@ -1600,23 +1496,20 @@ class ApiProvider {
             row['custom_packaging_qty'] ?? row['packaging_qty'],
           );
 
-          rows.add(
-            BatchWiseBalanceRow(
-              batchNo: batchNo,
-              balanceQty: balanceQty,
-              warehouse: warehouseVal,
-              expiryDate: expiryDate,
-              packagingQty: packagingQty,
-            ),
-          );
+          rows.add(BatchWiseBalanceRow(
+            batchNo      : batchNo,
+            balanceQty   : balanceQty,
+            warehouse    : warehouseVal,
+            expiryDate   : expiryDate,
+            packagingQty : packagingQty,
+          ));
         }
       } else {
         final rawColumns = message['columns'] as List<dynamic>?;
         if (rawColumns == null) return [];
 
         String innerFn(dynamic col) {
-          if (col is Map)
-            return (col['fieldname'] as String? ?? '').toLowerCase();
+          if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
           final s = col.toString().toLowerCase();
           final lastDot = s.lastIndexOf('.');
           return lastDot >= 0
@@ -1624,13 +1517,11 @@ class ApiProvider {
               : s;
         }
 
-        final cols = rawColumns.map(innerFn).toList();
-        final batchIdx = cols.indexWhere((c) => c.contains('batch'));
-        final expiryIdx = cols.indexWhere(
-          (c) => c.contains('expiry') || c.contains('expiration'),
-        );
-        final whIdx = cols.indexWhere((c) => c.contains('warehouse'));
-        final balIdx = cols.indexWhere((c) => c.contains('balance'));
+        final cols         = rawColumns.map(innerFn).toList();
+        final batchIdx     = cols.indexWhere((c) => c.contains('batch'));
+        final expiryIdx    = cols.indexWhere((c) => c.contains('expiry') || c.contains('expiration'));
+        final whIdx        = cols.indexWhere((c) => c.contains('warehouse'));
+        final balIdx       = cols.indexWhere((c) => c.contains('balance'));
         final packagingIdx = cols.indexWhere((c) => c.contains('packaging'));
 
         if (batchIdx == -1 || balIdx == -1) return [];
@@ -1639,10 +1530,10 @@ class ApiProvider {
           if (row is! List || row.isEmpty) continue;
           final parsed = BatchWiseBalanceRow.fromReportRow(
             row,
-            batchIdx: batchIdx,
-            balanceIdx: balIdx,
+            batchIdx    : batchIdx,
+            balanceIdx  : balIdx,
             warehouseIdx: whIdx >= 0 ? whIdx : 0,
-            expiryIdx: expiryIdx >= 0 ? expiryIdx : 0,
+            expiryIdx   : expiryIdx >= 0 ? expiryIdx : 0,
             packagingIdx: packagingIdx,
           );
           if (parsed.batchNo.isNotEmpty && parsed.balanceQty > 0) {
@@ -1660,9 +1551,9 @@ class ApiProvider {
 
   /// Coerce a dynamic value to [double]. Returns 0.0 for null / unparseable.
   static double _toDouble(dynamic v) => switch (v) {
-    final num n => n.toDouble(),
+    final num n    => n.toDouble(),
     final String s => double.tryParse(s) ?? 0.0,
-    _ => 0.0,
+    _              => 0.0,
   };
 
   // ---------------------------------------------------------------------------
@@ -1681,22 +1572,22 @@ class ApiProvider {
     if (!_dioInitialised) await _initDio();
 
     final filters = <String, dynamic>{};
-    if (item?.isNotEmpty == true) filters['item'] = item;
-    if (bom?.isNotEmpty == true) filters['bom'] = bom;
-    if (item1?.isNotEmpty == true) filters['item1'] = item1;
-    if (item2?.isNotEmpty == true) filters['item2'] = item2;
-    if (item3?.isNotEmpty == true) filters['item3'] = item3;
-    if (item4?.isNotEmpty == true) filters['item4'] = item4;
-    if (item5?.isNotEmpty == true) filters['item5'] = item5;
+    if (item?.isNotEmpty  == true) filters['item']   = item;
+    if (bom?.isNotEmpty   == true) filters['bom']    = bom;
+    if (item1?.isNotEmpty == true) filters['item1']  = item1;
+    if (item2?.isNotEmpty == true) filters['item2']  = item2;
+    if (item3?.isNotEmpty == true) filters['item3']  = item3;
+    if (item4?.isNotEmpty == true) filters['item4']  = item4;
+    if (item5?.isNotEmpty == true) filters['item5']  = item5;
 
     return await _dio.get(
       '/api/method/frappe.desk.query_report.run',
       queryParameters: {
-        'report_name': 'BOM Search',
-        'filters': json.encode(filters),
+        'report_name'          : 'BOM Search',
+        'filters'              : json.encode(filters),
         'ignore_prepared_report': 'true',
-        'are_default_filters': 'false',
-        '_': DateTime.now().millisecondsSinceEpoch,
+        'are_default_filters'  : 'false',
+        '_'                    : DateTime.now().millisecondsSinceEpoch,
       },
     );
   }
@@ -1746,9 +1637,7 @@ class ApiProvider {
   /// (and echoes them back as `message.custom_filters`), exactly as the Desk
   /// does on first load. Non-null → the caller's filters with
   /// `are_default_filters=false`, as the Desk does once a filter is changed.
-  static Map<String, dynamic> stockAgeingQuery({
-    Map<String, dynamic>? filters,
-  }) {
+  static Map<String, dynamic> stockAgeingQuery({Map<String, dynamic>? filters}) {
     return {
       'report_name': kStockAgeingReport,
       'filters': json.encode(filters ?? const <String, dynamic>{}),
@@ -1830,11 +1719,11 @@ class ApiProvider {
     return await _dio.get(
       '/api/method/frappe.desk.query_report.run',
       queryParameters: {
-        'report_name': 'BOM Stock with Customer Code',
-        'filters': json.encode(filters),
+        'report_name'           : 'BOM Stock with Customer Code',
+        'filters'               : json.encode(filters),
         'ignore_prepared_report': 'true',
-        'are_default_filters': 'false',
-        '_': DateTime.now().millisecondsSinceEpoch,
+        'are_default_filters'   : 'false',
+        '_'                     : DateTime.now().millisecondsSinceEpoch,
       },
     );
   }
@@ -1933,11 +1822,11 @@ class ApiProvider {
     return await _dio.get(
       '/api/method/frappe.desk.query_report.run',
       queryParameters: {
-        'report_name': 'POS and Delivery Note Item Rate',
-        'filters': json.encode(filters),
+        'report_name'           : 'POS and Delivery Note Item Rate',
+        'filters'               : json.encode(filters),
         'ignore_prepared_report': 'true',
-        'are_default_filters': 'false',
-        '_': DateTime.now().millisecondsSinceEpoch,
+        'are_default_filters'   : 'false',
+        '_'                     : DateTime.now().millisecondsSinceEpoch,
       },
     );
   }
@@ -1974,9 +1863,7 @@ class ApiProvider {
   /// `{'enabled': 1}` if it has `enabled`, else `{}`. Accepts the raw
   /// `getdoctype` response (any shape `extractDocTypeMeta` tolerates).
   static Map<String, dynamic> activeFilterFromMeta(
-    dynamic data,
-    String doctype,
-  ) {
+      dynamic data, String doctype) {
     final meta = GlobalSearchService.extractDocTypeMeta(data, doctype);
     final fields = meta?['fields'];
     if (fields is! List) return const {};
@@ -2044,30 +1931,28 @@ class ApiProvider {
   }) async {
     if (!_dioInitialised) await _initDio();
 
-    final storage = Get.find<StorageService>();
-    final company = storage.getCompany();
-    final fiscalYear = fromDate.substring(0, 4); // e.g. "2026"
+    final storage     = Get.find<StorageService>();
+    final company     = storage.getCompany();
+    final fiscalYear  = fromDate.substring(0, 4);   // e.g. "2026"
 
     final filters = <String, dynamic>{
-      'company': company,
-      'fiscal_year': fiscalYear,
-      'from_date': fromDate,
-      'to_date': toDate,
-      'work_order': workOrder?.isNotEmpty == true ? workOrder : [],
-      'production_item': productionItem?.isNotEmpty == true
-          ? productionItem
-          : [],
-      'workstation': workstation?.isNotEmpty == true ? workstation : [],
+      'company'         : company,
+      'fiscal_year'     : fiscalYear,
+      'from_date'       : fromDate,
+      'to_date'         : toDate,
+      'work_order'      : workOrder?.isNotEmpty == true ? workOrder : [],
+      'production_item' : productionItem?.isNotEmpty == true ? productionItem : [],
+      'workstation'     : workstation?.isNotEmpty == true ? workstation : [],
     };
 
     return await _dio.get(
       '/api/method/frappe.desk.query_report.run',
       queryParameters: {
-        'report_name': 'Job Card Summary',
-        'filters': json.encode(filters),
+        'report_name'           : 'Job Card Summary',
+        'filters'               : json.encode(filters),
         'ignore_prepared_report': 'false',
-        'are_default_filters': 'true',
-        '_': DateTime.now().millisecondsSinceEpoch,
+        'are_default_filters'   : 'true',
+        '_'                     : DateTime.now().millisecondsSinceEpoch,
       },
     );
   }
@@ -2081,17 +1966,17 @@ class ApiProvider {
   }) async {
     if (!_dioInitialised) await _initDio();
 
-    final storage = Get.find<StorageService>();
-    final company = storage.getCompany();
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final storage  = Get.find<StorageService>();
+    final company  = storage.getCompany();
+    final today    = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
     final filters = <String, dynamic>{
-      'company': company,
+      'company'  : company,
       'item_code': await stockBalanceItemCodeFilter(itemCode),
-      'batch_no': batchNo,
+      'batch_no' : batchNo,
       'warehouse': warehouse,
       'from_date': '2000-01-01',
-      'to_date': today,
+      'to_date'  : today,
     };
 
     late final Response response;
@@ -2099,11 +1984,11 @@ class ApiProvider {
       response = await _dio.get(
         '/api/method/frappe.desk.query_report.run',
         queryParameters: {
-          'report_name': 'Stock Ledger',
-          'filters': json.encode(filters),
+          'report_name'          : 'Stock Ledger',
+          'filters'              : json.encode(filters),
           'ignore_prepared_report': 'true',
-          'are_default_filters': 'false',
-          '_': DateTime.now().millisecondsSinceEpoch,
+          'are_default_filters'  : 'false',
+          '_'                    : DateTime.now().millisecondsSinceEpoch,
         },
       );
     } on DioException {
@@ -2119,18 +2004,17 @@ class ApiProvider {
       if (message == null) return {};
 
       final rawColumns = message['columns'] as List<dynamic>?;
-      final rawRows = message['result'] as List<dynamic>?;
+      final rawRows    = message['result']  as List<dynamic>?;
       if (rawColumns == null || rawRows == null || rawRows.isEmpty) return {};
 
       String fieldname(dynamic col) {
-        if (col is Map)
-          return (col['fieldname'] as String? ?? '').toLowerCase();
+        if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
         return col.toString().toLowerCase();
       }
 
       final colNames = rawColumns.map(fieldname).toList();
-      final rackIdx = colNames.indexOf('rack');
-      final qtyIdx = colNames.indexOf('qty_after_transaction');
+      final rackIdx  = colNames.indexOf('rack');
+      final qtyIdx   = colNames.indexOf('qty_after_transaction');
 
       if (rackIdx == -1 || qtyIdx == -1) return {};
 
@@ -2143,9 +2027,9 @@ class ApiProvider {
         if (rack.isEmpty) continue;
 
         final qty = switch (row[qtyIdx]) {
-          final num n => n.toDouble(),
+          final num n   => n.toDouble(),
           final String s => double.tryParse(s) ?? 0.0,
-          _ => 0.0,
+          _              => 0.0,
         };
 
         result[rack] = qty;
@@ -2172,27 +2056,26 @@ class ApiProvider {
     if (!_dioInitialised) await _initDio();
     final storage = Get.find<StorageService>();
     final filters = <String, dynamic>{
-      'company': storage.getCompany(),
+      'company'  : storage.getCompany(),
       'item_code': await stockBalanceItemCodeFilter(itemCode),
       if (warehouse.isNotEmpty) 'warehouse': warehouse,
       'from_date': fromDate,
-      'to_date': toDate,
+      'to_date'  : toDate,
     };
     try {
       final response = await _dio.get(
         '/api/method/frappe.desk.query_report.run',
         queryParameters: {
-          'report_name': 'Stock Ledger',
-          'filters': json.encode(filters),
+          'report_name'           : 'Stock Ledger',
+          'filters'               : json.encode(filters),
           'ignore_prepared_report': 'true',
-          'are_default_filters': 'false',
-          '_': DateTime.now().millisecondsSinceEpoch,
+          'are_default_filters'   : 'false',
+          '_'                     : DateTime.now().millisecondsSinceEpoch,
         },
       );
       if (response.statusCode != 200) return [];
       return parseStockLedgerEntries(
-        response.data['message'] as Map<String, dynamic>?,
-      );
+          response.data['message'] as Map<String, dynamic>?);
     } catch (_) {
       return [];
     }
@@ -2201,12 +2084,11 @@ class ApiProvider {
   /// Normalises a Stock Ledger report `message` into ledger rows. Exposed as a
   /// static so the parsing is unit-testable without a live connection.
   static List<Map<String, dynamic>> parseStockLedgerEntries(
-    Map<String, dynamic>? message,
-  ) {
+      Map<String, dynamic>? message) {
     if (message == null) return [];
     try {
       final rawCols = message['columns'] as List<dynamic>? ?? [];
-      final rawRows = message['result'] as List<dynamic>? ?? [];
+      final rawRows = message['result']  as List<dynamic>? ?? [];
       if (rawRows.isEmpty) return [];
 
       String fn(dynamic c) {
@@ -2218,10 +2100,7 @@ class ApiProvider {
 
       dynamic first;
       for (final r in rawRows) {
-        if (r != null) {
-          first = r;
-          break;
-        }
+        if (r != null) { first = r; break; }
       }
       late final List<Map<String, dynamic>> mapRows;
       if (first is Map) {
@@ -2245,15 +2124,13 @@ class ApiProvider {
 
       return mapRows
           .where((r) => r['voucher_no'] != null || r['posting_date'] != null)
-          .map(
-            (r) => <String, dynamic>{
-              'date': (r['posting_date'] ?? r['date'] ?? '').toString(),
-              'voucher_type': (r['voucher_type'] ?? '').toString(),
-              'voucher_no': (r['voucher_no'] ?? '').toString(),
-              'qty': toNum(r['actual_qty']),
-              'balance': toNum(r['qty_after_transaction']),
-            },
-          )
+          .map((r) => <String, dynamic>{
+                'date': (r['posting_date'] ?? r['date'] ?? '').toString(),
+                'voucher_type': (r['voucher_type'] ?? '').toString(),
+                'voucher_no': (r['voucher_no'] ?? '').toString(),
+                'qty': toNum(r['actual_qty']),
+                'balance': toNum(r['qty_after_transaction']),
+              })
           .toList();
     } catch (_) {
       return [];
@@ -2293,14 +2170,12 @@ class ApiProvider {
       double toNum(dynamic v) =>
           v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
       return rows
-          .map(
-            (r) => <String, dynamic>{
-              'voucher_type': (r['voucher_type'] ?? 'Sales Order').toString(),
-              'voucher_no': (r['voucher_no'] ?? '').toString(),
-              'reserved': toNum(r['reserved_qty']) - toNum(r['delivered_qty']),
-              'status': (r['status'] ?? '').toString(),
-            },
-          )
+          .map((r) => <String, dynamic>{
+                'voucher_type': (r['voucher_type'] ?? 'Sales Order').toString(),
+                'voucher_no': (r['voucher_no'] ?? '').toString(),
+                'reserved': toNum(r['reserved_qty']) - toNum(r['delivered_qty']),
+                'status': (r['status'] ?? '').toString(),
+              })
           .where((r) => (r['reserved'] as double) > 0)
           .toList();
     } catch (_) {
@@ -2331,217 +2206,59 @@ class ApiProvider {
   }
 
   // Module specific getters
-  Future<Response> getPurchaseReceipts({
-    int limit = 20,
-    int limitStart = 0,
-    Map<String, dynamic>? filters,
-    String orderBy = 'modified desc',
-  }) async => getDocumentList(
-    'Purchase Receipt',
-    limit: limit,
-    limitStart: limitStart,
-    filters: filters,
-    orderBy: orderBy,
-    fields: [
-      'name',
-      'owner',
-      'creation',
-      'modified',
-      'modified_by',
-      'docstatus',
-      'status',
-      'supplier',
-      'posting_date',
-      'posting_time',
-      'set_warehouse',
-      'currency',
-      'total_qty',
-      'grand_total',
-      'per_billed',
-    ],
-  );
-  Future<Response> getPurchaseReceipt(String name) async =>
-      getDocument('Purchase Receipt', name);
-  Future<Response> getPackingSlips({
-    int limit = 20,
-    int limitStart = 0,
-    Map<String, dynamic>? filters,
-  }) async => getDocumentList(
-    'Packing Slip',
-    limit: limit,
-    limitStart: limitStart,
-    filters: filters,
-    fields: [
-      'name',
-      'delivery_note',
-      'modified',
-      'creation',
-      'docstatus',
-      'custom_po_no',
-      'from_case_no',
-      'to_case_no',
-      'owner',
-    ],
-  );
-  Future<Response> getPackingSlip(String name) async =>
-      getDocument('Packing Slip', name);
-  Future<Response> getStockEntries({
-    int limit = 20,
-    int limitStart = 0,
-    Map<String, dynamic>? filters,
-  }) async => getDocumentList(
-    'Stock Entry',
-    limit: limit,
-    limitStart: limitStart,
-    filters: filters,
-    fields: [
-      'name',
-      'purpose',
-      'total_amount',
-      'custom_total_qty',
-      'modified',
-      'docstatus',
-      'creation',
-      'stock_entry_type',
-    ],
-  );
-  Future<Response> getStockEntry(String name) async =>
-      getDocument('Stock Entry', name);
-  Future<Response> getDeliveryNotes({
-    int limit = 20,
-    int limitStart = 0,
-    Map<String, dynamic>? filters,
-  }) async => getDocumentList(
-    'Delivery Note',
-    limit: limit,
-    limitStart: limitStart,
-    filters: filters,
-    fields: [
-      'name',
-      'customer',
-      'grand_total',
-      'posting_date',
-      'modified',
-      'status',
-      'currency',
-      'po_no',
-      'total_qty',
-      'creation',
-      'docstatus',
-    ],
-  );
-  Future<Response> getDeliveryNote(String name) async =>
-      getDocument('Delivery Note', name);
-  Future<Response> getPosUploads({
-    int limit = 20,
-    int limitStart = 0,
-    Map<String, dynamic>? filters,
-  }) async {
-    if (filters != null && filters.containsKey('docstatus'))
-      filters.remove('docstatus');
-    return getDocumentList(
-      'POS Upload',
-      limit: limit,
-      limitStart: limitStart,
-      filters: filters,
-      fields: ['name', 'total_qty'],
-    );
+  Future<Response> getPurchaseReceipts({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters, String orderBy = 'modified desc'}) async =>
+      getDocumentList('Purchase Receipt', limit: limit, limitStart: limitStart, filters: filters, orderBy: orderBy, fields: ['name', 'owner', 'creation', 'modified', 'modified_by', 'docstatus', 'status', 'supplier', 'posting_date', 'posting_time', 'set_warehouse', 'currency', 'total_qty', 'grand_total', 'per_billed']);
+  Future<Response> getPurchaseReceipt(String name) async => getDocument('Purchase Receipt', name);
+  Future<Response> getPackingSlips({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async =>
+      getDocumentList('Packing Slip', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'delivery_note', 'modified', 'creation', 'docstatus', 'custom_po_no', 'from_case_no', 'to_case_no', 'owner']);
+  Future<Response> getPackingSlip(String name) async => getDocument('Packing Slip', name);
+  Future<Response> getStockEntries({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async =>
+      getDocumentList('Stock Entry', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'purpose', 'total_amount', 'custom_total_qty', 'modified', 'docstatus', 'creation', 'stock_entry_type']);
+  Future<Response> getStockEntry(String name) async => getDocument('Stock Entry', name);
+  Future<Response> getDeliveryNotes({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async =>
+      getDocumentList('Delivery Note', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'customer', 'grand_total', 'posting_date', 'modified', 'status', 'currency', 'po_no', 'total_qty', 'creation', 'docstatus']);
+  Future<Response> getDeliveryNote(String name) async => getDocument('Delivery Note', name);
+  Future<Response> getPosUploads({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async {
+    if (filters != null && filters.containsKey('docstatus')) filters.remove('docstatus');
+    return getDocumentList('POS Upload', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'total_qty']);
   }
-
-  Future<Response> getPosUpload(String name) async =>
-      getDocument('POS Upload', name);
-  Future<Response> getTodos({
-    int limit = 20,
-    int limitStart = 0,
-    Map<String, dynamic>? filters,
-  }) async => getDocumentList(
-    'ToDo',
-    limit: limit,
-    limitStart: limitStart,
-    filters: filters,
-    fields: ['name', 'status', 'description', 'modified', 'priority', 'date'],
-  );
+  Future<Response> getPosUpload(String name) async => getDocument('POS Upload', name);
+  Future<Response> getTodos({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async =>
+      getDocumentList('ToDo', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'status', 'description', 'modified', 'priority', 'date']);
   Future<Response> getTodo(String name) async => getDocument('ToDo', name);
-  Future<Response> getPurchaseOrders({
-    int limit = 20,
-    int limitStart = 0,
-    Map<String, dynamic>? filters,
-    String orderBy = 'modified desc',
-  }) async {
-    return getDocumentList(
-      'Purchase Order',
-      limit: limit,
-      limitStart: limitStart,
-      filters: filters,
-      fields: [
-        'name',
-        'supplier',
-        'transaction_date',
-        'grand_total',
-        'currency',
-        'status',
-        'docstatus',
-        'modified',
-        'creation',
-      ],
-      orderBy: orderBy,
-    );
+  Future<Response> getPurchaseOrders({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters, String orderBy = 'modified desc'}) async {
+    return getDocumentList('Purchase Order', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'supplier', 'transaction_date', 'grand_total', 'currency', 'status', 'docstatus', 'modified', 'creation'], orderBy: orderBy);
   }
-
-  Future<Response> getPurchaseOrder(String name) async =>
-      getDocument('Purchase Order', name);
-  Future<Response> createPurchaseOrder(Map<String, dynamic> data) async =>
-      createDocument('Purchase Order', data);
-  Future<Response> updatePurchaseOrder(
-    String name,
-    Map<String, dynamic> data,
-  ) async => updateDocument('Purchase Order', name, data);
+  Future<Response> getPurchaseOrder(String name) async => getDocument('Purchase Order', name);
+  Future<Response> createPurchaseOrder(Map<String, dynamic> data) async => createDocument('Purchase Order', data);
+  Future<Response> updatePurchaseOrder(String name, Map<String, dynamic> data) async => updateDocument('Purchase Order', name, data);
   Future<Response> login(String email, String password) async {
     if (!_dioInitialised) await _initDio();
     try {
-      final response = await _dio.post(
-        '/api/method/login',
-        data: {'usr': email, 'pwd': password},
-        options: SessionExpiryInterceptor.unchecked(),
-      );
+      final response = await _dio.post('/api/method/login', data: {'usr': email, 'pwd': password}, options: SessionExpiryInterceptor.unchecked());
       return response;
     } on DioException catch (e) {
-      GlobalSnackbar.error(
-        title: 'Login Error',
-        message: e.message ?? 'An unknown error occurred',
-      );
+      GlobalSnackbar.error(title: 'Login Error', message: e.message ?? 'An unknown error occurred');
       rethrow;
     } catch (e) {
-      GlobalSnackbar.error(
-        title: 'Login Error',
-        message: 'An unexpected error occurred: $e',
-      );
+      GlobalSnackbar.error(title: 'Login Error', message: 'An unexpected error occurred: $e');
       rethrow;
     }
   }
-
   Future<Response> loginWithFrappe(String username, String password) async {
     if (!_dioInitialised) await _initDio();
     try {
       final formData = FormData.fromMap({'usr': username, 'pwd': password});
-      return await _dio.post(
-        '/api/method/login',
-        data: formData,
-        options: SessionExpiryInterceptor.unchecked(
-          Options(contentType: Headers.formUrlEncodedContentType),
-        ),
-      );
+      return await _dio.post('/api/method/login', data: formData, options: SessionExpiryInterceptor.unchecked(Options(contentType: Headers.formUrlEncodedContentType)));
     } on DioException catch (e) {
       rethrow;
     }
   }
-
   Future<bool> hasSessionCookies() async {
     if (!_dioInitialised) await _initDio();
     final cookies = await _cookieJar.loadForRequest(Uri.parse(_baseUrl));
     return cookies.any((cookie) => cookie.name == 'sid');
   }
-
   Future<void> clearSessionCookies() async {
     if (!_dioInitialised) await _initDio();
     await _cookieJar.deleteAll();
@@ -2561,42 +2278,23 @@ class ApiProvider {
       options: SessionExpiryInterceptor.unchecked(),
     );
   }
-
   Future<Response> getLoggedUser() async {
     if (!_dioInitialised) await _initDio();
-    return await _dio.get(
-      SessionExpiryInterceptor.identityPath,
-      options: SessionExpiryInterceptor.unchecked(),
-    );
+    return await _dio.get(SessionExpiryInterceptor.identityPath, options: SessionExpiryInterceptor.unchecked());
   }
-
   Future<Response> getUserDetails(String email) async {
     if (!_dioInitialised) await _initDio();
     return await _dio.get('/api/resource/User/$email');
   }
-
   Future<Response> resetPassword(String email) async {
     if (!_dioInitialised) await _initDio();
-    return await _dio.post(
-      '/api/method/frappe.core.doctype.user.user.reset_password',
-      data: {'user': email},
-      options: Options(contentType: Headers.formUrlEncodedContentType),
-    );
+    return await _dio.post('/api/method/frappe.core.doctype.user.user.reset_password', data: {'user': email}, options: Options(contentType: Headers.formUrlEncodedContentType));
   }
-
-  Future<Response> changePassword(
-    String oldPassword,
-    String newPassword,
-  ) async {
+  Future<Response> changePassword(String oldPassword, String newPassword) async {
     if (!_dioInitialised) await _initDio();
-    return await _dio.post(
-      '/api/method/frappe.core.doctype.user.user.update_password',
-      data: {
-        'old_password': oldPassword,
-        'new_password': newPassword,
-        'logout_all_sessions': 0,
-      },
-      options: Options(contentType: Headers.formUrlEncodedContentType),
+    return await _dio.post('/api/method/frappe.core.doctype.user.user.update_password',
+        data: {'old_password': oldPassword, 'new_password': newPassword, 'logout_all_sessions': 0},
+        options: Options(contentType: Headers.formUrlEncodedContentType)
     );
   }
 }

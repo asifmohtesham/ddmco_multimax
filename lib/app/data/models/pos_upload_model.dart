@@ -89,10 +89,7 @@ class PosUploadItem {
       refCode: json['ref_code'] ?? '',
       itemName: json['item_name'] ?? '',
       // Map 'qty' to 'quantity', fallback to 'quantity' if 'qty' is missing, defaulting to 0.0
-      quantity:
-          (json['qty'] as num?)?.toDouble() ??
-          (json['quantity'] as num?)?.toDouble() ??
-          0.0,
+      quantity: (json['qty'] as num?)?.toDouble() ?? (json['quantity'] as num?)?.toDouble() ?? 0.0,
       rate: (json['rate'] as num?)?.toDouble() ?? 0.0,
       uom: json['uom'] ?? '',
       amount: (json['amount'] as num?)?.toDouble() ?? 0.0,

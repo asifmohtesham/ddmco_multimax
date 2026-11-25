@@ -187,7 +187,10 @@ class StatusPill extends StatelessWidget {
         opacity: animation,
         child: ScaleTransition(scale: animation, child: child),
       ),
-      child: KeyedSubtree(key: ValueKey(status), child: _buildPill(context)),
+      child: KeyedSubtree(
+        key: ValueKey(status),
+        child: _buildPill(context),
+      ),
     );
   }
 }

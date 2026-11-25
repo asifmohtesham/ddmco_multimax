@@ -144,10 +144,7 @@ class PosUploadProvider {
     return data;
   }
 
-  Future<Response> updatePosUpload(
-    String name,
-    Map<String, dynamic> data,
-  ) async {
+  Future<Response> updatePosUpload(String name, Map<String, dynamic> data) async {
     return _apiProvider.updateDocument('POS Upload', name, data);
   }
 
@@ -156,11 +153,8 @@ class PosUploadProvider {
   /// permission error.
   Future<bool> canWrite(String name) async {
     try {
-      final res = await _apiProvider.hasDocPermission(
-        'POS Upload',
-        name,
-        'write',
-      );
+      final res =
+          await _apiProvider.hasDocPermission('POS Upload', name, 'write');
       return ApiProvider.parseHasDocPermissionResponse(res.data);
     } catch (_) {
       return false;
@@ -176,11 +170,7 @@ class PosUploadProvider {
     try {
       final meta = await _apiProvider.getDocTypeMeta('POS Upload');
       return ApiProvider.fieldWriteGranted(
-        meta.data,
-        'POS Upload',
-        'status',
-        userRoles,
-      );
+          meta.data, 'POS Upload', 'status', userRoles);
     } catch (_) {
       return false;
     }
