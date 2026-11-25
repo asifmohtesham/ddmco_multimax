@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:path/path.dart' as p;
@@ -14,6 +15,7 @@ import 'package:multimax/app/data/providers/safe_log_interceptor.dart';
 import 'package:multimax/app/data/providers/session_expiry_interceptor.dart';
 import 'package:multimax/app/data/providers/csrf_interceptor.dart';
 import 'package:multimax/app/data/services/database_service.dart';
+import 'package:multimax/app/data/services/session_cookie_jar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/global_search_service.dart';
@@ -29,6 +31,7 @@ class ApiProvider {
   static const String defaultBaseUrl = "https://erp.domain.com";
 
   bool _dioInitialised = false;
+  Future<void>? _dioInitialization;
   late Dio _dio;
   late CookieJar _cookieJar;
   String _baseUrl = defaultBaseUrl;
@@ -184,7 +187,9 @@ class ApiProvider {
   // ──────────────────────────────────────────────────────────────────────────
 
   ApiProvider() {
-    _initDio();
+    // Prewarm the client. A request awaiting initialization still receives
+    // any local error and can retry.
+    unawaited(_initDio().catchError((Object _) {}));
   }
 
   void setBaseUrl(String url) {
@@ -200,7 +205,11 @@ class ApiProvider {
 
   Future<void> _initDio() async {
     if (_dioInitialised) return;
+    await (_dioInitialization ??=
+        _createDio().whenComplete(() => _dioInitialization = null));
+  }
 
+  Future<void> _createDio() async {
     // Load URL from SQLite Database
     if (Get.isRegistered<DatabaseService>()) {
       final dbService = Get.find<DatabaseService>();
@@ -218,7 +227,7 @@ class ApiProvider {
     }
     final appSupportDir = await getApplicationSupportDirectory();
     final cookiePath = '${appSupportDir.path}/.cookies/';
-    _cookieJar = PersistCookieJar(ignoreExpires: true, storage: FileStorage(cookiePath));
+    _cookieJar = createSessionCookieJar(cookiePath);
     _dio = Dio(BaseOptions(
       baseUrl: _baseUrl,
       connectTimeout: const Duration(seconds: 10),
@@ -2567,7 +2576,12 @@ class ApiProvider {
 
   Future<bool> hasSessionCookies() async {
     if (!_dioInitialised) await _initDio();
-    final cookies = await _cookieJar.loadForRequest(Uri.parse(_baseUrl));
+    final server = Uri.parse(_baseUrl);
+    if ((server.scheme != 'https' && server.scheme != 'http') ||
+        server.host.isEmpty) {
+      throw const FormatException('Invalid server URL');
+    }
+    final cookies = await _cookieJar.loadForRequest(server);
     return cookies.any((cookie) => cookie.name == 'sid');
   }
   Future<void> clearSessionCookies() async {
