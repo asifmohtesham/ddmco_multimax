@@ -12,6 +12,7 @@ import 'package:multimax/app/data/providers/customer_provider.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/delivery_note/delivery_note_status_filter.dart';
 import 'package:multimax/app/core/utils/app_notification.dart';
 
@@ -442,9 +443,8 @@ class DeliveryNoteController extends GetxController {
                             height: 1, indent: 16, endIndent: 16),
                         itemBuilder: (context, index) {
                           final posUpload = posUploadsForSelection[index];
-                          final statusColor = posUpload.status == 'Pending'
-                              ? Colors.orange
-                              : Colors.blue;
+                          final statusColor =
+                              StatusPill.posUploadDotColor(posUpload.status);
                           return ListTile(
                             contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 16, vertical: 4),

@@ -55,6 +55,12 @@ void main() {
 
   group('POS Upload status colours', () {
     const ramps = {
+      'Pending': (AppColors.gray500, AppColors.gray700, AppColors.gray300),
+      'In Progress': (
+        AppColors.purple500,
+        AppColors.purple700,
+        AppColors.purple300,
+      ),
       'To Deliver': (
         AppColors.orange500,
         AppColors.orange700,
@@ -66,8 +72,24 @@ void main() {
         AppColors.blue300,
       ),
       'Delivered': (AppColors.green500, AppColors.green700, AppColors.green300),
+      'Completed': (AppColors.green500, AppColors.green700, AppColors.green300),
+      'Cancelled': (AppColors.red500, AppColors.red700, AppColors.red300),
       'Draft': (AppColors.gray500, AppColors.gray700, AppColors.gray300),
     };
+
+    test('Pending and To Deliver differ, as on Desk', () {
+      expect(
+        StatusPill.posUploadDotColor('Pending'),
+        isNot(StatusPill.posUploadDotColor('To Deliver')),
+      );
+      expect(StatusPill.posUploadDotColor('Pending'), AppColors.gray500);
+      expect(StatusPill.posUploadDotColor('In Progress'), AppColors.purple500);
+    });
+
+    test('other DocTypes keep Pending orange', () {
+      expect(StatusPill.dotColorForStatus('Pending'), AppColors.orange500);
+      expect(StatusPill.dotColorForStatus('In Progress'), AppColors.gray500);
+    });
 
     for (final brightness in Brightness.values) {
       testWidgets('renders the expected text, fill and border in $brightness', (

@@ -47,8 +47,16 @@ class StatusPill extends StatelessWidget {
     String status, {
     bool isPosUpload = false,
   }) {
-    if (isPosUpload && !PosUpload.statusOptions.contains(status)) {
-      return _neutralRamp;
+    // POS Upload uses one colour per status, as its Desk list script does:
+    // Pending grey, In Progress purple, To Deliver orange, Out for Delivery
+    // blue, Delivered and Completed green, Cancelled red.
+    if (isPosUpload) {
+      if (status == 'Pending' || !PosUpload.statusOptions.contains(status)) {
+        return _neutralRamp;
+      }
+      if (status == 'In Progress') {
+        return (AppColors.purple500, AppColors.purple700, AppColors.purple300);
+      }
     }
     switch (status) {
       case 'Draft':
@@ -143,6 +151,11 @@ class StatusPill extends StatelessWidget {
 
   /// The leading-dot color (`<hue>500`) for [status].
   static Color dotColorForStatus(String status) => _ramp(status).$1;
+
+  /// The leading-dot color for a POS Upload [status], as [StatusPill.posUpload]
+  /// draws it.
+  static Color posUploadDotColor(String status) =>
+      _ramp(status, isPosUpload: true).$1;
 
   Widget _buildPill(BuildContext context) {
     final brightness = Theme.of(context).brightness;
