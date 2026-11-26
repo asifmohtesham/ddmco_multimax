@@ -49,6 +49,7 @@ edges = {
     "Out for Delivery": ("To Deliver", "Out for Delivery"),
     "Delivery Return": ("Out for Delivery", "To Deliver"),
     "Delivered": ("Out for Delivery", "Delivered"),
+    "Revert to Pending": ("In Progress", "Pending"),
 }
 edge = edges.get(requested_action)
 locked = frappe.db.get_value("POS Upload", doc.name, ["status", "modified", "customer"], as_dict=True, for_update=True)
@@ -60,39 +61,49 @@ if (
 ):
     frappe.throw("This POS Upload changed. Reload it and use Actions again.")
 
-driver_id = request_doc.get("pos_delivery_driver")
-if not isinstance(driver_id, str) or not driver_id:
-    frappe.throw("Select an active Driver.")
-driver = frappe.db.get_value("Driver", {"name": driver_id, "status": "Active"}, ["name", "full_name"], as_dict=True)
-if not driver:
-    frappe.throw("Select an active Driver.")
-
-reason = request_doc.get("pos_delivery_reason")
-if requested_action == "Delivery Return":
-    if reason not in ("Late", "Rejected", "Other"):
-        frappe.throw("Select a Return Reason (Late, Rejected or Other).")
-    doc.custom_return_reason = reason
-else:
-    if reason:
-        frappe.throw("Return Reason is only accepted for Delivery Return.")
-    if requested_action == "Out for Delivery":
-        doc.custom_return_reason = ""
-
-dn = eligible_dn(doc.name, locked.customer, requested_action != "Delivery Return")
-if requested_action == "Delivered" and dn != current_dispatch_dn(doc.name):
-    frappe.throw("The Delivery Note has changed since dispatch. Record a Delivery Return and dispatch the replacement before marking Delivered.")
-
 user = frappe.session.user
 recorded_by_name = frappe.db.get_value("User", user, "full_name") or user
-driver_name = driver.full_name or driver.name
-text = (
-    f"POS delivery · {requested_action} · Driver: {frappe.utils.escape_html(driver_name)}"
-    f" · recorded by {frappe.utils.escape_html(recorded_by_name)}"
-)
-if reason:
-    text = text + f" · Reason: {reason}"
-if dn:
-    text = text + f" · Delivery Note: {frappe.utils.escape_html(dn)}"
+if requested_action == "Revert to Pending":
+    # Stock Manager reopens preparation so the POS can be edited (e.g. re-imported) again.
+    # No driver, reason or Delivery Note; the Version and comment keep the audit.
+    driver = None
+    driver_name = None
+    reason = None
+    dn = None
+    doc.custom_return_reason = ""
+    text = f"POS delivery · Revert to Pending · recorded by {frappe.utils.escape_html(recorded_by_name)}"
+else:
+    driver_id = request_doc.get("pos_delivery_driver")
+    if not isinstance(driver_id, str) or not driver_id:
+        frappe.throw("Select an active Driver.")
+    driver = frappe.db.get_value("Driver", {"name": driver_id, "status": "Active"}, ["name", "full_name"], as_dict=True)
+    if not driver:
+        frappe.throw("Select an active Driver.")
+
+    reason = request_doc.get("pos_delivery_reason")
+    if requested_action == "Delivery Return":
+        if reason not in ("Late", "Rejected", "Other"):
+            frappe.throw("Select a Return Reason (Late, Rejected or Other).")
+        doc.custom_return_reason = reason
+    else:
+        if reason:
+            frappe.throw("Return Reason is only accepted for Delivery Return.")
+        if requested_action == "Out for Delivery":
+            doc.custom_return_reason = ""
+
+    dn = eligible_dn(doc.name, locked.customer, requested_action != "Delivery Return")
+    if requested_action == "Delivered" and dn != current_dispatch_dn(doc.name):
+        frappe.throw("The Delivery Note has changed since dispatch. Record a Delivery Return and dispatch the replacement before marking Delivered.")
+
+    driver_name = driver.full_name or driver.name
+    text = (
+        f"POS delivery · {requested_action} · Driver: {frappe.utils.escape_html(driver_name)}"
+        f" · recorded by {frappe.utils.escape_html(recorded_by_name)}"
+    )
+    if reason:
+        text = text + f" · Reason: {reason}"
+    if dn:
+        text = text + f" · Delivery Note: {frappe.utils.escape_html(dn)}"
 comment = doc.add_comment("Workflow", text)
 doc.flags.pos_delivery_action = {
     "revision": str(locked.modified), "status": doc.status, "reason": doc.custom_return_reason or "",
@@ -100,7 +111,7 @@ doc.flags.pos_delivery_action = {
 doc.flags.updater_reference = {
     "doctype": "POS Upload", "docname": doc.name, "label": requested_action,
     "pos_delivery": {
-        "action": requested_action, "driver": driver.name, "driver_name": driver_name,
+        "action": requested_action, "driver": driver.name if driver else None, "driver_name": driver_name,
         "recorded_by": user, "recorded_by_name": recorded_by_name,
         "reason": reason or None, "dn": dn, "comment_id": comment.name,
     },

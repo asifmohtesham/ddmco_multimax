@@ -119,6 +119,16 @@
       "allow_self_approval": 1,
       "send_email_to_creator": 0,
       "transition_tasks": "POS Upload Delivery Action"
+    },
+    {
+      "doctype": "Workflow Transition",
+      "state": "In Progress",
+      "action": "Revert to Pending",
+      "next_state": "Pending",
+      "allowed": "Stock Manager",
+      "allow_self_approval": 1,
+      "send_email_to_creator": 0,
+      "transition_tasks": "POS Upload Delivery Action"
     }
   ],
   "_depends": [
