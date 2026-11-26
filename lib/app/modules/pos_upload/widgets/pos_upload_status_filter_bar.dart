@@ -51,7 +51,7 @@ class PosUploadStatusFilterBar extends StatelessWidget {
                       )
                     : SelectableFilterChip(
                         label: status,
-                        dotColor: StatusPill.dotColorForStatus(status),
+                        dotColor: StatusPill.posUploadDotColor(status),
                         selected: active == status,
                         onSelected: (_) =>
                             controller.toggleStatusFilter(status),

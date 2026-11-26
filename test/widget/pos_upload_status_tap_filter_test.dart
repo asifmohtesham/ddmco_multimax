@@ -196,6 +196,25 @@ void main() {
     }
   });
 
+  testWidgets('each status chip dot matches its POS Upload pill colour', (
+    tester,
+  ) async {
+    await pumpList(tester);
+
+    for (final s in PosUpload.statusOptions) {
+      final chip = await showChip(tester, s);
+      expect(
+        tester.widget<SelectableFilterChip>(chip).dotColor,
+        StatusPill.posUploadDotColor(s),
+        reason: 'chip "$s" dot differs from its pill',
+      );
+    }
+    expect(
+      StatusPill.posUploadDotColor('Pending'),
+      isNot(StatusPill.posUploadDotColor('To Deliver')),
+    );
+  });
+
   testWidgets('tapping a delivery status chip filters the list in one tap', (
     tester,
   ) async {
