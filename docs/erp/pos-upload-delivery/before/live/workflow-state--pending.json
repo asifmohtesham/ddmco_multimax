@@ -1,0 +1,13 @@
+{
+  "name": "Pending",
+  "owner": "Administrator",
+  "creation": "2025-06-08 23:20:36.555970",
+  "modified": "2025-06-08 23:20:36.555970",
+  "modified_by": "Administrator",
+  "docstatus": 0,
+  "idx": 0,
+  "workflow_state_name": "Pending",
+  "icon": "question-sign",
+  "style": "",
+  "doctype": "Workflow State"
+}
