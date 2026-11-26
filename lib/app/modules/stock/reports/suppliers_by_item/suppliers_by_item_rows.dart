@@ -1,7 +1,3 @@
-import 'dart:math' show max;
-
-import 'package:flutter/foundation.dart' show listEquals;
-
 // Keep the shared Flutter Material API until the app migrates to material_ui.
 // ignore: deprecated_member_use
 import 'package:flutter/material.dart';
@@ -45,9 +41,6 @@ const _columnGap = 10.0;
 const _tabularFigures = [FontFeature.tabularFigures()];
 const _nonBreakingSpace = '\u00a0';
 
-String suppliersByItemQuantity(num quantity, [String? unit]) =>
-    [_quantityLabel(quantity), ?unit].join(' ');
-
 // Keep a significant digit when two-decimal rounding would erase a quantity.
 String _quantityLabel(num quantity) => quantity != 0 && quantity.abs() < 0.005
     ? quantity.toStringAsPrecision(1)
@@ -62,7 +55,6 @@ Map<SuppliersByItemRowKey, SuppliersByItemColumnRun> suppliersByItemColumnRuns(
   Iterable<SuppliersByItemLayoutRow> rows,
   bool Function(SuppliersByItemField) shows, [
   SuppliersByItemFieldCaption label = _defaultCaption,
-  Map<SuppliersByItemRowKey, SuppliersByItemColumnRun> previous = const {},
 ]) {
   final runs = <List<SuppliersByItemLayoutRow>>[];
   final active = <SuppliersByItemRowKey?, List<SuppliersByItemLayoutRow>>{};
@@ -100,15 +92,7 @@ Map<SuppliersByItemRowKey, SuppliersByItemColumnRun> suppliersByItemColumnRuns(
   final byRow = <SuppliersByItemRowKey, SuppliersByItemColumnRun>{};
   for (final siblings in [...runs, ...suppliersByParent.values]) {
     if (siblings.length < 2) continue;
-    final existing = previous[siblings.first.key];
-    // Expanding an interleaved descendant preserves its parents' columns.
-    final run =
-        existing != null &&
-            existing._shows == shows &&
-            existing._label == label &&
-            listEquals(existing._rows, siblings)
-        ? existing
-        : SuppliersByItemColumnRun._(siblings, shows, label);
+    final run = SuppliersByItemColumnRun._(siblings, shows, label);
     for (final row in siblings) {
       byRow[row.key] = run;
     }
@@ -283,7 +267,10 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
         );
     final badges = [
       if (!isTemplate && !entry.hasDirectSupplier && !showsPlaceholder)
-        _Badge(fieldLabel(_Field.summaryNoDirectCount), 'Disabled'),
+        const _Badge(
+          SuppliersByItemColumnLabels.noSupplierRecorded,
+          'Disabled',
+        ),
       if (!pairOccurrence && !isComponent && !isTemplate)
         ..._poBadges(_row, supplier: false, detailsVisible: true),
       if (!isComponent && _row.isBelowReorderLevel)
@@ -293,8 +280,6 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
         ),
     ];
     final qualifiers = [
-      if (entry.templateContext != null)
-        '${fieldLabel(_Field.itemTemplateContext)} ${entry.templateContext}',
       if (isTemplate && shows(_Field.templateVariantCount))
         countLabel(entry.variantCount, 'variant'),
       ?_depthLabel,
@@ -736,7 +721,7 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
       runSpacing: 4,
       children: [
         Text(
-          fieldLabel(_Field.summaryNoDirectCount),
+          SuppliersByItemColumnLabels.noSupplierRecorded,
           style: _mutedStyle(context),
         ),
         if (_depthLabel case final label?)
@@ -1451,7 +1436,7 @@ TextStyle? _mutedStyle(BuildContext context) => Theme.of(
 String? _amount(num? quantity, String? unit) =>
     quantity == null || !quantity.isFinite
     ? null
-    : suppliersByItemQuantity(quantity, unit);
+    : [_quantityLabel(quantity), ?unit].join(' ');
 
 String _groupCount(String label, int total, int? retained) =>
     retained == null ? '$label $total' : '$label $retained of $total';
@@ -1471,167 +1456,3 @@ String _metricSemantics(_Detail metric) => switch (metric) {
   (label: _, value: '-') => '${metric.label} unavailable',
   _ => '${metric.label} ${metric.value}',
 };
-
-class SuppliersByItemFooter extends StatelessWidget {
-  const SuppliersByItemFooter({
-    super.key,
-    required this.totals,
-    required this.hasResults,
-    required this.excludesUnknownUom,
-    required this.bottomPadding,
-    this.fieldLabel = _defaultCaption,
-  });
-
-  final Map<String, SuppliersByItemQuantityTotals> totals;
-  final bool hasResults;
-  final bool excludesUnknownUom;
-  final double bottomPadding;
-  final SuppliersByItemFieldCaption fieldLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    final units = totals.keys.toList()
-      ..sort((a, b) {
-        final foldedOrder = a.toLowerCase().compareTo(b.toLowerCase());
-        return foldedOrder == 0 ? a.compareTo(b) : foldedOrder;
-      });
-    final quantities = <_Field, num? Function(SuppliersByItemQuantityTotals)>{
-      _Field.itemBalance: (total) => total.balanceQty,
-      _Field.itemProjected: (total) => total.projectedQty,
-      _Field.itemOpenOrders: (total) => total.openOrderQty,
-      _Field.itemReorderQty: (total) => total.reorderQty,
-      _Field.itemDraftOrders: (total) => total.draftOrderQty,
-      _Field.itemQtyReceived: (total) => total.totalQtyReceived,
-    };
-    final metrics = {
-      for (final metric in quantities.entries)
-        if ([
-              for (final unit in units)
-                if (metric.value(totals[unit]!) case final quantity?)
-                  (
-                    text: suppliersByItemQuantity(quantity, unit),
-                    zero: quantity == 0,
-                  ),
-            ]
-            case final values when values.isNotEmpty)
-          metric.key: values,
-    };
-    final style = _mutedStyle(context);
-    final valueStyle = style?.copyWith(fontFeatures: _tabularFigures);
-    final textSize = style?.fontSize ?? 12;
-    final largeText =
-        MediaQuery.textScalerOf(context).scale(textSize) >= 2 * textSize;
-    final labelWidth = metrics.keys.fold(
-      0.0,
-      (widest, field) => max(widest, _width(context, fieldLabel(field), style)),
-    );
-    return Padding(
-      padding: EdgeInsets.fromLTRB(12, 12, 12, bottomPadding + 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Semantics(
-            header: true,
-            child: Text(
-              hasResults
-                  ? 'End of list · Totals for all loaded items'
-                  : 'End of list',
-              style: style,
-            ),
-          ),
-          if (hasResults) ...[
-            const SizedBox(height: 8),
-            if (totals.isEmpty)
-              Text(
-                'No quantities with a known ${fieldLabel(_Field.itemStockUom)}',
-                style: style,
-              ),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final valueWidth =
-                    constraints.maxWidth - labelWidth - _columnGap;
-                final stack =
-                    largeText ||
-                    metrics.values.any(
-                      (values) => values.any(
-                        (value) =>
-                            _width(context, value.text, valueStyle) >
-                            valueWidth,
-                      ),
-                    );
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (final metric in metrics.entries)
-                      _metric(
-                        context,
-                        label: fieldLabel(metric.key),
-                        values: metric.value,
-                        labelWidth: labelWidth,
-                        labelStyle: style,
-                        valueStyle: valueStyle,
-                        stack: stack,
-                      ),
-                  ],
-                );
-              },
-            ),
-            if (excludesUnknownUom)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  'Quantities without a ${fieldLabel(_Field.itemStockUom)} are excluded',
-                  style: style,
-                  textAlign: TextAlign.center,
-                ),
-              ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _metric(
-    BuildContext context, {
-    required String label,
-    required List<({String text, bool zero})> values,
-    required double labelWidth,
-    required TextStyle? labelStyle,
-    required TextStyle? valueStyle,
-    required bool stack,
-  }) {
-    final caption = Text(label, style: labelStyle);
-    final amounts = Wrap(
-      alignment: WrapAlignment.end,
-      spacing: 12,
-      children: [
-        for (final value in values)
-          Text(
-            value.text,
-            textAlign: TextAlign.end,
-            style: valueStyle?.copyWith(
-              color: value.zero
-                  ? context.scheme.textMuted
-                  : context.scheme.text,
-            ),
-          ),
-      ],
-    );
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 2),
-      child: stack
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [caption, amounts],
-            )
-          : Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(width: labelWidth, child: caption),
-                const SizedBox(width: _columnGap),
-                Expanded(child: amounts),
-              ],
-            ),
-    );
-  }
-}

@@ -86,8 +86,8 @@ class _FieldsSheet extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                       child: Text(
-                        'Item and supplier identities, statuses, No supplier '
-                        'recorded and footer totals always show.',
+                        'Item and supplier identities, statuses and the '
+                        'No supplier recorded placeholder always show.',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: context.scheme.textMuted,
                         ),

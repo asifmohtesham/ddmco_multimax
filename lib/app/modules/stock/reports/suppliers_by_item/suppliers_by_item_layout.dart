@@ -2,8 +2,6 @@ import '../../../../data/models/suppliers_by_item_report.dart';
 import '../../../../data/models/suppliers_by_item_view.dart';
 import '../../../../data/utils/suppliers_by_item_labels.dart';
 
-import 'suppliers_by_item_fields.dart';
-
 export '../../../../data/models/suppliers_by_item_view.dart';
 
 typedef SuppliersByItemRowKey = Record;
@@ -43,7 +41,6 @@ class SuppliersByItemIndex {
     this,
     _viewWithoutPlaceholders,
   );
-  late final _summary = _summarize(this);
   late final _supplierLabels = _supplierDisplayLabels(nodesById.values);
   late final _owners = List<SuppliersByItemNode>.unmodifiable(
     roots.expand(
@@ -93,7 +90,6 @@ class SuppliersByItemLayoutRow {
     required this.ancestorKeys,
     required this.ownerKey,
     required this.children,
-    required this.templateNode,
     required this.directSupplierCount,
     required this.hasDirectSupplier,
     required this.supplierLabel,
@@ -121,7 +117,6 @@ class SuppliersByItemLayoutRow {
   final List<SuppliersByItemRowKey> ancestorKeys;
   final SuppliersByItemSourceKey? ownerKey;
   final List<SuppliersByItemLayoutRow> children;
-  final SuppliersByItemNode? templateNode;
   final int? directSupplierCount;
   final bool hasDirectSupplier;
   final String supplierLabel;
@@ -148,7 +143,6 @@ class SuppliersByItemLayoutRow {
   bool get isComponentMatch => componentTrail.isNotEmpty;
   int get depth => ancestorKeys.length;
   SuppliersByItemRowKey? get parentKey => ancestorKeys.lastOrNull;
-  String? get templateContext => templateNode?.row.itemTitle;
 
   SuppliersByItemLayoutRow _withChildren(
     List<SuppliersByItemLayoutRow> rows, {
@@ -163,7 +157,6 @@ class SuppliersByItemLayoutRow {
     ancestorKeys: ancestors ?? ancestorKeys,
     ownerKey: ownerKey,
     children: List.unmodifiable(rows),
-    templateNode: ancestors == null ? templateNode : null,
     directSupplierCount: directSupplierCount,
     hasDirectSupplier: hasDirectSupplier,
     supplierLabel: supplierLabel ?? this.supplierLabel,
@@ -226,10 +219,9 @@ class SuppliersByItemSupplierGroup {
 
 List<SuppliersByItemLayoutRow> buildTemplateView(
   SuppliersByItemIndex index, {
-  bool showPlaceholders = true,
   SuppliersByItemView? view,
 }) {
-  final raw = showPlaceholders ? index._view : index._viewWithoutPlaceholders;
+  final raw = index._view;
   if (view == null) return raw;
   final normal = <SuppliersByItemLayoutRow>[];
   final other = <SuppliersByItemLayoutRow>[];
@@ -327,7 +319,6 @@ List<SuppliersByItemLayoutRow> _projectTemplateView(
     SuppliersByItemNode node, {
     List<SuppliersByItemRowKey> ancestors = const [],
     SuppliersByItemNode? ownerNode,
-    SuppliersByItemNode? templateNode,
     String? parentOutputUom,
     Set<String> itemPath = const {},
     int bomLevel = 0,
@@ -396,7 +387,6 @@ List<SuppliersByItemLayoutRow> _projectTemplateView(
       ownerKey: owner == null ? null : _keyOf(owner),
       ownerNode: owner,
       children: List.unmodifiable(children),
-      templateNode: templateNode,
       directSupplierCount: row.supplierCount ?? links.count,
       hasDirectSupplier: links.hasLink || (row.supplierCount ?? 0) > 0,
       supplierLabel: index._supplierLabels[row.nodeId] ?? row.treeLabel,
@@ -416,15 +406,9 @@ List<SuppliersByItemLayoutRow> _projectTemplateView(
   final other = <SuppliersByItemNode>[];
   for (final node in index.roots) {
     if (node.row.kind == SuppliersByItemRowKind.template) {
-      final variants = _variants(node).toList();
-      if (variants.length == 1) {
-        rows.add(project(variants.single, templateNode: node));
-      } else {
-        rows.add(project(node, templateLeaf: variants.isEmpty));
-      }
-      if (variants.length < 2) {
-        other.addAll(node.children.where((child) => !_isOwner(child)));
-      }
+      final emptyTemplate = _variants(node).isEmpty;
+      rows.add(project(node, templateLeaf: emptyTemplate));
+      if (emptyTemplate) other.addAll(node.children);
     } else if (_isOwner(node)) {
       rows.add(project(node));
     } else {
@@ -526,7 +510,6 @@ SuppliersByItemLayoutRow _groupRow(
   ancestorKeys: const [],
   ownerKey: null,
   children: List.unmodifiable(children),
-  templateNode: null,
   directSupplierCount: null,
   hasDirectSupplier: false,
   supplierLabel: group.label,
@@ -566,7 +549,7 @@ List<SuppliersByItemLayoutRow> _projectSupplierView(
   }
 
   for (final root in templateView) {
-    if (root.variantCount > 1) {
+    if (root.variantCount > 0) {
       for (final child in root.children) {
         if (_isOwner(child.node)) {
           addOwner(child);
@@ -633,7 +616,6 @@ List<SuppliersByItemLayoutRow> _projectSupplierView(
             for (final bom in boms)
               _copyBranch(bom, key, List.unmodifiable([...ancestors, key])),
           ]),
-          templateNode: null,
           directSupplierCount: ownerCount,
           hasDirectSupplier: true,
           supplierLabel: index._supplierLabels[pair.row.nodeId]!,
@@ -689,7 +671,6 @@ List<SuppliersByItemLayoutRow> _projectSupplierView(
                 ownerKey: ownerKey,
                 ownerNode: owner,
                 children: const [],
-                templateNode: null,
                 directSupplierCount: row.directSupplierCount,
                 hasDirectSupplier: row.hasDirectSupplier,
                 supplierLabel: index._supplierLabels[pair.row.nodeId]!,
@@ -733,7 +714,7 @@ List<SuppliersByItemLayoutRow> _projectSupplierView(
         _noDirectGroup,
         unsupplied,
         SuppliersByItemSupplierGroup._(
-          label: SuppliersByItemField.summaryNoDirectCount.label,
+          label: SuppliersByItemColumnLabels.noSupplierRecorded,
           directItemCount: unsupplied.length,
           isNoDirect: true,
         ),
@@ -868,50 +849,6 @@ List<SuppliersByItemLayoutRow> sortSiblings(
   return List.unmodifiable(ranked.map((entry) => entry.row));
 }
 
-class SuppliersByItemSummary {
-  const SuppliersByItemSummary._({
-    required this.itemCount,
-    required this.supplierCount,
-    required this.noDirectCount,
-    required this.totalsByUom,
-    required this.hasUnknownStockUom,
-  });
-
-  final int itemCount;
-  final int supplierCount;
-  final int noDirectCount;
-  final Map<String, SuppliersByItemQuantityTotals> totalsByUom;
-  final bool hasUnknownStockUom;
-}
-
-SuppliersByItemSummary summarize(SuppliersByItemIndex index) => index._summary;
-
-SuppliersByItemSummary _summarize(SuppliersByItemIndex index) {
-  final suppliers = index._linksByOwner.values
-      .expand((links) => links)
-      .map((supplier) => supplier.row.supplier)
-      .nonNulls
-      .toSet();
-  final canonical = index.canonicalItems.values;
-  return SuppliersByItemSummary._(
-    itemCount: canonical.length,
-    supplierCount: suppliers.length,
-    noDirectCount: canonical
-        .where(
-          (node) =>
-              (node.row.supplierCount ?? 0) <= 0 &&
-              index._linksByOwner[_keyOf(node)]!.isEmpty,
-        )
-        .length,
-    totalsByUom: Map.unmodifiable(
-      SuppliersByItemNode.quantityTotalsByUom(index.roots),
-    ),
-    hasUnknownStockUom: canonical.any(
-      (node) => node.row.stockUom == null && node.row.hasStockQuantities,
-    ),
-  );
-}
-
 class SuppliersByItemSearch {
   const SuppliersByItemSearch._({
     required this.isActive,
@@ -1038,19 +975,7 @@ SuppliersByItemSearch searchIndex(
   }
 
   for (final row in buildTemplateView(index)) {
-    final template = row.templateNode;
-    final context = [
-      if (template != null) ...[
-        _fold(template.row.itemTitle),
-        if (template.row.distinctItemName case final name?) _fold(name),
-      ],
-    ];
-    if (template != null && matches(context)) {
-      owners.add(row.ownerKey!);
-      ownerHits.add(row.ownerKey!);
-    } else {
-      visit(row, context, row.key);
-    }
+    visit(row, const [], row.key);
   }
   final trails = group == SuppliersByItemGroup.template
       ? null
@@ -1254,11 +1179,13 @@ Set<SuppliersByItemRowKey> defaultExpansion(
 }) => group == SuppliersByItemGroup.supplier
     ? Set.unmodifiable({if (projection.isNotEmpty) projection.first.key})
     : Set.unmodifiable({
-        for (final row in projection)
-          if (row.children.isNotEmpty && row.variantCount >= 2) row.key,
-        if (index.canonicalItems.length == 1)
-          for (final row in projection)
-            if (row.children.isNotEmpty && row.key == row.ownerKey) row.key,
+        for (final root in projection) ...[
+          if (root.variantCount > 0) root.key,
+          if (index.canonicalItems.length == 1)
+            for (final item in root.variantCount > 0 ? root.children : [root])
+              if (item.children.isNotEmpty && item.key == item.ownerKey)
+                item.key,
+        ],
       });
 
 final _dateOnly = RegExp(r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$');

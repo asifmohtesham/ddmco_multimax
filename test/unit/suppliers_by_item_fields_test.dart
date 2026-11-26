@@ -387,12 +387,11 @@ void main() {
   });
 
   test(
-    'preserves all released field IDs and separates Fields and View reset',
+    'preserves retained field IDs and separates Fields and View reset',
     () async {
       const defaults = SuppliersByItemFieldVisibility.defaults();
       const added = {
         'Item rows': [
-          'itemTemplateContext',
           'templateVariantCount',
           'itemOpenPoBadge',
           'itemDraftPoBadge',
@@ -408,12 +407,6 @@ void main() {
           'bomDraftBadge',
           'bomComponentCount',
           'treeDepthLabel',
-        ],
-        'Report summary': [
-          'summaryItemCount',
-          'summarySupplierCount',
-          'summaryNoDirectCount',
-          'summaryStockByUom',
         ],
         'Search': ['searchMatchCount'],
       };
@@ -506,7 +499,7 @@ void main() {
         SuppliersByItemField.values.map((field) => field.name),
         releasedIds,
       );
-      expect(releasedIds, hasLength(62));
+      expect(releasedIds, hasLength(57));
       for (final entry in added.entries) {
         for (final id in entry.value) {
           final field = SuppliersByItemField.values.byName(id);
@@ -524,7 +517,6 @@ void main() {
         'itemName',
         'componentName',
         'supplierStatus',
-        'itemTemplateContext',
         'itemBelowReorder',
         'componentManufacturing',
         'componentCycle',
@@ -541,10 +533,6 @@ void main() {
         'supplierGroupItemCount',
         'supplierGroupComponentCount',
         'bomComponentCount',
-        'summaryItemCount',
-        'summarySupplierCount',
-        'summaryNoDirectCount',
-        'summaryStockByUom',
         'searchMatchCount',
       };
       const user = 'legacy-buyer';
@@ -602,6 +590,38 @@ void main() {
       expect(jsonDecode(database.records[key(user)]!), isEmpty);
       expectSelection(report.fieldVisibility, releasedDefaults);
       expect(api.runs, 2);
+    },
+  );
+
+  test(
+    'ignores retired summary and promotion settings and unknown footer keys',
+    () async {
+      const user = 'buyer';
+      seed(user, {
+        'summaryItemCount': false,
+        'summarySupplierCount': false,
+        'summaryNoDirectCount': false,
+        'summaryStockByUom': false,
+        'itemTemplateContext': false,
+        'footerTotals': true,
+        'itemBalance': false,
+        'templateVariantCount': false,
+      });
+      await signIn(user);
+      final report = await openReport();
+      expect(report.fieldsLoadError.value, isNull);
+      expect(report.fieldVisibility.overrides, {
+        'itemBalance': false,
+        'templateVariantCount': false,
+      });
+      expect(database.writes, isEmpty);
+
+      await report.setFieldVisible(SuppliersByItemField.supplierSources, true);
+      expect(jsonDecode(database.records[key(user)]!), {
+        'itemBalance': false,
+        'templateVariantCount': false,
+        'supplierSources': true,
+      });
     },
   );
 

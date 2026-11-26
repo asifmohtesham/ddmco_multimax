@@ -148,22 +148,24 @@ has `BOM-3000338-001` with a component `3000281` that expands draft
   the grouping, sort, direction, **Expand all** and **Collapse all** controls.
   The Fields icon opens **Fields**.
 
-  **Item** grouping follows the **Item / Supplier** tree. A template with one
-  returned variant starts at that variant and can show its **Variant Of**.
+  **Item** grouping follows the **Item / Supplier** tree. Each template appears
+  above its variants, including a template with one returned variant. Items
+  without a template appear at the root. Within each item, suppliers or the
+  **No supplier recorded** placeholder precede any BOM groups.
   Item and BOM component rows align **Balance Qty** and **Supplier Count**.
   Supplier rows compare **Last Purchase Date** and can expand to show purchase
   history and evidence. **Lead Time (Days)**, **Lead Time Receipts** and
   **Receipt Count** have separate Fields switches. Positive order quantities
   can show **Open Order Qty** and **Draft Order Qty** badges. **Supplier Status**
-  controls **Disabled** and **On Hold**.
+  shows **Disabled** and **On Hold**.
 
   **Supplier** grouping shows an item under each supplier linked to that
   item, with their pair's **Last Purchase Date** and evidence. BOM components
   can also appear with their owning item and full BOM path. **No supplier
   recorded** groups items with no supplier of their own, including items
   whose BOM components have suppliers. Items in both kinds of groups can
-  reveal their loaded BOM branches. The **Items** and **BOM components** group counts and the
-  BOM path have separate Fields switches.
+  reveal their loaded BOM branches. **View** controls the **Items** and
+  **BOM components** group counts. Component matches retain their BOM path.
 
   Both groupings offer **Balance Qty**, **Supplier Count** and **Last Purchase
   Date** in either direction. The default is **Item**, **Balance Qty** and
@@ -175,31 +177,21 @@ has `BOM-3000338-001` with a component `3000281` that expands draft
   saved View selection in place. Failed saves keep the current choices for the
   session and offer **Retry**.
 
-  The summary shows **Items**, **Suppliers**, **No supplier recorded** and
-  **Balance Qty**. **No supplier recorded** counts loaded items with no
-  supplier link. **Balance Qty by Stock UOM** opens the separate totals when at least
-  two known units have a **Balance Qty**. **Search within results** matches
-  words across a single item, template, supplier or BOM trail and opens the
-  matching branches locally. The **Items** search count includes each matching
+  **Search within results** matches words across a single item, template,
+  supplier or BOM trail and opens the matching branches locally. The **Items** search count includes each matching
   owner once. Both groupings retain its other suppliers. Changing grouping
   keeps the query and reveals the matching branches in the new view. Clearing
   the query restores the active grouping's expansion and reading position.
   Search, expansion and position belong to the open report.
 
-  **Fields** controls optional row details, badges, summary cells and the
+  **Fields** controls optional row details and badges. **View** controls the
   search match count. **Currency** and **Rate UOM** keep their selections
   while **Last Rate** is off. Choices apply immediately and are saved per
   ERP site and signed-in user. The first eligible site claims existing
   user-only choices. **Reset to defaults** restores the original selection.
   The report keeps session choices and offers **Retry** if saving fails.
-  **Item / Supplier**, **No supplier recorded**, navigation and the footer
-  remain available with every Field off.
-
-  **End of list** includes signed **Balance Qty**, **Projected Qty**, **Open
-  Order Qty**, **Reorder Qty**, **Draft Order Qty** and **Total Qty Received**
-  by **Stock UOM** for all loaded items. Each distinct item or variant
-  contributes once. The footer excludes BOM components, rates and quantities
-  without a **Stock UOM**. Both groupings share these loaded-result totals.
+  **Item / Supplier**, **No supplier recorded**, navigation and the
+  **End of list** marker remain available with every Field off.
   [Report screen](../lib/app/modules/stock/reports/suppliers_by_item/suppliers_by_item_screen.dart)
 - **Item → Overview → Suppliers** runs with `items=[itemCode]` and
   `expand_bom=1`. For a template it also sends `variant_of=[itemCode]` to

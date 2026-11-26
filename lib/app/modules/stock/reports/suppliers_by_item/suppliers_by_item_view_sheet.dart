@@ -171,13 +171,7 @@ class _ViewSheet extends StatelessWidget {
                         CheckboxListTile(
                           key: ValueKey(field),
                           controlAffinity: ListTileControlAffinity.leading,
-                          title: Text(
-                            field == SuppliersByItemField.summaryStockByUom
-                                ? controller.fieldLabel(
-                                    SuppliersByItemField.itemBalance,
-                                  )
-                                : field.label,
-                          ),
+                          title: Text(field.label),
                           subtitle: field.qualifier == null
                               ? null
                               : Text(field.qualifier!),

@@ -35,10 +35,14 @@ List<Map<String, Object?>> _als() => [
 
 void main() {
   test(
-    'projects standalone, promoted MIX, grouped ALS and empty templates',
+    'keeps standalone items at root and nests every variant under its template',
     () {
       final source = SuppliersByItemNode.parseRows([
         {'node_id': 'item:STANDALONE'},
+        {
+          'node_id': 'supplier:STANDALONE:VENDOR',
+          'parent_id': 'item:STANDALONE',
+        },
         {'node_id': 'template:MIX'},
         {'node_id': 'item:MIX-1', 'parent_id': 'template:MIX'},
         {
@@ -84,40 +88,44 @@ void main() {
       final view = buildTemplateView(index);
       expect(_ids(view), [
         'item:STANDALONE',
-        'item:MIX-1',
+        'template:MIX',
         'template:ALS',
         'template:EMPTY',
         'supplier:detached',
       ]);
-      final promoted = view[1];
-      expect(promoted.depth, 0);
-      expect(promoted.parentKey, isNull);
-      expect(promoted.templateContext, 'MIX');
-      expect(promoted.templateNode, same(source[1]));
-      expect(promoted.node, same(source[1].children.single));
-      expect(_ids(promoted.children), ['none:mix', 'bom:raw|1', 'bom:raw|2']);
-      expect(_ids(promoted.children[1].children), [
+      expect(view.first.parentKey, isNull);
+      expect(_ids(view.first.children), ['supplier:STANDALONE:VENDOR']);
+      final mix = view[1];
+      expect(mix.variantCount, 1);
+      expect(mix.parentKey, isNull);
+      expect(mix.node, same(source[1]));
+      final variant = mix.children.single;
+      expect(variant.parentKey, mix.key);
+      expect(variant.node, same(source[1].children.single));
+      expect(_ids(variant.children), ['none:mix', 'bom:raw|1', 'bom:raw|2']);
+      expect(_ids(variant.children[1].children), [
         'component:line|1',
         'component:line|2',
       ]);
-      expect(promoted.children[1].bomLabel, 'MIX-BOM');
-      expect(promoted.children[1].children.first.depth, 2);
+      expect(variant.children[1].bomLabel, 'MIX-BOM');
+      expect(variant.children[1].children.first.depth, 3);
       expect(
-        promoted.children[1].children.first.parentKey,
-        promoted.children[1].key,
+        variant.children[1].children.first.parentKey,
+        variant.children[1].key,
       );
-      final withoutPlaceholders = buildTemplateView(
+      final withoutPlaceholders = buildSupplierView(
         index,
         showPlaceholders: false,
-      );
-      expect(_ids(withoutPlaceholders[1].children), ['bom:raw|1', 'bom:raw|2']);
+      ).singleWhere((row) => row.group!.isNoDirect);
+      expect(_ids(withoutPlaceholders.children.single.children), [
+        'bom:raw|1',
+        'bom:raw|2',
+      ]);
       expect(source[1].children.single.children.first.row.nodeId, 'none:mix');
       expect(
         source[1].children.single.children[1].row.treeLabel,
         contains('draft'),
       );
-      expect(summarize(index).noDirectCount, 2);
-      expect(summarize(index).supplierCount, 1);
 
       final als = view[2];
       expect(als.variantCount, 2);
@@ -125,7 +133,7 @@ void main() {
       expect(als.children.map((row) => row.depth), [1, 1]);
       expect(view[3].children, isEmpty);
       final browse = defaultExpansion(index, view);
-      expect(browse, {als.key});
+      expect(browse, {mix.key, als.key});
       final oneAls = searchIndex(index, '2002906');
       expect(_ids(flattenTemplateView(view, {}, search: oneAls).rows), [
         'template:ALS',
@@ -134,11 +142,13 @@ void main() {
       expect(oneAls.matchingItemIds, {_key('item:2002906')});
       expect(oneAls.forcedOpen, {als.key});
       final openMix = flattenTemplateView(view, {
-        promoted.key,
+        mix.key,
+        variant.key,
         _key('bom:raw|1'),
         _key('component:line|1'),
       });
-      expect(_ids(openMix.rows.skip(1).take(7)), [
+      expect(_ids(openMix.rows.skip(1).take(8)), [
+        'template:MIX',
         'item:MIX-1',
         'none:mix',
         'bom:raw|1',
@@ -150,15 +160,41 @@ void main() {
     },
   );
 
-  test(
-    'summarizes unique suppliers listed under the item and the same stock as the footer',
-    () {
-      final als = summarize(indexReport(SuppliersByItemNode.parseRows(_als())));
-      expect(als.itemCount, 2);
-      expect(als.supplierCount, 1);
-      expect(als.noDirectCount, 0);
-      expect(als.totalsByUom['Nos']!.balanceQty, 2442);
+  test('opens the only template and variant down to its supplier', () {
+    final index = indexReport(
+      SuppliersByItemNode.parseRows([
+        {'node_id': 'template:STYLE'},
+        {'node_id': 'item:BLUE', 'parent_id': 'template:STYLE'},
+        {'node_id': 'supplier:BLUE:VENDOR', 'parent_id': 'item:BLUE'},
+      ]),
+    );
+    final items = buildTemplateView(index);
+    final open = defaultExpansion(index, items);
+    expect(open, structuralKeys(items));
+    final tree = flattenTemplateView(items, open).rows;
+    expect(_ids(tree), ['template:STYLE', 'item:BLUE', 'supplier:BLUE:VENDOR']);
+    expect(tree.map((entry) => entry.depth), [0, 1, 2]);
+    expect(tree.map((entry) => entry.directSupplierCount).take(2), [1, 1]);
+    final matches = searchIndex(index, 'BLUE');
+    expect(matches.matchingItemIds, {_key('item:BLUE')});
+    expect(_ids(flattenTemplateView(items, {}, search: matches).rows), [
+      'template:STYLE',
+      'item:BLUE',
+    ]);
+    final suppliers = buildSupplierView(index);
+    expect(suppliers.single.group!.label, 'VENDOR');
+    expect(_ids(suppliers.single.children), ['item:BLUE']);
+    final vendorMatches = searchIndex(
+      index,
+      'STYLE BLUE',
+      group: SuppliersByItemGroup.supplier,
+    );
+    expect(vendorMatches.forcedOpen, {suppliers.single.key});
+  });
 
+  test(
+    'counts distinct suppliers across variants and disambiguates their names',
+    () {
       final source = SuppliersByItemNode.parseRows([
         ..._als(),
         {
@@ -166,10 +202,7 @@ void main() {
           'parent_id': 'item:2002906',
           'supplier_name': 'PING HAI',
         },
-        {'node_id': 'item:WITHOUT', 'balance_qty': null, 'stock_uom': 'Set'},
-        {'node_id': 'item:ZERO', 'balance_qty': 0, 'stock_uom': 'Box'},
-        {'node_id': 'item:NEGATIVE', 'balance_qty': -1, 'stock_uom': 'Kg'},
-        {'node_id': 'item:UNKNOWN', 'balance_qty': 10},
+        {'node_id': 'item:UNKNOWN'},
         {
           'node_id': 'opaque-unresolved-supplier',
           'row_type': 'supplier',
@@ -178,17 +211,6 @@ void main() {
         },
       ]);
       final index = indexReport(source);
-      final summary = summarize(index);
-      expect(summary.itemCount, 6);
-      expect(summary.supplierCount, 2);
-      expect(summary.noDirectCount, 3);
-      expect(summary.hasUnknownStockUom, isTrue);
-      Map<String, num?> balances(
-        Map<String, SuppliersByItemQuantityTotals> totals,
-      ) => totals.map((key, value) => MapEntry(key, value.balanceQty));
-      final totals = balances(summary.totalsByUom);
-      expect(totals, {'Nos': 2442, 'Box': 0, 'Kg': -1});
-      expect(totals, balances(SuppliersByItemNode.quantityTotalsByUom(source)));
       final projection = buildTemplateView(index);
       expect(projection.first.directSupplierCount, 2);
       expect(
@@ -199,11 +221,6 @@ void main() {
       );
       expect(projection.last.directSupplierCount, isNull);
       expect(projection.last.hasDirectSupplier, isTrue);
-      expect(searchIndex(index, 'NEGATIVE').matchingItemIds, {
-        _key('item:NEGATIVE'),
-      });
-      expect(summarize(index), same(summary));
-      expect(balances(summary.totalsByUom), totals);
     },
   );
 
@@ -281,15 +298,17 @@ void main() {
 
       final family = searchIndex(index, '  CAFE\u0301   FAMILY ');
       expect(family.matchingItemIds, {_key('item:MIX|:A')});
-      expect(family.forcedOpen, isEmpty);
+      expect(family.forcedOpen, {_key('template:MIX')});
       expect(_ids(flattenTemplateView(projection, {}, search: family).rows), [
+        'template:MIX',
         'item:MIX|:A',
       ]);
 
       final supplier = searchIndex(index, ' mix|:a   LOPEZ  ');
       expect(supplier.matchingItemIds, {_key('item:MIX|:A')});
-      expect(supplier.forcedOpen, {_key('item:MIX|:A')});
+      expect(supplier.forcedOpen, {_key('template:MIX'), _key('item:MIX|:A')});
       expect(_ids(flattenTemplateView(projection, {}, search: supplier).rows), [
+        'template:MIX',
         'item:MIX|:A',
         'supplier:MIX|:A:ONE',
         'supplier:MIX|:A:TWO',
@@ -302,6 +321,7 @@ void main() {
       );
       expect(nested.matchingItemIds, {_key('item:MIX|:A')});
       expect(nested.forcedOpen, {
+        _key('template:MIX'),
         _key('item:MIX|:A'),
         _key('bom:opaque|mix'),
         _key('component:line|a'),
@@ -317,6 +337,7 @@ void main() {
       final repeatedPart = searchIndex(index, 'inner|part');
       expect(repeatedPart.matchingItemIds, {_key('item:MIX|:A')});
       expect(repeatedPart.forcedOpen, {
+        _key('template:MIX'),
         _key('item:MIX|:A'),
         _key('bom:opaque|mix'),
         _key('component:line|a'),
@@ -325,6 +346,7 @@ void main() {
       expect(
         _ids(flattenTemplateView(projection, {}, search: repeatedPart).rows),
         [
+          'template:MIX',
           'item:MIX|:A',
           'supplier:MIX|:A:ONE',
           'supplier:MIX|:A:TWO',
@@ -482,7 +504,7 @@ void main() {
   );
 
   test(
-    'supplier memberships keep complete opaque occurrences and one total',
+    'supplier memberships keep complete opaque occurrences and preserve duplicate BOM paths',
     () {
       final index = _membershipIndex();
       final projection = buildSupplierView(index);
@@ -574,15 +596,6 @@ void main() {
         visible.rows.map((row) => row.key).toSet(),
         hasLength(visible.rows.length),
       );
-
-      final summary = summarize(index);
-      expect(summary.itemCount, 4);
-      expect(summary.supplierCount, 2);
-      expect(summary.noDirectCount, 2);
-      expect(summary.totalsByUom['Nos']!.balanceQty, 3);
-      expect(summary.totalsByUom['Kg']!.balanceQty, 1);
-      expect(summary.totalsByUom['Nos']!.openOrderQty, 0);
-      expect(summary.totalsByUom['Nos']!.projectedQty, -3);
     },
   );
 
@@ -644,7 +657,6 @@ void main() {
         _ids(flattenTemplateView(view, {}, search: orphans).rows).last,
         'supplier:loose',
       );
-      expect(summarize(index).totalsByUom['Nos']!.balanceQty, 3);
     },
   );
 
@@ -760,7 +772,6 @@ void main() {
     expect(noSupplier.children.single.node.row.itemCode, 'D');
     final other = groups.singleWhere((row) => row.group!.isOther);
     expect(other.children.single.node.row.itemCode, 'C');
-    expect(summarize(index).noDirectCount, 1);
   });
 
   test('sorts template and supplier siblings for each field and direction', () {

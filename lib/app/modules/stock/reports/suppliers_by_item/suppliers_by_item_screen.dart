@@ -268,7 +268,6 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
         final filterRevision = _controller.filterRevision.value;
         final query = _controller.query.value;
         final search = _controller.search;
-        final summary = _controller.summary;
         final view = _controller.view.value;
         final showResults = _controller.hasLoaded && !loading && error == null;
         final canPinSearch =
@@ -326,9 +325,7 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
                       child: Material(
                         color: context.scheme.fg,
                         child: _ResultsHeader(
-                          summary: showResults ? summary : null,
                           fields: fields,
-                          fieldLabel: _controller.fieldLabel,
                           searchInput: _searchInput,
                           searchFocus: _searchFocus,
                           query: query,
@@ -422,12 +419,21 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
                         ),
                       ),
                     SliverToBoxAdapter(
-                      child: SuppliersByItemFooter(
-                        totals: summary.totalsByUom,
-                        hasResults: _controller.nodes.isNotEmpty,
-                        excludesUnknownUom: summary.hasUnknownStockUom,
-                        bottomPadding: padding.bottom,
-                        fieldLabel: _controller.fieldLabel,
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          12,
+                          12,
+                          12,
+                          padding.bottom + 16,
+                        ),
+                        child: Semantics(
+                          header: true,
+                          child: Text(
+                            'End of list',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: context.scheme.textMuted),
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -485,7 +491,10 @@ class _SettingsScopeFeedback extends StatelessWidget {
   );
 }
 
-Widget _viewChip(SuppliersByItemController controller, SuppliersByItemView view) {
+Widget _viewChip(
+  SuppliersByItemController controller,
+  SuppliersByItemView view,
+) {
   final group = suppliersByItemGroupLabel(view.group);
   final sort = suppliersByItemSortLabel(view.sortField, controller.fieldLabel);
   final direction = suppliersByItemDirectionLabel(
@@ -504,11 +513,8 @@ Widget _viewChip(SuppliersByItemController controller, SuppliersByItemView view)
     key: const ValueKey('supplier-view-slot'),
     measure: (context, maxWidth) =>
         HeaderQuickChip.measureCaption(context, caption, maxWidth),
-    builder: (context, _) => _ViewChip(
-      controller: controller,
-      caption: caption,
-      value: value,
-    ),
+    builder: (context, _) =>
+        _ViewChip(controller: controller, caption: caption, value: value),
   );
 }
 
@@ -540,9 +546,13 @@ class _ViewChipState extends State<_ViewChip> {
     final route = ModalRoute.of(context);
     final originalFocus = FocusManager.instance.primaryFocus;
     await showSuppliersByItemView(context, widget.controller);
-    if (!mounted || route?.isCurrent == false || !_focus.canRequestFocus) return;
+    if (!mounted || route?.isCurrent == false || !_focus.canRequestFocus) {
+      return;
+    }
     final current = FocusManager.instance.primaryFocus;
-    if (current == originalFocus || current == _focus || current is FocusScopeNode) {
+    if (current == originalFocus ||
+        current == _focus ||
+        current is FocusScopeNode) {
       _focus.requestFocus();
     }
   }
@@ -795,9 +805,7 @@ class _RenderSupplierHeader extends RenderSliverToBoxAdapter {
 
 class _ResultsHeader extends StatelessWidget {
   const _ResultsHeader({
-    required this.summary,
     required this.fields,
-    required this.fieldLabel,
     required this.searchInput,
     required this.searchFocus,
     required this.query,
@@ -807,9 +815,7 @@ class _ResultsHeader extends StatelessWidget {
     required this.onClear,
   });
 
-  final SuppliersByItemSummary? summary;
   final SuppliersByItemFieldVisibility fields;
-  final String Function(SuppliersByItemField) fieldLabel;
   final TextEditingController searchInput;
   final FocusNode searchFocus;
   final String query;
@@ -820,18 +826,11 @@ class _ResultsHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final result = summary;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (result != null)
-            _SummaryStrip(
-              summary: result,
-              fields: fields,
-              fieldLabel: fieldLabel,
-            ),
           TextField(
             controller: searchInput,
             focusNode: searchFocus,
@@ -856,7 +855,7 @@ class _ResultsHeader extends StatelessWidget {
               fields.shows(SuppliersByItemField.searchMatchCount))
             _MatchCount(
               text: [
-                '${SuppliersByItemField.summaryItemCount.label} $matchCount',
+                'Items $matchCount',
                 if (otherCount != 0) 'Other matching rows $otherCount',
               ].join(' · '),
             ),
@@ -919,250 +918,6 @@ class _MatchCountState extends State<_MatchCount> {
   );
 }
 
-class _SummaryStrip extends StatelessWidget {
-  const _SummaryStrip({
-    required this.summary,
-    required this.fields,
-    required this.fieldLabel,
-  });
-
-  final SuppliersByItemSummary summary;
-  final SuppliersByItemFieldVisibility fields;
-  final String Function(SuppliersByItemField) fieldLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    final stock = {
-      for (final entry in summary.totalsByUom.entries)
-        if (entry.value.balanceQty case final value?) entry.key: value,
-    };
-    final cells = <Widget>[
-      if (fields.shows(SuppliersByItemField.summaryItemCount))
-        _SummaryCell(
-          caption: SuppliersByItemField.summaryItemCount.label,
-          value: '${summary.itemCount}',
-        ),
-      if (fields.shows(SuppliersByItemField.summarySupplierCount))
-        _SummaryCell(
-          caption: SuppliersByItemField.summarySupplierCount.label,
-          value: '${summary.supplierCount}',
-        ),
-      if (fields.shows(SuppliersByItemField.summaryNoDirectCount))
-        _SummaryCell(
-          caption: SuppliersByItemField.summaryNoDirectCount.label,
-          value: '${summary.noDirectCount}',
-        ),
-      if (fields.shows(SuppliersByItemField.summaryStockByUom))
-        _SummaryCell(
-          caption: fieldLabel(SuppliersByItemField.itemBalance),
-          value: switch (stock.length) {
-            0 => '-',
-            1 => suppliersByItemQuantity(
-              stock.values.single,
-              stock.keys.single,
-            ),
-            _ =>
-              '${fieldLabel(SuppliersByItemField.itemBalance)} by '
-                  '${fieldLabel(SuppliersByItemField.itemStockUom)}',
-          },
-          onPressed: stock.length > 1 ? () => _showStock(context, stock) : null,
-        ),
-    ];
-    if (cells.isEmpty) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: context.scheme.subtle,
-          border: Border.all(color: context.scheme.border),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-          child: LayoutBuilder(
-            builder: (context, constraints) => Wrap(
-              alignment: WrapAlignment.spaceEvenly,
-              runAlignment: WrapAlignment.center,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              runSpacing: 4,
-              children: [
-                for (final cell in cells)
-                  ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: constraints.maxWidth),
-                    child: cell,
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showStock(BuildContext context, Map<String, num> stock) {
-    showModalBottomSheet<void>(
-      context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      backgroundColor: context.scheme.fg,
-      builder: (context) => SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Semantics(
-                header: true,
-                child: Text(
-                  '${fieldLabel(SuppliersByItemField.itemBalance)} by '
-                  '${fieldLabel(SuppliersByItemField.itemStockUom)}',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-              ),
-              const SizedBox(height: 12),
-              for (final entry in stock.entries)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Text(suppliersByItemQuantity(entry.value, entry.key)),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SummaryCell extends StatelessWidget {
-  const _SummaryCell({
-    required this.caption,
-    required this.value,
-    this.onPressed,
-  });
-
-  final String caption;
-  final String value;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final valueStyle = Theme.of(
-      context,
-    ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600);
-    final captionStyle = Theme.of(
-      context,
-    ).textTheme.labelSmall?.copyWith(color: context.scheme.textMuted);
-    final child = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(value, style: valueStyle, textAlign: TextAlign.center),
-          Text(caption, style: captionStyle, textAlign: TextAlign.center),
-        ],
-      ),
-    );
-    if (onPressed == null) {
-      return Semantics(
-        label: '$caption ${value == '-' ? 'unavailable' : value}',
-        excludeSemantics: true,
-        child: child,
-      );
-    }
-    return TextButton(
-      onPressed: onPressed,
-      style: TextButton.styleFrom(
-        minimumSize: const Size(48, 48),
-        padding: EdgeInsets.zero,
-      ),
-      child: child,
-    );
-  }
-}
-
-class _ReportRowList extends SliverList {
-  _ReportRowList({
-    super.key,
-    required super.itemBuilder,
-    required super.itemCount,
-    required super.findChildIndexCallback,
-  }) : super.builder();
-
-  @override
-  RenderSliverList createRenderObject(BuildContext context) =>
-      _RenderReportRowList(
-        childManager: context as SliverMultiBoxAdaptorElement,
-      );
-}
-
-class _RenderReportRowList extends RenderSliverList {
-  _RenderReportRowList({required super.childManager});
-
-  int? _seekIndex;
-  int? _previousFirstIndex;
-
-  void clearPendingSeek() {
-    _seekIndex = null;
-    _previousFirstIndex = null;
-  }
-
-  void rememberViewport() {
-    final first = firstChild;
-    _previousFirstIndex = first == null ? null : indexOf(first);
-  }
-
-  void seekToIndex(int index) {
-    _seekIndex = index;
-    markNeedsLayout();
-  }
-
-  @override
-  void performLayout() {
-    var index = _seekIndex;
-    final previousIndex = _previousFirstIndex;
-    clearPendingSeek();
-    var layoutOffset = constraints.scrollOffset + constraints.overlap;
-    final cacheStart = constraints.scrollOffset + constraints.cacheOrigin;
-    final firstOffset = firstChild == null
-        ? null
-        : childScrollOffset(firstChild!);
-    final viewport = constraints.viewportMainAxisExtent;
-    // Regrouping can evict the entire old cache. At a deep scroll offset,
-    // walking from row zero would stall before anchor resolution even runs.
-    if (index == null &&
-        previousIndex != null &&
-        previousIndex > 0 &&
-        cacheStart > viewport &&
-        (firstOffset == null || (firstOffset - cacheStart).abs() > viewport)) {
-      final lastIndex = childManager.childCount - 1;
-      if (lastIndex >= 0) {
-        index = math.min(previousIndex, lastIndex);
-        layoutOffset = cacheStart * index / previousIndex;
-      }
-    }
-    // Returning to the top has an exact starting row even if a distant
-    // indexed seek placed the old cache at an estimated content offset.
-    if (constraints.scrollOffset == 0 &&
-        firstChild != null &&
-        (indexOf(firstChild!) > 0 || (firstOffset ?? 0) > 0)) {
-      index = 0;
-    }
-    if (index != null) {
-      // A variable-height SliverList normally measures every child between
-      // its old cache and the new scroll offset. Start this layout at the
-      // known occurrence and let the list measure its neighbors in both
-      // directions. At the leading edge, row zero has an exact offset.
-      collectGarbage(childCount, 0);
-      if (index > 0 && cacheStart > 0 && index < childManager.childCount) {
-        addInitialChild(index: index, layoutOffset: layoutOffset);
-      }
-    }
-    super.performLayout();
-  }
-}
-
 class _ReadingAnchor {
   _ReadingAnchor({
     required this.key,
@@ -1190,7 +945,10 @@ class _ReadingAnchor {
   bool hasAligned = false;
   bool returningFromSearch = false;
   bool resolveOccurrence = false;
-  bool seekByIndex = false;
+  bool regroup = false;
+  int estimatedSeeksLeft = 0;
+  ({int index, double offset})? seekBefore;
+  ({int index, double offset})? seekAfter;
   SuppliersByItemRowKey? resolvedKey;
   final seekFrames = <({int first, int last, int pixels})>{};
 }
@@ -1238,21 +996,14 @@ class _SuppliersTree extends StatefulWidget {
 class _SuppliersTreeState extends State<_SuppliersTree> {
   static const _rowGap = 4.0;
   static const _precision = 0.5;
-  final _listKey = GlobalKey();
-  final _groupColumns =
-      <
-        SuppliersByItemGroup,
-        ({
-          SuppliersByItemVisibleRows? visible,
-          Map<SuppliersByItemRowKey, SuppliersByItemColumnRun> runs,
-        })
-      >{};
-  (SuppliersByItemController, int, SuppliersByItemFieldVisibility, Locale)?
-  _columnInputs;
+  var _listKey = GlobalKey();
+  late SuppliersByItemGroup _preparedGroup;
+  late final StreamSubscription<SuppliersByItemView> _viewChanges;
   SuppliersByItemVisibleRows? _laidOut;
   _ReadingAnchor? _anchor;
   final _browsePositions = <SuppliersByItemGroup, _BrowsePosition>{};
   final _beforeSearch = <SuppliersByItemGroup, _BrowsePosition>{};
+  _ReadingAnchor? _regroupBeforeSearch;
   double? _restoreBrowseOffset;
   ({SuppliersByItemRowKey item, SuppliersByItemRowKey lastSupplier})?
   _supplierReveal;
@@ -1263,25 +1014,103 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
   bool _routeVisible = true;
 
   @override
+  void initState() {
+    super.initState();
+    _preparedGroup = widget.view.group;
+    _viewChanges = widget.controller.view.listen((view) {
+      if (view.group != _preparedGroup) {
+        // Read the new projection after the controller finishes this edit,
+        // before Flutter lays it out at the previous grouping's scroll offset.
+        scheduleMicrotask(_prepareRegroup);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _viewChanges.cancel();
+    super.dispose();
+  }
+
+  void _prepareRegroup() {
+    if (!mounted) return;
+    final controller = widget.controller;
+    if (_preparedGroup == controller.view.value.group) return;
+    _preparedGroup = controller.view.value.group;
+    if (_regroupBeforeSearch != null) {
+      _forgetBrowsePositions();
+    }
+    if (widget.query.trim().isEmpty && widget.visible != null) {
+      _browsePositions[widget.view.group] = _captureBrowsePosition();
+    }
+    final anchor = _anchor ??= _captureAnchor();
+    anchor?.regroup = true;
+    _restoreBrowseOffset = null;
+    final scroll = widget.scrollController;
+    if (!scroll.hasClients ||
+        scroll.offset == scroll.position.minScrollExtent) {
+      return;
+    }
+    if (anchor != null &&
+        controller.hasLoaded &&
+        _canKeepRegroupOffset(anchor, scroll.position)) {
+      return;
+    }
+    // Opening at the top. The anchor still gets one top-window check.
+    _forgetOpenedAtTop();
+    _anchor = anchor;
+    _restartListAtTop();
+  }
+
+  /// Opening a grouping at the top discards every saved position that could
+  /// later jump back to a distant offset. During a search only the search
+  /// results open at the top: the positions saved for the unfiltered report
+  /// stay for clearing the search, as before.
+  void _forgetOpenedAtTop() {
+    if (widget.query.trim().isEmpty) {
+      _forgetBrowsePositions();
+    } else {
+      cancelAnchor();
+    }
+  }
+
+  bool _canKeepRegroupOffset(_ReadingAnchor anchor, ScrollPosition position) {
+    final controller = widget.controller;
+    final list = _renderList;
+    final first = list?.firstChild;
+    if (list == null || first == null) return false;
+    // SliverList retains the leading child's layout offset by index. A
+    // viewport deep inside a tall child or past the end of the list would
+    // have to walk from that child's start after it is replaced.
+    final leading = list.childScrollOffset(first)!;
+    if ((list.constraints.scrollOffset - leading).abs() >
+        position.viewportDimension) {
+      return false;
+    }
+    final firstIndex = list.indexOf(first);
+    if (firstIndex < controller.visibleRows.rows.length) return true;
+    // Opening the corresponding branch can bring this index back into range.
+    _resolveOccurrence(anchor);
+    return firstIndex < controller.visibleRows.rows.length;
+  }
+
+  void _restartListAtTop() {
+    setState(() => _listKey = GlobalKey());
+    final scroll = widget.scrollController;
+    scroll.jumpTo(scroll.position.minScrollExtent);
+  }
+
+  @override
   void didUpdateWidget(covariant _SuppliersTree oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.visible != widget.visible) _renderList?.clearPendingSeek();
     if (oldWidget.filterRevision != widget.filterRevision) {
-      _browsePositions.clear();
-      _beforeSearch.clear();
-      _startAtTop();
+      _forgetBrowsePositions();
+      _goToTop = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && widget.query.isEmpty) widget.onResetSearchInput();
       });
     } else if (oldWidget.query == widget.query) {
       final viewChanged = oldWidget.view != widget.view;
-      if (viewChanged) _renderList?.rememberViewport();
-      if (viewChanged &&
-          oldWidget.view.group != widget.view.group &&
-          widget.query.trim().isEmpty &&
-          oldWidget.visible != null) {
-        _browsePositions[oldWidget.view.group] = _captureBrowsePosition();
-      }
       if (viewChanged ||
           oldWidget.visible != null && widget.visible == null ||
           SuppliersByItemField.values.any(
@@ -1292,21 +1121,30 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
         _supplierReveal = null;
       }
       if (_anchor case final anchor? when viewChanged) {
+        anchor.regroup |= oldWidget.view.group != widget.view.group;
         anchor.resolveOccurrence = true;
         anchor.resolvedKey = null;
         anchor.hasAligned = false;
-        anchor.seekByIndex = true;
+        anchor.estimatedSeeksLeft = 4;
+        anchor.seekBefore = null;
+        anchor.seekAfter = null;
         anchor.seekFrames.clear();
       }
     }
   }
 
   void cancelAnchor() {
-    _renderList?.clearPendingSeek();
     _anchor = null;
     _restoreBrowseOffset = null;
     _supplierReveal = null;
     _goToTop = false;
+  }
+
+  void _forgetBrowsePositions() {
+    _browsePositions.clear();
+    _beforeSearch.clear();
+    _regroupBeforeSearch = null;
+    cancelAnchor();
   }
 
   void _startAtTop() {
@@ -1316,21 +1154,39 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
 
   void changeSearch({required bool wasSearching, required bool willSearch}) {
     if (!wasSearching && !willSearch) return;
-    final group = widget.view.group;
+    final group = widget.controller.view.value.group;
+    _prepareRegroup();
     if (!wasSearching) {
       _beforeSearch.addAll(_browsePositions);
-      _beforeSearch[group] = _captureBrowsePosition(anchor: _anchor);
+      if (_anchor case final pending? when pending.regroup) {
+        // The source occurrence has no committed position in this grouping.
+        // Finish its bounded lookup against the unfiltered rows on clear.
+        _regroupBeforeSearch = pending;
+      } else {
+        _beforeSearch[group] = _captureBrowsePosition(anchor: _anchor);
+      }
     }
     if (willSearch) {
+      if (_regroupBeforeSearch != null) _restartListAtTop();
       _startAtTop();
     } else {
+      final pending = _regroupBeforeSearch;
       final saved = _beforeSearch[group];
-      _anchor = saved?.anchor;
-      _anchor?.returningFromSearch = true;
+      final bounded = pending != null || (_anchor?.regroup ?? false);
+      _anchor = pending ?? saved?.anchor;
+      if (bounded) {
+        _anchor?.regroup = true;
+        _restartListAtTop();
+      }
+      if (pending != null) {
+        pending.resolveOccurrence = true;
+        _regroupBeforeSearch = null;
+      }
+      _anchor?.returningFromSearch = pending == null;
       _anchor?.hasAligned = false;
-      _anchor?.seekByIndex = false;
+      _anchor?.estimatedSeeksLeft = 0;
       _anchor?.seekFrames.clear();
-      _restoreBrowseOffset = saved?.offset;
+      _restoreBrowseOffset = bounded ? null : saved?.offset;
       _goToTop = _anchor == null && _restoreBrowseOffset == null;
       _beforeSearch.clear();
     }
@@ -1348,8 +1204,8 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
     return (anchor: captured, offset: scroll.hasClients ? scroll.offset : null);
   }
 
-  _RenderReportRowList? get _renderList =>
-      _listKey.currentContext?.findRenderObject() as _RenderReportRowList?;
+  RenderSliverList? get _renderList =>
+      _listKey.currentContext?.findRenderObject() as RenderSliverList?;
 
   double _headerBottom(
     RenderAbstractViewport viewport, {
@@ -1477,11 +1333,22 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
       if (top + box.size.height - _rowGap <= headerBottom) continue;
       final index = list.indexOf(box);
       final row = visible.rows[index];
+      // A heading without its own occurrence (an Item Template) is found in
+      // the other grouping through its first child that has one.
+      // Prefer a child the search has not hidden.
+      final owners = row.group == null && row.ownerKey == null
+          ? row.children.where((child) => child.ownerKey != null).toList()
+          : const <SuppliersByItemLayoutRow>[];
+      final stand =
+          owners.firstWhereOrNull(
+            (child) => visible.indexByKey.containsKey(child.key),
+          ) ??
+          owners.firstOrNull;
       return _ReadingAnchor(
         key: row.key,
-        owner: row.ownerKey,
+        owner: (stand ?? row).ownerKey,
         pair: row.pairKey,
-        source: row.group == null ? row.sourceKey : null,
+        source: row.group == null ? (stand ?? row).sourceKey : null,
         ancestors: row.ancestorKeys,
         neighbors: [
           if (index + 1 < visible.rows.length) visible.rows[index + 1].key,
@@ -1520,8 +1387,17 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
       final index = rows.indexByKey[key];
       if (index != null) return index;
     }
-    return rows.rows.isEmpty ? null : 0;
+    // A grouping change with no equivalent row opens at the top instead.
+    return rows.rows.isEmpty || anchor.regroup ? null : 0;
   }
+
+  SuppliersByItemRowKey? _resolveOccurrence(_ReadingAnchor anchor) =>
+      widget.controller.revealAnchorOccurrence(
+        key: anchor.key,
+        ownerKey: anchor.owner,
+        pairKey: anchor.pair,
+        sourceKey: anchor.source,
+      );
 
   void _restoreAnchor(Duration _) {
     _correctionScheduled = false;
@@ -1534,9 +1410,9 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
       scroll.jumpTo(position.minScrollExtent);
       return;
     }
-    if (_restoreBrowseOffset case final offset?) {
+    if (_restoreBrowseOffset case final pixels?) {
       if (_laidOut == null) return;
-      final target = offset.clamp(
+      final target = pixels.clamp(
         position.minScrollExtent,
         position.maxScrollExtent,
       );
@@ -1570,12 +1446,7 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
     if (visible == null) return;
     if (anchor.resolveOccurrence) {
       anchor.resolveOccurrence = false;
-      anchor.resolvedKey = widget.controller.revealAnchorOccurrence(
-        key: anchor.key,
-        ownerKey: anchor.owner,
-        pairKey: anchor.pair,
-        sourceKey: anchor.source,
-      );
+      anchor.resolvedKey = _resolveOccurrence(anchor);
       if (anchor.resolvedKey != null &&
           !visible.indexByKey.containsKey(anchor.resolvedKey)) {
         _scheduleCorrection();
@@ -1583,6 +1454,10 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
       }
     }
     final index = _anchorIndex(anchor, visible);
+    if (index == null && anchor.regroup && visible.rows.isNotEmpty) {
+      _openRegroupAtTop(position);
+      return;
+    }
     final list = _renderList;
     final viewport = RenderAbstractViewport.maybeOf(list);
     if (index == null || list == null || viewport == null) {
@@ -1601,6 +1476,11 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
     final lastIndex = list.indexOf(last);
     final window = math.max(48.0, position.viewportDimension - headerBottom);
     if (index < firstIndex || index > lastIndex) {
+      if (anchor.regroup) {
+        // Try the actual top window once. Never estimate a regroup jump.
+        _openRegroupAtTop(position);
+        return;
+      }
       anchor.evicted = true;
       anchor.hasAligned = false;
       if (!anchor.seekFrames.add((
@@ -1618,18 +1498,25 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
           (topOf(last) + last.size.height - topOf(first)) /
           (lastIndex - firstIndex + 1);
       final double delta;
-      final indexedSeek =
-          anchor.seekByIndex && distance * measuredExtent > 2 * window;
-      if (indexedSeek) {
-        // Only the scrollbar position needs an estimate. The sliver already
-        // knows which row to build, and the next pass aligns its actual box.
-        anchor.seekByIndex = false;
-        list.seekToIndex(index);
-        delta =
-            list.constraints.precedingScrollExtent +
-            index * measuredExtent -
-            headerBottom -
-            pixels;
+      if (anchor.estimatedSeeksLeft > 0 &&
+          distance * measuredExtent > 2 * window) {
+        anchor.estimatedSeeksLeft--;
+        final sample = index < firstIndex
+            ? (index: firstIndex, offset: pixels + topOf(first) - headerBottom)
+            : (index: lastIndex, offset: pixels + topOf(last) - headerBottom);
+        if (sample.index < index) {
+          anchor.seekBefore = sample;
+        } else {
+          anchor.seekAfter = sample;
+        }
+        // Sample a second area when rows farther away are taller or shorter.
+        // If a jump crossed the target, interpolate from both sides.
+        final before = anchor.seekBefore;
+        final after = anchor.seekAfter;
+        final extent = before != null && after != null
+            ? (after.offset - before.offset) / (after.index - before.index)
+            : measuredExtent;
+        delta = sample.offset - pixels + (index - sample.index) * extent;
       } else {
         delta = index < firstIndex
             ? (topOf(first) - headerBottom - 48).clamp(-window, -48.0)
@@ -1644,8 +1531,6 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
       );
       if ((target - pixels).abs() > _precision) {
         scroll.jumpTo(target);
-        _scheduleCorrection();
-      } else if (indexedSeek) {
         _scheduleCorrection();
       } else {
         cancelAnchor();
@@ -1696,6 +1581,16 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
     } else {
       anchor.hasAligned = true;
       _scheduleCorrection();
+    }
+  }
+
+  void _openRegroupAtTop(ScrollPosition position) {
+    final anchor = _anchor;
+    _forgetOpenedAtTop();
+    if (position.pixels != position.minScrollExtent) {
+      // Try the actual top window once before giving up on the row.
+      _anchor = anchor;
+      _restartListAtTop();
     }
   }
 
@@ -1791,29 +1686,12 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
     final view = widget.controller;
     final filters = view.filters.value;
     final indexByKey = visible?.indexByKey ?? const {};
-    // The report revision includes the source rows and ERPNext captions.
-    final inputs = (
-      view,
-      view.loadedRevision.value,
-      widget.fields,
-      Localizations.localeOf(context),
+    final columnRuns = suppliersByItemColumnRuns(
+      rows,
+      widget.fields.shows,
+      view.fieldLabel,
     );
-    if (visible == null || inputs != _columnInputs) {
-      _groupColumns.clear();
-      _columnInputs = inputs;
-    }
-    final group = widget.view.group;
-    final previous = _groupColumns[group];
-    final columnRuns = previous != null && identical(previous.visible, visible)
-        ? previous.runs
-        : suppliersByItemColumnRuns(
-            rows,
-            widget.fields.shows,
-            view.fieldLabel,
-            previous?.runs ?? const {},
-          );
-    _groupColumns[group] = (visible: visible, runs: columnRuns);
-    final list = _ReportRowList(
+    final list = SliverList.builder(
       key: _listKey,
       itemCount: rows.length,
       findChildIndexCallback: (key) =>

@@ -86,7 +86,6 @@ class SuppliersByItemController extends GetxController {
   final _resultsLoaded = false.obs;
   final _displayRevision = 0.obs;
   SuppliersByItemIndex _index = indexReport(const []);
-  late SuppliersByItemSummary _summary = summarize(_index);
   bool _showPlaceholders = false;
   List<SuppliersByItemLayoutRow> _projection = const [];
   final _modeExpansion = <SuppliersByItemGroup, _HierarchyExpansion>{};
@@ -99,11 +98,6 @@ class SuppliersByItemController extends GetxController {
   final _searchDetails = <SuppliersByItemSourceKey>{};
 
   bool get hasLoaded => _resultsLoaded.value;
-
-  SuppliersByItemSummary get summary {
-    _displayRevision.value;
-    return _summary;
-  }
 
   SuppliersByItemVisibleRows get visibleRows {
     _displayRevision.value;
@@ -339,11 +333,7 @@ class SuppliersByItemController extends GetxController {
           showPlaceholders: _showPlaceholders,
           view: selection,
         )
-      : buildTemplateView(
-          _index,
-          showPlaceholders: _showPlaceholders,
-          view: selection,
-        );
+      : buildTemplateView(_index, view: selection);
 
   void _syncExpansion(
     SuppliersByItemGroup group,
@@ -384,7 +374,6 @@ class SuppliersByItemController extends GetxController {
   void _applyResult(List<SuppliersByItemNode> result, bool showPlaceholders) {
     _index = indexReport(result);
     _showPlaceholders = showPlaceholders;
-    _summary = summarize(_index);
     final selection = view.value;
     _projection = _project(selection);
     for (final group in _modeExpansion.keys.toList()) {
@@ -411,7 +400,6 @@ class SuppliersByItemController extends GetxController {
     _reportColumns.value = null;
     _index = indexReport(const []);
     _projection = const [];
-    _summary = summarize(_index);
     _search = null;
     nodes.clear();
     _updateDisplay();

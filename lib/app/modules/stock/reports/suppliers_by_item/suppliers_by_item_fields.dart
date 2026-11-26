@@ -5,7 +5,6 @@ enum SuppliersByItemFieldGroup {
   supplier('Supplier rows'),
   component('BOM component rows'),
   bom('BOM and tree labels'),
-  summary('Report summary'),
   search('Search');
 
   const SuppliersByItemFieldGroup(this.label);
@@ -66,7 +65,6 @@ enum SuppliersByItemField {
   ),
   componentCycle.component('BOM cycle warning', onByDefault: true),
   componentDepthLimit.component('BOM depth limit warning', onByDefault: true),
-  itemTemplateContext.item('Variant Of', onByDefault: true),
   templateVariantCount.item('Variant count', onByDefault: true),
   itemOpenPoBadge.item(
     SuppliersByItemColumnLabels.openOrderQty,
@@ -103,16 +101,6 @@ enum SuppliersByItemField {
   treeDepthLabel.visible(
     SuppliersByItemFieldGroup.bom,
     'Depth label on deep rows',
-  ),
-  summaryItemCount.visible(SuppliersByItemFieldGroup.summary, 'Items'),
-  summarySupplierCount.visible(SuppliersByItemFieldGroup.summary, 'Suppliers'),
-  summaryNoDirectCount.visible(
-    SuppliersByItemFieldGroup.summary,
-    SuppliersByItemColumnLabels.noSupplierRecorded,
-  ),
-  summaryStockByUom.visible(
-    SuppliersByItemFieldGroup.summary,
-    SuppliersByItemColumnLabels.balanceQty,
   ),
   searchMatchCount.visible(
     SuppliersByItemFieldGroup.search,
@@ -204,7 +192,6 @@ enum SuppliersByItemField {
     itemName ||
     componentName ||
     supplierStatus ||
-    itemTemplateContext ||
     itemBelowReorder ||
     componentManufacturing ||
     componentCycle ||
@@ -223,8 +210,12 @@ class SuppliersByItemFieldVisibility {
   const SuppliersByItemFieldVisibility.defaults() : overrides = const {};
 
   SuppliersByItemFieldVisibility(Map<String, bool> overrides)
-    : overrides = Map.unmodifiable(overrides);
+    : overrides = Map.unmodifiable({
+        for (final entry in overrides.entries)
+          if (_fieldsByName.containsKey(entry.key)) entry.key: entry.value,
+      });
 
+  static final _fieldsByName = SuppliersByItemField.values.asNameMap();
   final Map<String, bool> overrides;
 
   bool shows(SuppliersByItemField field) =>

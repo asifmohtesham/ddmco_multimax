@@ -34,8 +34,6 @@ Future<void> _pumpRows(
   double textScale = 1,
   List<_Field> showFields = const [],
   List<_Field> hideFields = const [],
-  bool showFooter = false,
-  bool showPlaceholders = true,
   bool groupBySupplier = false,
   bool expandAll = true,
   bool evidenceExpanded = true,
@@ -51,8 +49,8 @@ Future<void> _pumpRows(
   final source = SuppliersByItemNode.parseRows(fixture);
   final index = indexReport(source);
   final projection = groupBySupplier
-      ? buildSupplierView(index, showPlaceholders: showPlaceholders)
-      : buildTemplateView(index, showPlaceholders: showPlaceholders);
+      ? buildSupplierView(index)
+      : buildTemplateView(index);
   final expandable = structuralKeys(projection);
   final expanded = collapseGroups
       ? <SuppliersByItemRowKey>{}
@@ -65,7 +63,6 @@ Future<void> _pumpRows(
     search: searchIndex(
       index,
       query,
-      showPlaceholders: showPlaceholders,
       group: groupBySupplier
           ? SuppliersByItemGroup.supplier
           : SuppliersByItemGroup.template,
@@ -104,13 +101,6 @@ Future<void> _pumpRows(
                       : null,
                   onToggleEvidence: () => onEvidence?.call(entry),
                   columnRun: columnRuns[entry.key],
-                ),
-              if (showFooter)
-                SuppliersByItemFooter(
-                  totals: SuppliersByItemNode.quantityTotalsByUom(source),
-                  hasResults: true,
-                  excludesUnknownUom: false,
-                  bottomPadding: 0,
                 ),
             ],
           ),
@@ -279,7 +269,7 @@ void main() {
   }
 
   testWidgets(
-    'supplier grouping with all fields off keeps BOM navigation and signed totals',
+    'supplier grouping keeps BOM navigation and source identity with every field hidden',
     (tester) async {
       await _pumpRows(
         tester,
@@ -315,7 +305,6 @@ void main() {
         size: const Size(600, 900),
         groupBySupplier: true,
         hideFields: _Field.values,
-        showFooter: true,
       );
 
       expect(
@@ -347,67 +336,8 @@ void main() {
       expect(find.text('Last Purchase Date -'), findsNWidgets(2));
       expect(find.textContaining('supplier details'), findsNothing);
       expect(find.text('Open Order Qty'), findsNothing);
-      expect(
-        find.text('End of list · Totals for all loaded items'),
-        findsOneWidget,
-      );
-      expect(
-        _within(find.byType(SuppliersByItemFooter), '3 Nos'),
-        findsOneWidget,
-      );
     },
   );
-
-  testWidgets('footer aligns totals, mutes zeros and wraps UOM pairs at 2x', (
-    tester,
-  ) async {
-    const fixture = [
-      {'node_id': 'item:K', 'balance_qty': 1234.5, 'stock_uom': 'Kg'},
-      {'node_id': 'item:M', 'balance_qty': 123, 'stock_uom': 'M'},
-      {
-        'node_id': 'item:N',
-        'balance_qty': 5678.5,
-        'projected_qty': 0,
-        'stock_uom': 'Nos',
-      },
-    ];
-    final footer = find.byType(SuppliersByItemFooter);
-    final heading = _within(
-      footer,
-      'End of list · Totals for all loaded items',
-    );
-    final label = _within(footer, 'Balance Qty');
-    final kg = _within(footer, '1,234.5 Kg');
-    final nos = _within(footer, '5,678.5 Nos');
-    final zero = _within(footer, '0 Nos');
-    await _pumpRows(tester, fixture, showFooter: true);
-    expect(heading, findsOneWidget);
-    expect(tester.getTopLeft(label).dy, tester.getTopLeft(kg).dy);
-    expect(tester.getTopRight(nos).dx, tester.getTopRight(zero).dx);
-    final colors = tester.element(zero).scheme;
-    expect(tester.widget<Text>(kg).style!.color, colors.text);
-    expect(tester.widget<Text>(zero).style!.color, colors.textMuted);
-    expect(
-      tester.widget<Text>(zero).style!.fontFeatures,
-      contains(const FontFeature.tabularFigures()),
-    );
-
-    await _pumpRows(
-      tester,
-      fixture,
-      showFooter: true,
-      textScale: 2,
-      size: const Size(320, 900),
-    );
-    expect(tester.getTopLeft(kg).dy, greaterThan(tester.getTopLeft(label).dy));
-    expect(tester.getTopLeft(nos).dy, greaterThan(tester.getTopLeft(kg).dy));
-    for (final amount in [kg, nos]) {
-      final paragraph = tester.renderObject<RenderParagraph>(amount);
-      final lastGlyph = tester.widget<Text>(amount).data!.length - 1;
-      expect(_glyph(paragraph, 0).top, _glyph(paragraph, lastGlyph).top);
-    }
-    expect(tester.takeException(), isNull);
-  });
 
   testWidgets(
     'retained supplier group counts distinguish direct and component rows',
@@ -622,21 +552,18 @@ void main() {
           'parent_id': 'template:STYLE',
           'supplier_count': 2,
         },
-        {'node_id': 'none:A', 'parent_id': 'item:A'},
       ];
       const message = 'No supplier recorded';
-      for (final (open, showPlaceholders) in [
+      for (final (open, hasPlaceholder) in [
         (true, true),
         (false, true),
         (true, false),
       ]) {
-        await _pumpRows(
-          tester,
-          fixture,
-          expandAll: open,
-          showPlaceholders: showPlaceholders,
-        );
-        final usesChild = open && showPlaceholders;
+        await _pumpRows(tester, [
+          ...fixture,
+          if (hasPlaceholder) {'node_id': 'none:A', 'parent_id': 'item:A'},
+        ], expandAll: open);
+        final usesChild = open && hasPlaceholder;
         expect(find.text(message), findsOneWidget);
         expect(
           _within(_row(usesChild ? 'none:A' : 'item:A'), message),
@@ -828,7 +755,7 @@ void main() {
   );
 
   testWidgets(
-    'tiny signed row quantities stay nonzero and footer totals sum raw values',
+    'tiny signed quantities stay nonzero in item order details and supplier evidence',
     (tester) async {
       await _pumpRows(
         tester,
@@ -857,7 +784,6 @@ void main() {
           _Field.itemProjected,
           _Field.supplierDraftOrders,
         ],
-        showFooter: true,
       );
 
       for (final item in ['A', 'B']) {
@@ -876,11 +802,6 @@ void main() {
       final negative = _row('supplier:B:SUPPLIER');
       expect(_badge(negative, 'Draft Order Qty -0.004 Kg'), findsNothing);
       expect(_within(negative, '-0.004\u00a0Kg'), findsOneWidget);
-
-      final footer = find.byType(SuppliersByItemFooter);
-      expect(_within(footer, '0.01 Kg'), findsNWidgets(2));
-      expect(_within(footer, '-0.004 Kg'), findsOneWidget);
-      expect(_within(footer, '0 Kg'), findsNothing);
     },
   );
 

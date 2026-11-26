@@ -599,7 +599,7 @@ void main() {
       report.setQuery('nothing matches');
       expect(report.visibleRows.rows, isEmpty);
       expect(report.search!.matchingItemIds, isEmpty);
-      expect(report.summary.itemCount, 2);
+      expect(report.nodes.single.children, hasLength(2));
       final revision = report.loadedRevision.value;
       api.respond = () async => [];
       await report.run(
@@ -609,7 +609,7 @@ void main() {
       expect(report.filterRevision.value, 1);
       expect(report.query.value, isEmpty);
       expect(report.search, isNull);
-      expect(report.summary.itemCount, 0);
+      expect(report.nodes, isEmpty);
       expect(report.hasLoaded, isTrue);
       expect(report.error.value, isNull);
       expect(api.requests, hasLength(3));
@@ -691,7 +691,6 @@ void main() {
       expect(report.isExpanded(template), isFalse);
       expect(report.isExpanded(variant), isTrue);
       expect(report.isPairExpanded(edgePair), isTrue);
-      expect(report.summary.itemCount, 2);
       expect(api.requests, hasLength(1));
     },
   );
@@ -719,7 +718,6 @@ void main() {
       expect(report.query.value, isEmpty);
       expect(report.view.value.group, SuppliersByItemGroup.supplier);
       expect(report.isBranchExpanded(firstGroup), isTrue);
-      expect(report.summary.itemCount, 2);
       expect(api.requests, hasLength(3));
     },
   );
@@ -844,7 +842,6 @@ void main() {
       expect(report.visibleRows.rows, hasLength(2));
       expect(report.visibleRows.rows.first.group?.isOther, isTrue);
       expect(report.visibleRows.rows.last.sourceKey, detached);
-      expect(report.summary.supplierCount, 2);
     },
   );
 }

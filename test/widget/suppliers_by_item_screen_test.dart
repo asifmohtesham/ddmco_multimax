@@ -6,6 +6,7 @@ import 'dart:ui'
 // ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/gestures.dart' show PointerScrollEvent;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -169,6 +170,31 @@ SuppliersByItemController currentReport() =>
     Get.find<SuppliersByItemController>(
       tag: SuppliersByItemBinding.tagForRoute(Get.routing.route),
     );
+
+Future<int> _maxTileBuildsPerFrame(
+  WidgetTester tester,
+  Future<void> Function() action,
+) async {
+  final previous = debugOnRebuildDirtyWidget;
+  var builds = 0;
+  var maximum = 0;
+  debugOnRebuildDirtyWidget = (element, builtOnce) {
+    previous?.call(element, builtOnce);
+    if (element.widget is SuppliersByItemDisplayTile) {
+      if (builds == 0) {
+        tester.binding.addPostFrameCallback((_) => builds = 0);
+      }
+      builds++;
+      if (builds > maximum) maximum = builds;
+    }
+  };
+  try {
+    await action();
+    return maximum;
+  } finally {
+    debugOnRebuildDirtyWidget = previous;
+  }
+}
 
 double pinnedBottom(
   WidgetTester tester, {
@@ -385,7 +411,7 @@ void registerSuppliersByItemFieldsContract() {
           '::reader%40example.com';
       const saved =
           '{"itemName":false,"supplierStatus":false,'
-          '"itemBalance":false,"summaryItemCount":false}';
+          '"itemBalance":false,"searchMatchCount":false,"summaryItemCount":false}';
       database.records[key] = saved;
       api.columns = _localizedColumns();
       api.load = () async => SuppliersByItemNode.parseRows([
@@ -424,7 +450,6 @@ void registerSuppliersByItemFieldsContract() {
       final semantics = tester.ensureSemantics();
       final item = reportRow('item:KIT');
       final supplier = reportRow('supplier:KIT:VENDOR');
-      final footer = find.byType(SuppliersByItemFooter);
       void expectBalance(bool visible) {
         expect(
           within(item, 'Available Stock 4 Nos'),
@@ -434,14 +459,6 @@ void registerSuppliersByItemFieldsContract() {
           find.bySemanticsLabel(RegExp(r'^Item KIT,.*Available Stock 4 Nos')),
           visible ? findsOneWidget : findsNothing,
         );
-        final metric = find
-            .ancestor(
-              of: within(footer, 'Available Stock'),
-              matching: find.byType(Padding),
-            )
-            .first;
-        expect(within(metric, '4 Nos'), findsOneWidget);
-        expect(within(footer, 'Balance Qty'), findsNothing);
       }
 
       expectBalance(false);
@@ -476,11 +493,11 @@ void registerSuppliersByItemFieldsContract() {
       expect(tester.widget<CheckboxListTile>(balance).value, isFalse);
       expect(
         tiles.map((tile) => tile.key),
-        isNot(contains(const ValueKey(SuppliersByItemField.summaryItemCount))),
+        isNot(contains(const ValueKey(SuppliersByItemField.searchMatchCount))),
       );
       await tester.tap(find.text('Reset to defaults'));
       await tester.pumpAndSettle();
-      expect(database.records[key], '{"summaryItemCount":false}');
+      expect(database.records[key], '{"searchMatchCount":false}');
       expect(tester.widget<CheckboxListTile>(balance).value, isTrue);
       Navigator.of(tester.element(sheet)).pop();
       await tester.pumpAndSettle();
@@ -497,7 +514,7 @@ void registerSuppliersByItemFieldsContract() {
       await tester.tap(find.byKey(const ValueKey('suppliers-by-item-view')));
       await tester.pumpAndSettle();
       final moved = find.byKey(
-        const ValueKey(SuppliersByItemField.summaryItemCount),
+        const ValueKey(SuppliersByItemField.searchMatchCount),
       );
       expect(tester.widget<CheckboxListTile>(moved).value, isFalse);
       final resetView = find.text('Reset display options');
@@ -510,10 +527,7 @@ void registerSuppliersByItemFieldsContract() {
       await tester.pumpAndSettle();
       expect(find.text('Travel Kit'), findsOneWidget);
       expect(find.text('Disabled'), findsOneWidget);
-      expect(
-        find.text('End of list · Totals for all loaded items'),
-        findsOneWidget,
-      );
+      expect(find.text('End of list'), findsOneWidget);
       expect(api.requests, hasLength(1));
     },
   );
@@ -791,7 +805,7 @@ void main() {
     expect(retry, findsNothing);
   });
 
-  testWidgets('Supplier rows retain memberships and totals with Fields off', (
+  testWidgets('Supplier rows retain memberships with Fields off', (
     tester,
   ) async {
     api.load = () async => SuppliersByItemNode.parseRows(_supplierViewRows);
@@ -852,8 +866,8 @@ void main() {
     expect(within(edge, 'Last Purchase Date 1 Oct 25'), findsNothing);
     await tester.scrollUntilVisible(lockal, 150, scrollable: scrollable);
     expect(within(lockal, 'KIT'), findsOneWidget);
-    final footer = find.byType(SuppliersByItemFooter);
-    await tester.scrollUntilVisible(footer, 150, scrollable: scrollable);
+    final end = find.text('End of list');
+    await tester.scrollUntilVisible(end, 150, scrollable: scrollable);
     final noSupplierGroup = find.byWidgetPredicate(
       (widget) =>
           widget is SuppliersByItemDisplayTile &&
@@ -861,12 +875,7 @@ void main() {
     );
     expect(within(noSupplierGroup, 'No supplier recorded'), findsOneWidget);
     expect(find.text('No supplier recorded'), findsWidgets);
-    expect(
-      within(footer, 'End of list · Totals for all loaded items'),
-      findsOneWidget,
-    );
-    expect(within(footer, '3 Nos'), findsOneWidget);
-    expect(within(footer, '103 Nos'), findsNothing);
+    expect(end.hitTestable(), findsOneWidget);
     expect(
       tester.widget<Scrollbar>(find.byType(Scrollbar)).controller,
       same(scroll),
@@ -1056,41 +1065,301 @@ void main() {
     },
   );
 
-  testWidgets(
-    'deep collapsed Supplier to Item regroup builds only the anchor viewport',
-    (tester) async {
-      const count = 3696;
-      const target = 3236;
-      const firstCode = 1004178 - target;
-      const source = 'supplier:1004178:AMARNY';
-      api.load = () async {
-        final rows = <Map<String, dynamic>>[];
-        for (var i = 0; i < count; i++) {
-          final code = '${firstCode + i}';
-          final suppliers = [
-            if (i == target) 'AMARNY' else 'Vendor ${i % 76}',
-            if (i != target && i % 5 == 0) 'Vendor ${(i + 1) % 76}',
-          ];
+  const regroupSource = 'supplier:1004178:AMARNY';
+
+  RenderSliverPersistentHeader reportToolbar(WidgetTester tester) =>
+      tester.renderObject<RenderSliverPersistentHeader>(
+        find.byKey(
+          tester
+              .widget<DocTypeListHeader>(find.byType(DocTypeListHeader))
+              .sliverKey!,
+        ),
+      );
+
+  Finder projectedRow(SuppliersByItemRowKey key) =>
+      key is SuppliersByItemSourceKey
+      ? reportRow(key.nodeId)
+      : find.byKey(ValueKey<SuppliersByItemRowKey>(key));
+
+  void expectReportAtTop(WidgetTester tester) {
+    expect(reportScroll(tester).offset, 0);
+    final toolbar = reportToolbar(tester);
+    expect(toolbar.geometry!.paintExtent, closeTo(toolbar.maxExtent, .5));
+    final first = currentReport().visibleRows.rows.first;
+    expect(projectedRow(first.key).hitTestable(), findsOneWidget);
+  }
+
+  Future<ScrollController> openSupplierOccurrence(
+    WidgetTester tester, {
+    required int count,
+    required int target,
+    required String? Function(int index, String code) itemName,
+    int additionalSupplierGroups = 8,
+    bool purchaseActivity = false,
+  }) async {
+    final firstCode = 1004178 - target;
+    api.load = () async {
+      final rows = <Map<String, dynamic>>[];
+      for (var i = 0; i < count; i++) {
+        final code = '${firstCode + i}';
+        final suppliers = [
+          if (i == target) 'AMARNY' else 'Vendor ${i % 76}',
+          if (i != target && i % 5 == 0) 'Vendor ${(i + 1) % 76}',
+        ];
+        rows.add({
+          'node_id': 'item:$code',
+          'item_code': code,
+          'item_name': i == target ? 'CROSS BAG PU' : itemName(i, code),
+          'balance_qty': (count - i) ~/ 10,
+          if (purchaseActivity && i % 7 == 1) 'projected_qty': i + 6,
+          if (purchaseActivity && i % 5 == 2) 'open_order_qty': i + 1,
+          'supplier_count': suppliers.length,
+          'stock_uom': 'Nos',
+        });
+        for (final supplier in suppliers) {
           rows.add({
-            'node_id': 'item:$code',
+            'node_id': 'supplier:$code:$supplier',
+            'parent_id': 'item:$code',
             'item_code': code,
-            if (i == target || (i > 50 && i.isOdd))
-              'item_name': i == target ? 'CROSS BAG PU' : 'Stock item $code',
-            'balance_qty': (count - i) ~/ 10,
-            'supplier_count': suppliers.length,
-            'stock_uom': 'Nos',
+            'supplier': supplier,
           });
-          for (final supplier in suppliers) {
-            rows.add({
-              'node_id': 'supplier:$code:$supplier',
-              'parent_id': 'item:$code',
-              'item_code': code,
-              'supplier': supplier,
-            });
-          }
         }
-        return SuppliersByItemNode.parseRows(rows);
-      };
+      }
+      return SuppliersByItemNode.parseRows(rows);
+    };
+    tester.platformDispatcher.textScaleFactorTestValue = .85;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await openReport(
+      tester,
+      size: const Size(411, 890),
+      fontFamily: reportFont,
+      showFields: [if (purchaseActivity) SuppliersByItemField.itemProjected],
+    );
+    await tester.pumpAndSettle();
+    final controller = currentReport();
+    final scroll = reportScroll(tester);
+    expect(scroll.offset, 0);
+    await openView(tester);
+    await selectView(tester, SuppliersByItemGroup.supplier);
+    await doneWithView(tester);
+    expect(scroll.offset, 0);
+    // Preserve several open groups so the return trip also has hundreds
+    // of rows between the old scroll offset and AMARNY.
+    final groups = controller.visibleRows.rows.where(
+      (row) => row.group != null,
+    );
+    for (final group in groups.skip(1).take(additionalSupplierGroups)) {
+      controller.toggleBranchKey(group.key);
+    }
+    await tester.pumpAndSettle();
+    final occurrence = pairOccurrence(regroupSource);
+    // Collapse the toolbar and place the only AMARNY item at the reading edge.
+    scroll.jumpTo(120);
+    await tester.pumpAndSettle();
+    scroll.jumpTo(
+      scroll.offset +
+          tester.getTopLeft(occurrence).dy -
+          pinnedBottom(tester) +
+          4,
+    );
+    await tester.pumpAndSettle();
+    final toolbar = reportToolbar(tester);
+    expect(toolbar.geometry!.paintExtent, closeTo(toolbar.minExtent, .5));
+    expect(
+      tester.getBottomLeft(occurrence).dy,
+      greaterThan(pinnedBottom(tester)),
+    );
+    expect(
+      tester.getTopLeft(occurrence).dy,
+      lessThanOrEqualTo(pinnedBottom(tester)),
+    );
+    expect(viewButton.hitTestable(), findsOneWidget);
+    return scroll;
+  }
+
+  Future<ScrollController> openItemGrouping(
+    WidgetTester tester, {
+    required int count,
+    required int target,
+    required String? Function(int index, String code) itemName,
+  }) async {
+    final scroll = await openSupplierOccurrence(
+      tester,
+      count: count,
+      target: target,
+      itemName: itemName,
+    );
+    await openView(tester);
+    await selectView(tester, SuppliersByItemGroup.template);
+    await doneWithView(tester);
+    expectReportAtTop(tester);
+    return scroll;
+  }
+
+  // Key the observations by report row, independently of viewport child order.
+  Map<SuppliersByItemRowKey, double> readableRowTops(WidgetTester tester) {
+    final edge = pinnedBottom(tester);
+    final bottom = tester.getBottomLeft(find.byType(CustomScrollView)).dy;
+    final tops = <SuppliersByItemRowKey, double>{};
+    for (final element in find.byType(SuppliersByItemDisplayTile).evaluate()) {
+      final box = element.renderObject! as RenderBox;
+      final top = box.localToGlobal(Offset.zero).dy;
+      if (top + box.size.height > edge && top < bottom) {
+        final tile = element.widget as SuppliersByItemDisplayTile;
+        tops[tile.entry.key] = top;
+      }
+    }
+    return tops;
+  }
+
+  testWidgets(
+    'upward wheel near the top preserves the overlapping regrouped rows',
+    (tester) async {
+      final scroll = await openItemGrouping(
+        tester,
+        count: 360,
+        target: 280,
+        itemName: (i, code) => i < 40
+            ? null
+            : 'Replacement stainless steel '
+                  'component $code for the articulated pushchair with soft-grip '
+                  'handles and adjustable seat back',
+      );
+      scroll.jumpTo(665);
+      await tester.pumpAndSettle();
+      final before = readableRowTops(tester);
+      tester.binding.handlePointerEvent(
+        const PointerScrollEvent(
+          kind: PointerDeviceKind.mouse,
+          position: Offset(230, 470),
+          scrollDelta: Offset(0, -400),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final after = readableRowTops(tester);
+      final overlap = before.keys.where(after.containsKey);
+      expect(
+        overlap,
+        isNotEmpty,
+        reason: 'A 400 dp wheel step fits in the 671 dp reading area.',
+      );
+      for (final key in overlap) {
+        expect(after[key]! - before[key]!, closeTo(400, .5));
+      }
+    },
+  );
+
+  testWidgets(
+    'dragging the scrollbar near the top reaches the eleventh item after regroup',
+    (tester) async {
+      final scroll = await openItemGrouping(
+        tester,
+        count: 280,
+        target: 230,
+        itemName: (i, code) =>
+            i > 38 ? 'Stock item $code which has extra details ' * 8 : null,
+      );
+      final row = reportRow(regroupSource);
+      await tester.scrollUntilVisible(
+        row,
+        500,
+        scrollable: find.byWidgetPredicate(
+          (w) => w is Scrollable && w.controller == scroll,
+        ),
+        maxScrolls: 300,
+      );
+      await tester.pumpAndSettle();
+      scroll.jumpTo(
+        scroll.offset + tester.getTopLeft(row).dy - pinnedBottom(tester),
+      );
+      await tester.pumpAndSettle();
+      final paint = find
+          .ancestor(
+            of: find.byType(CustomScrollView),
+            matching: find.byWidgetPredicate(
+              (w) =>
+                  w is CustomPaint && w.foregroundPainter is ScrollbarPainter,
+            ),
+          )
+          .first;
+      final painter =
+          tester.widget<CustomPaint>(paint).foregroundPainter!
+              as ScrollbarPainter;
+      final box = tester.renderObject<RenderBox>(paint);
+      final x = box.size.width - 4;
+      final thumb = box.localToGlobal(
+        Offset(x, painter.getThumbScrollOffset() + 10),
+      );
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: thumb);
+      await mouse.moveTo(thumb + const Offset(0, 1));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(
+        painter.hitTestOnlyThumbInteractive(
+          box.globalToLocal(thumb),
+          PointerDeviceKind.mouse,
+        ),
+        isTrue,
+      );
+      await mouse.down(thumb);
+      await tester.pump(const Duration(milliseconds: 600));
+      await mouse.moveTo(box.localToGlobal(Offset(x, 27)));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await mouse.up();
+      await mouse.removePointer();
+      await tester.pumpAndSettle();
+      final readable = readableRowTops(tester).entries.toList()
+        ..sort((a, b) => a.value.compareTo(b.value));
+      expect(readable.first.key, (nodeId: 'item:1003958'));
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.windows),
+  );
+
+  testWidgets(
+    'the same near-top offset shows the same rows from deep and from zero',
+    (tester) async {
+      final scroll = await openItemGrouping(
+        tester,
+        count: 280,
+        target: 230,
+        itemName: (i, code) =>
+            i > 38 ? 'Stock item $code which has extra details ' * 8 : null,
+      );
+      scroll.jumpTo(16000);
+      await tester.pumpAndSettle();
+      scroll.jumpTo(323);
+      await tester.pumpAndSettle();
+      final fromDeep = readableRowTops(tester);
+      scroll.jumpTo(0);
+      await tester.pumpAndSettle();
+      scroll.jumpTo(323);
+      await tester.pumpAndSettle();
+      final fromTop = readableRowTops(tester);
+      expect(fromTop, contains((nodeId: 'item:1003952')));
+      expect(fromDeep, equals(fromTop));
+    },
+  );
+
+  testWidgets(
+    'a screen-reader scroll preserves the focused row and its tap action',
+    (tester) async {
+      api.load = () async => SuppliersByItemNode.parseRows([
+        for (var i = 1; i <= 120; i++) ...[
+          {
+            'node_id': 'item:${100000 + i}',
+            'item_code': '${100000 + i}',
+            'balance_qty': 120 - i,
+            'stock_uom': 'Nos',
+          },
+          {
+            'node_id': 'supplier:${100000 + i}:S',
+            'parent_id': 'item:${100000 + i}',
+            'supplier': 'S',
+          },
+        ],
+      ]);
       tester.platformDispatcher.textScaleFactorTestValue = .85;
       addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
       await openReport(
@@ -1099,121 +1368,1102 @@ void main() {
         fontFamily: reportFont,
       );
       await tester.pumpAndSettle();
-      final controller = currentReport();
-      final scroll = reportScroll(tester);
-      expect(scroll.offset, 0);
+      reportScroll(tester).jumpTo(621);
+      await tester.pumpAndSettle();
+      final label = find.bySemanticsLabel(RegExp('^Item 100011')).first;
+      final node = tester.getSemantics(label);
+      final focusedId = node.id;
+      final owner = node.owner!;
+      owner.performAction(focusedId, SemanticsAction.didGainAccessibilityFocus);
+      var scrollNode = node;
+      while (!scrollNode.getSemanticsData().hasAction(
+        SemanticsAction.scrollDown,
+      )) {
+        scrollNode = scrollNode.parent!;
+      }
+      owner.performAction(scrollNode.id, SemanticsAction.scrollDown);
+      await tester.pumpAndSettle();
+      expect(reportRow('item:100011').hitTestable(), findsOneWidget);
+      final currentId = tester.getSemantics(label).id;
+      const key = (nodeId: 'item:100011');
+      expect(currentReport().isBranchExpanded(key), isFalse);
+      owner.performAction(focusedId, SemanticsAction.tap);
+      await tester.pumpAndSettle();
+      expect(
+        (currentId, currentReport().isBranchExpanded(key)),
+        (focusedId, true),
+      );
+    },
+  );
+
+  // SliverList can revise the estimated end until the end marker is laid out.
+  Future<double> physicalBottom(
+    WidgetTester tester,
+    ScrollController scroll,
+  ) async {
+    for (var i = 0; i < 4; i++) {
+      scroll.jumpTo(scroll.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+    }
+    final marker = tester.getRect(find.text('End of list'));
+    final viewport = tester.getRect(find.byType(CustomScrollView));
+    expect(marker.overlaps(viewport), isTrue);
+    expect(scroll.position.extentAfter, 0);
+    return scroll.offset;
+  }
+
+  for (final shortFirst in [true, false]) {
+    testWidgets(
+      'the physical bottom after regroup is repeatable with short rows first = $shortFirst',
+      (tester) async {
+        final scroll = await openItemGrouping(
+          tester,
+          count: 360,
+          target: 280,
+          itemName: (i, code) =>
+              (i < 40) == shortFirst ? null : 'Stock item $code',
+        );
+        final firstEnd = await physicalBottom(tester, scroll);
+        scroll.jumpTo(0);
+        await tester.pumpAndSettle();
+        expect(await physicalBottom(tester, scroll), closeTo(firstEnd, .5));
+      },
+    );
+  }
+
+  testWidgets(
+    'the scrollbar moves toward the top at every upward step after regroup',
+    (tester) async {
+      final scroll = await openItemGrouping(
+        tester,
+        count: 360,
+        target: 280,
+        itemName: (i, code) => i < 40 ? null : 'Stock item $code',
+      );
+      await physicalBottom(tester, scroll);
+      scroll.jumpTo(665);
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 7; i++) {
+        final fraction = scroll.offset / scroll.position.maxScrollExtent;
+        scroll.position.pointerScroll(-55);
+        await tester.pumpAndSettle();
+        expect(
+          scroll.offset / scroll.position.maxScrollExtent,
+          lessThan(fraction),
+        );
+      }
+    },
+  );
+
+  for (final (target, supplierRank, description) in [
+    (16, 120, 'discards a pair beyond the destination top window'),
+    (8, 54, 'aligns a pair inside the destination top window'),
+    (67, 54, 'aligns a pair in the retained destination window'),
+  ]) {
+    final atTop = target == 8;
+    final atRetainedOffset = target == 67;
+    testWidgets('regroup $description', (tester) async {
+      const count = 152;
+      String code(int i) => 'I${i.toString().padLeft(3, '0')}';
+      String vendor(int i) {
+        // Swap the target into a group well below the top in Supplier.
+        final rank = i == target
+            ? supplierRank
+            : i == supplierRank
+            ? target
+            : i;
+        final id = 'V${rank.toString().padLeft(3, '0')}';
+        if (atRetainedOffset && rank > supplierRank && rank <= 80) {
+          return '$id ${List.filled(32, 'Equipment supplier').join(' ')}';
+        }
+        return id;
+      }
+
+      final source = 'supplier:${code(target)}:${vendor(target)}';
+      api.load = () async => SuppliersByItemNode.parseRows([
+        for (var i = 0; i < count; i++) ...[
+          {
+            'node_id': 'item:${code(i)}',
+            'item_code': code(i),
+            'balance_qty': count - i,
+            'stock_uom': 'Nos',
+            'supplier_count': 1,
+            if (atTop
+                ? i >= 25 && i < 90
+                : !atRetainedOffset && i < target) ...{
+              'item_name':
+                  'Replacement assembly with high-temperature stainless steel components for industrial circulation pump model 440 in alternate installation',
+              'open_order_qty': 12,
+              'projected_qty': 26,
+              'reorder_level': 120,
+              'reorder_qty': 9,
+              'total_qty_received': 7,
+            },
+          },
+          {
+            'node_id': 'supplier:${code(i)}:${vendor(i)}',
+            'parent_id': 'item:${code(i)}',
+            'item_code': code(i),
+            'supplier': vendor(i),
+          },
+        ],
+      ]);
+      await openReport(
+        tester,
+        size: const Size(411, 890),
+        fontFamily: reportFont,
+        showFields: const [
+          SuppliersByItemField.itemProjected,
+          SuppliersByItemField.itemReorderLevel,
+          SuppliersByItemField.itemReorderQty,
+          SuppliersByItemField.itemOpenOrders,
+          SuppliersByItemField.itemQtyReceived,
+        ],
+      );
+      await tester.pumpAndSettle();
       await openView(tester);
       await selectView(tester, SuppliersByItemGroup.supplier);
       await doneWithView(tester);
-      expect(scroll.offset, 0);
-      // Preserve several open groups so the return trip also has hundreds
-      // of rows between the old scroll offset and AMARNY.
-      final groups = controller.visibleRows.rows.where(
-        (row) => row.group != null,
+      final controller = currentReport();
+      final group = controller.visibleRows.rows.singleWhere(
+        (row) => row.group?.label == vendor(target),
       );
-      for (final group in groups.skip(1).take(8)) {
-        controller.toggleBranchKey(group.key);
-      }
+      controller.toggleBranchKey(group.key);
       await tester.pumpAndSettle();
-      final occurrence = pairOccurrence(source);
-      // Collapse the toolbar and place the only AMARNY item at the reading edge.
-      scroll.jumpTo(120);
+      final scroll = reportScroll(tester);
+      final pair = pairOccurrence(source);
+      await tester.scrollUntilVisible(
+        pair,
+        400,
+        scrollable: find.byWidgetPredicate(
+          (w) => w is Scrollable && w.controller == scroll,
+        ),
+        maxScrolls: 200,
+      );
+      await tester.pumpAndSettle();
+      scroll.jumpTo(
+        scroll.offset + tester.getTopLeft(pair).dy - pinnedBottom(tester) + 4,
+      );
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(pair).dy, closeTo(pinnedBottom(tester) - 4, .5));
+      final list = tester.renderObject<RenderSliverList>(
+        find.byType(SliverList).first,
+      );
+      final lastSourceIndex = list.indexOf(list.lastChild!);
+
+      await openView(tester);
+      await selectView(tester, SuppliersByItemGroup.template);
+      await doneWithView(tester);
+      final destination = reportRow(source);
+      if (atTop || atRetainedOffset) {
+        if (atRetainedOffset) {
+          final destIndex =
+              controller.visibleRows.indexByKey[(nodeId: source)]!;
+          expect(destIndex, greaterThan(lastSourceIndex));
+        }
+        expect(destination, findsOneWidget);
+        expect(
+          tester.getTopLeft(destination).dy,
+          closeTo(pinnedBottom(tester), .5),
+        );
+        scroll.jumpTo(0);
+        await tester.pumpAndSettle();
+        if (atTop) {
+          expect(destination.hitTestable(), findsOneWidget);
+        } else {
+          expect(destination, findsNothing);
+        }
+      } else {
+        expectReportAtTop(tester);
+        expect(destination, findsNothing);
+        await tester.enterText(find.byType(TextField), 'V001');
+        await tester.pumpAndSettle();
+        await openView(tester);
+        await selectView(tester, SuppliersByItemGroup.supplier);
+        await doneWithView(tester);
+        await tester.tap(find.byTooltip('Clear search query'));
+        await tester.pumpAndSettle();
+        expectReportAtTop(tester);
+      }
+    });
+  }
+
+  for (final sourceGroup in SuppliersByItemGroup.values) {
+    testWidgets('regroup from the end of ${sourceGroup.name} is bounded', (
+      tester,
+    ) async {
+      // Swap the two halves between projections so the first readable row at
+      // the end maps outside both the retained window and the top window.
+      const count = 480;
+      api.load = () async => SuppliersByItemNode.parseRows([
+        for (var i = 0; i < count; i++) ...[
+          {
+            'node_id': 'item:A$i',
+            'item_code': 'A$i',
+            'balance_qty': count - i,
+            'stock_uom': 'Nos',
+          },
+          {
+            'node_id': 'supplier:A$i:S',
+            'parent_id': 'item:A$i',
+            'supplier': i < count ~/ 2 ? 'Zulu' : 'Alpha',
+          },
+        ],
+      ]);
+      await openReport(
+        tester,
+        size: const Size(411, 914),
+        fontFamily: reportFont,
+      );
+      await tester.pumpAndSettle();
+      final controller = currentReport();
+      await controller.setGroup(SuppliersByItemGroup.supplier);
+      controller.expandAll();
+      await tester.pumpAndSettle();
+      await controller.setGroup(sourceGroup);
+      await tester.pumpAndSettle();
+      final scroll = reportScroll(tester);
+      final atEnd = await physicalBottom(tester, scroll);
+      expect(atEnd, greaterThan(20 * scroll.position.viewportDimension));
+      expect(find.text('End of list').hitTestable(), findsOneWidget);
+      await openView(tester);
+      final maxBuilds = await _maxTileBuildsPerFrame(tester, () async {
+        await selectView(
+          tester,
+          sourceGroup == SuppliersByItemGroup.template
+              ? SuppliersByItemGroup.supplier
+              : SuppliersByItemGroup.template,
+        );
+        await doneWithView(tester);
+      });
+      expect(maxBuilds, inExclusiveRange(0, 128));
+      expectReportAtTop(tester);
+    });
+  }
+
+  testWidgets(
+    'regroup bounds tile builds when scrolled deep inside the first row',
+    (tester) async {
+      const count = 480;
+      final longName = List.filled(1650, 'Lot details').join('\n');
+      api.load = () async => SuppliersByItemNode.parseRows([
+        for (var i = 0; i < count; i++) ...[
+          {
+            'node_id': 'item:A$i',
+            'item_code': 'A$i',
+            'item_name': i == 0 ? longName : 'Stock item A$i',
+            'balance_qty': count - i,
+            'stock_uom': 'Nos',
+            'supplier_count': 1,
+          },
+          {
+            'node_id': 'supplier:A$i:${i == 0 ? 'Zulu' : 'Vendor'}',
+            'parent_id': 'item:A$i',
+            'item_code': 'A$i',
+            'supplier': i == 0 ? 'Zulu' : 'Vendor',
+          },
+        ],
+      ]);
+      await openReport(
+        tester,
+        size: const Size(411, 890),
+        fontFamily: reportFont,
+      );
+      await tester.pumpAndSettle();
+      await openView(tester);
+      await selectView(tester, SuppliersByItemGroup.supplier);
+      await doneWithView(tester);
+      await viewCommand(tester, 'Expand all');
+      await openView(tester);
+      await selectView(tester, SuppliersByItemGroup.template);
+      await doneWithView(tester);
+
+      final scroll = reportScroll(tester);
+      scroll.jumpTo(20500);
+      await tester.pumpAndSettle();
+      final list = tester.renderObject<RenderSliverList>(
+        find.byType(SliverList).first,
+      );
+      expect(list.indexOf(list.firstChild!), 0);
+      expect(list.indexOf(list.lastChild!), 0);
+      expect(scroll.offset, 20500);
+      await openView(tester);
+      final maxBuilds = await _maxTileBuildsPerFrame(tester, () async {
+        await selectView(tester, SuppliersByItemGroup.supplier);
+        await doneWithView(tester);
+      });
+      expect(maxBuilds, inExclusiveRange(0, 64));
+      expectReportAtTop(tester);
+    },
+  );
+
+  for (final additionalGroups in [0, 8]) {
+    testWidgets(
+      'distant regroup opens at top and bounds tile builds with $additionalGroups extra supplier groups',
+      (tester) async {
+        const target = 3236;
+        const firstCode = 1004178 - target;
+        final scroll = await openSupplierOccurrence(
+          tester,
+          count: 3696,
+          target: target,
+          itemName: (i, code) => i > 50 && i.isOdd ? 'Stock item $code' : null,
+          additionalSupplierGroups: additionalGroups,
+        );
+        final controller = currentReport();
+        if (additionalGroups == 8) {
+          expect(controller.visibleRows.rows, hasLength(549));
+        }
+        var builds = 0;
+        final previous = debugOnRebuildDirtyWidget;
+        debugOnRebuildDirtyWidget = (element, builtOnce) {
+          previous?.call(element, builtOnce);
+          if (element.widget is SuppliersByItemDisplayTile) builds++;
+        };
+        addTearDown(() => debugOnRebuildDirtyWidget = previous);
+        Future<void> regroup(
+          SuppliersByItemGroup group, {
+          bool expectTop = true,
+        }) async {
+          await openView(tester);
+          builds = 0;
+          await selectView(tester, group);
+          await doneWithView(tester);
+          expect(builds, inExclusiveRange(0, 128));
+          if (expectTop) expectReportAtTop(tester);
+          expect(
+            tester.widget<HeaderQuickChip>(viewButton).focusNode!.hasFocus,
+            isTrue,
+          );
+        }
+
+        await regroup(SuppliersByItemGroup.template);
+        expect(
+          controller.visibleRows.indexByKey[(nodeId: regroupSource)],
+          greaterThan(3000),
+        );
+        expect(reportRow(regroupSource), findsNothing);
+        if (additionalGroups == 8) {
+          // Read the original pair again by ordinary scrolling. Its old Item
+          // offset is now far beyond the entire 549-row Supplier projection.
+          await physicalBottom(tester, scroll);
+          final pair = reportRow(regroupSource);
+          await tester.scrollUntilVisible(
+            pair,
+            -500,
+            scrollable: find.byWidgetPredicate(
+              (w) => w is Scrollable && w.controller == scroll,
+            ),
+            maxScrolls: 180,
+          );
+          await tester.pumpAndSettle();
+          scroll.jumpTo(
+            scroll.offset +
+                tester.getTopLeft(pair).dy -
+                pinnedBottom(tester) +
+                4,
+          );
+          await tester.pumpAndSettle();
+          expect(
+            tester.getTopLeft(pair).dy,
+            closeTo(pinnedBottom(tester) - 4, .5),
+          );
+          expect(scroll.offset, greaterThan(100000));
+          await regroup(SuppliersByItemGroup.supplier, expectTop: false);
+          expect(
+            tester.getTopLeft(pairOccurrence(regroupSource)).dy,
+            closeTo(pinnedBottom(tester), .5),
+          );
+          expect(controller.visibleRows.rows, hasLength(549));
+          await regroup(SuppliersByItemGroup.template);
+        }
+        // Read an Item whose supplier is many groups below the top.
+        final code = firstCode + 7;
+        final item = reportRow('item:$code');
+        await tester.ensureVisible(item);
+        await tester.pumpAndSettle();
+        scroll.jumpTo(
+          scroll.offset + tester.getTopLeft(item).dy - pinnedBottom(tester) + 4,
+        );
+        await tester.pumpAndSettle();
+        expect(
+          tester.getTopLeft(item).dy,
+          closeTo(pinnedBottom(tester) - 4, .5),
+        );
+        await regroup(SuppliersByItemGroup.supplier);
+        final destination = controller.visibleRows.rows.indexWhere(
+          (row) => row.pairNode?.row.nodeId == 'supplier:$code:Vendor 7',
+        );
+        expect(destination, greaterThan(additionalGroups == 8 ? 450 : 50));
+      },
+    );
+  }
+
+  testWidgets(
+    'opening at top discards the old occurrence across search, refresh, Fields, sort and regroup',
+    (tester) async {
+      await openSupplierOccurrence(
+        tester,
+        count: 480,
+        target: 425,
+        itemName: (_, code) => 'Stock item $code',
+        purchaseActivity: true,
+      );
+      await openView(tester);
+      await selectView(tester, SuppliersByItemGroup.template);
+      await doneWithView(tester);
+      await tester.enterText(find.byType(TextField), 'Vendor 21');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Clear search query'));
+      await tester.pumpAndSettle();
+      expectReportAtTop(tester);
+
+      // Clearing search in the original grouping must not recall its old
+      // collapsed-header browse position after the distant grouping change.
+      await tester.enterText(find.byType(TextField), 'Vendor 21');
+      await tester.pumpAndSettle();
+      await openView(tester);
+      await selectView(tester, SuppliersByItemGroup.supplier);
+      await doneWithView(tester);
+      await tester.tap(find.byTooltip('Clear search query'));
+      await tester.pumpAndSettle();
+      expectReportAtTop(tester);
+      await openView(tester);
+      await selectView(tester, SuppliersByItemGroup.template);
+      await doneWithView(tester);
+
+      final previousLoad = api.load;
+      api.load = () async => (await previousLoad())
+          .where((node) => node.row.nodeId != 'item:1004178')
+          .toList();
+      await tester.tap(find.byTooltip('Refresh report'));
+      await tester.pumpAndSettle();
+      expect(api.requests, hasLength(2));
+      expect(
+        currentReport().visibleRows.indexByKey.containsKey((
+          nodeId: 'item:1004178',
+        )),
+        isFalse,
+      );
+      expectReportAtTop(tester);
+      await currentReport().setFieldVisible(
+        SuppliersByItemField.itemProjected,
+        false,
+      );
+      await tester.pumpAndSettle();
+      expectReportAtTop(tester);
+      await openView(tester);
+      await selectView(tester, SuppliersByItemSortDirection.asc);
+      await doneWithView(tester);
+      expectReportAtTop(tester);
+      await openView(tester);
+      await selectView(tester, SuppliersByItemGroup.supplier);
+      await doneWithView(tester);
+      expectReportAtTop(tester);
+    },
+  );
+
+  testWidgets(
+    'opening at top forgets both browse positions when switching groups during search',
+    (tester) async {
+      await openSupplierOccurrence(
+        tester,
+        count: 720,
+        target: 600,
+        itemName: (_, code) => 'Stock item $code',
+        purchaseActivity: true,
+      );
+      await openView(tester);
+      await selectView(tester, SuppliersByItemGroup.template);
+      await selectView(tester, SuppliersByItemGroup.supplier);
+      await doneWithView(tester);
+      expectReportAtTop(tester);
+      for (final group in [
+        SuppliersByItemGroup.template,
+        SuppliersByItemGroup.supplier,
+      ]) {
+        await tester.enterText(find.byType(TextField), 'Vendor 21');
+        await tester.pumpAndSettle();
+        await openView(tester);
+        await selectView(tester, group);
+        await doneWithView(tester);
+        await tester.tap(find.byTooltip('Clear search query'));
+        await tester.pumpAndSettle();
+        expectReportAtTop(tester);
+      }
+    },
+  );
+
+  Future<void> regroupTo(
+    WidgetTester tester,
+    SuppliersByItemGroup group,
+  ) async {
+    await openView(tester);
+    await selectView(tester, group);
+    await doneWithView(tester);
+  }
+
+  testWidgets(
+    'FR-01 an unmapped Supplier heading that opens at top cannot return on search clear',
+    (tester) async {
+      String code(int i) => 'I${i.toString().padLeft(3, '0')}';
+      String vendor(int i) => 'V${i.toString().padLeft(3, '0')}';
+      api.load = () async => SuppliersByItemNode.parseRows([
+        for (var i = 0; i < 202; i++) ...[
+          {
+            'node_id': 'item:${code(i)}',
+            'item_code': code(i),
+            'balance_qty': 202 - i,
+            'stock_uom': 'Nos',
+            'supplier_count': 1,
+          },
+          {
+            'node_id': 'supplier:${code(i)}:${vendor(i)}',
+            'parent_id': 'item:${code(i)}',
+            'supplier': vendor(i),
+            'item_code': code(i),
+          },
+        ],
+      ]);
+      await openReport(
+        tester,
+        size: const Size(411, 890),
+        fontFamily: reportFont,
+      );
+      await tester.pumpAndSettle();
+      final controller = currentReport();
+      await regroupTo(tester, SuppliersByItemGroup.supplier);
+      controller.collapseAll();
+      await tester.pumpAndSettle();
+      final scroll = reportScroll(tester);
+      final heading = controller.visibleRows.rows.singleWhere(
+        (row) => row.group?.label == 'V150',
+      );
+      final headingRow = find.byKey(
+        ValueKey<SuppliersByItemRowKey>(heading.key),
+      );
+      await tester.scrollUntilVisible(
+        headingRow,
+        640,
+        scrollable: find.byWidgetPredicate(
+          (w) => w is Scrollable && w.controller == scroll,
+        ),
+      );
       await tester.pumpAndSettle();
       scroll.jumpTo(
         scroll.offset +
-            tester.getTopLeft(occurrence).dy -
+            tester.getTopLeft(headingRow).dy -
             pinnedBottom(tester) +
-            4,
+            2,
       );
       await tester.pumpAndSettle();
-      final toolbar = tester.renderObject<RenderSliverPersistentHeader>(
-        find.byKey(
-          tester
-              .widget<DocTypeListHeader>(find.byType(DocTypeListHeader))
-              .sliverKey!,
-        ),
-      );
-      expect(toolbar.geometry!.paintExtent, closeTo(toolbar.minExtent, .5));
-      expect(
-        tester.getBottomLeft(occurrence).dy,
-        greaterThan(pinnedBottom(tester)),
-      );
-      expect(
-        tester.getTopLeft(occurrence).dy,
-        lessThanOrEqualTo(pinnedBottom(tester)),
-      );
-      expect(viewButton.hitTestable(), findsOneWidget);
-      await openView(tester);
+      expect(scroll.offset, greaterThan(5000));
 
-      var tileBuilds = 0;
-      final previous = debugOnRebuildDirtyWidget;
-      debugOnRebuildDirtyWidget = (element, builtOnce) {
-        previous?.call(element, builtOnce);
-        if (element.widget is SuppliersByItemDisplayTile) tileBuilds++;
-      };
-      addTearDown(() => debugOnRebuildDirtyWidget = previous);
-      await selectView(tester, SuppliersByItemGroup.template);
-      await doneWithView(tester);
-      expect(
-        controller.visibleRows.indexByKey[(nodeId: source)],
-        greaterThan(3000),
-      );
-      expect(
-        tester.getTopLeft(reportRow(source)).dy,
-        closeTo(pinnedBottom(tester), .5),
-      );
-      expect(tileBuilds, lessThan(128));
-      final itemPixels = scroll.offset;
-      final nextItem = reportRow('item:${firstCode + target + 1}');
-      final nextTop = tester.getTopLeft(nextItem).dy;
-      scroll.jumpTo(itemPixels + 100);
+      await regroupTo(tester, SuppliersByItemGroup.template);
+      expectReportAtTop(tester);
+      await tester.enterText(find.byType(TextField), 'V001');
       await tester.pumpAndSettle();
-      expect(tester.getTopLeft(nextItem).dy, closeTo(nextTop - 100, .5));
-      scroll.jumpTo(itemPixels);
-      await tester.pumpAndSettle();
-
-      await openView(tester);
-      tileBuilds = 0;
-      await selectView(tester, SuppliersByItemGroup.supplier);
-      await doneWithView(tester);
-      expect(
-        tester.getTopLeft(pairOccurrence(source)).dy,
-        closeTo(pinnedBottom(tester), .5),
-      );
-      expect(tileBuilds, lessThan(128));
-      final supplierPixels = scroll.offset;
-      final supplierTop = tester.getTopLeft(pairOccurrence(source)).dy;
-      scroll.jumpTo(supplierPixels + 80);
-      await tester.pumpAndSettle();
-      expect(
-        tester.getTopLeft(pairOccurrence(source)).dy,
-        closeTo(supplierTop - 80, .5),
-      );
-      scroll.jumpTo(supplierPixels);
-      await tester.pumpAndSettle();
-      await openView(tester);
-      await selectView(tester, SuppliersByItemGroup.template);
-      await doneWithView(tester);
-      expect(
-        tester.getTopLeft(reportRow(source)).dy,
-        closeTo(pinnedBottom(tester), .5),
-      );
-      tileBuilds = 0;
-      scroll.jumpTo(0);
-      await tester.pumpAndSettle();
-      expect(scroll.offset, 0);
-      expect(reportRow('item:$firstCode').hitTestable(), findsOneWidget);
-      expect(tileBuilds, lessThan(128));
-      await openView(tester);
-      await selectView(tester, SuppliersByItemGroup.supplier);
-      await doneWithView(tester);
-      await openView(tester);
-      await selectView(tester, SuppliersByItemGroup.template);
-      await doneWithView(tester);
-      expect(scroll.offset, 0);
-      expect(reportRow('item:$firstCode').hitTestable(), findsOneWidget);
+      await regroupTo(tester, SuppliersByItemGroup.supplier);
+      final maxBuilds = await _maxTileBuildsPerFrame(tester, () async {
+        await tester.tap(find.byTooltip('Clear search query'));
+        await tester.pumpAndSettle();
+      });
+      expect(maxBuilds, inExclusiveRange(0, 128));
+      expectReportAtTop(tester);
+      expect(headingRow, findsNothing);
     },
   );
+
+  testWidgets(
+    'FR-02 a single-variant template heading keeps its place on a nearby regroup',
+    (tester) async {
+      String id(int i) => i.toString().padLeft(2, '0');
+      api.load = () async => SuppliersByItemNode.parseRows([
+        for (var i = 0; i < 40; i++) ...[
+          {
+            'node_id': 'template:T${id(i)}',
+            'balance_qty': 40 - i,
+            'stock_uom': 'Nos',
+          },
+          {
+            'node_id': 'item:V${id(i)}',
+            'parent_id': 'template:T${id(i)}',
+            'balance_qty': 40 - i,
+            'stock_uom': 'Nos',
+            'supplier_count': 1,
+          },
+          {
+            'node_id': 'supplier:V${id(i)}:Vendor',
+            'parent_id': 'item:V${id(i)}',
+            'supplier': 'Vendor',
+            'item_code': 'V${id(i)}',
+          },
+        ],
+      ]);
+      await openReport(
+        tester,
+        size: const Size(411, 890),
+        fontFamily: reportFont,
+      );
+      await tester.pumpAndSettle();
+      final controller = currentReport();
+      final scroll = reportScroll(tester);
+      final template = reportRow('template:T04');
+      await tester.scrollUntilVisible(
+        template,
+        180,
+        scrollable: find.byWidgetPredicate(
+          (w) => w is Scrollable && w.controller == scroll,
+        ),
+      );
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 3; i++) {
+        scroll.jumpTo(
+          scroll.offset +
+              tester.getTopLeft(template).dy -
+              pinnedBottom(tester) +
+              2,
+        );
+        await tester.pumpAndSettle();
+      }
+      expect(scroll.offset, greaterThan(0));
+
+      await regroupTo(tester, SuppliersByItemGroup.supplier);
+      final occurrence = controller.visibleRows.rows.singleWhere(
+        (row) => row.isPairOccurrence && row.node.row.itemCode == 'V04',
+      );
+      final destination = find.byKey(
+        ValueKey<SuppliersByItemRowKey>(occurrence.key),
+      );
+      expect(destination, findsOneWidget);
+      expect(scroll.offset, greaterThan(0));
+      expect(
+        tester.getTopLeft(destination).dy,
+        closeTo(pinnedBottom(tester), .5),
+      );
+    },
+  );
+
+  for (final scrollEmpty in [true, false]) {
+    testWidgets(
+      'FR-03 regrouping a no-match search keeps the pre-search position (scrolled = $scrollEmpty)',
+      (tester) async {
+        api.load = () async => SuppliersByItemNode.parseRows([
+          for (var i = 0; i < 160; i++) ...[
+            {
+              'node_id': 'item:I$i',
+              'item_code': 'I$i',
+              'balance_qty': 200 - i,
+              'stock_uom': 'Nos',
+              'supplier_count': 1,
+            },
+            {
+              'node_id': 'supplier:I$i:Vendor$i',
+              'parent_id': 'item:I$i',
+              'supplier': 'Vendor$i',
+              'item_code': 'I$i',
+            },
+          ],
+        ]);
+        await openReport(
+          tester,
+          size: const Size(640, 450),
+          fontFamily: reportFont,
+        );
+        await tester.pumpAndSettle();
+        final scroll = reportScroll(tester);
+        scroll.jumpTo(4576);
+        await tester.pumpAndSettle();
+        final browse = scroll.offset;
+        expect(browse, greaterThan(4000));
+        await tester.enterText(find.byType(TextField), 'no-such-product');
+        await tester.pumpAndSettle();
+        if (scrollEmpty) {
+          scroll.position.pointerScroll(40);
+          await tester.pumpAndSettle();
+          expect(scroll.offset, greaterThan(0));
+        }
+        await regroupTo(tester, SuppliersByItemGroup.supplier);
+        await regroupTo(tester, SuppliersByItemGroup.template);
+        await tester.tap(find.byTooltip('Clear search query'));
+        await tester.pumpAndSettle();
+        expect(scroll.offset, closeTo(browse, .5));
+      },
+    );
+  }
+
+  List<SuppliersByItemNode> oneVendorRows(int count) =>
+      SuppliersByItemNode.parseRows([
+        for (var i = 0; i < count; i++) ...[
+          {
+            'node_id': 'item:I$i',
+            'item_code': 'I$i',
+            'balance_qty': 200 - i,
+            'stock_uom': 'Nos',
+            'supplier_count': 1,
+          },
+          {
+            'node_id': 'supplier:I$i:Vendor$i',
+            'parent_id': 'item:I$i',
+            'supplier': 'Vendor$i',
+            'item_code': 'I$i',
+          },
+        ],
+      ]);
+
+  for (final scrollEmpty in [true, false]) {
+    testWidgets(
+      'clearing search restores the kept position of the grouping chosen during search (scrolled = $scrollEmpty)',
+      (tester) async {
+        api.load = () async => SuppliersByItemNode.parseRows([
+          for (var i = 0; i < 160; i++) ...[
+            {
+              'node_id': 'item:I$i',
+              'item_code': 'I$i',
+              'balance_qty': 200 - i,
+              'stock_uom': 'Nos',
+              'supplier_count': 1,
+            },
+            {
+              'node_id': 'supplier:I$i:Vendor',
+              'parent_id': 'item:I$i',
+              'supplier': 'Vendor',
+              'item_code': 'I$i',
+            },
+          ],
+        ]);
+        await openReport(
+          tester,
+          size: const Size(640, 450),
+          fontFamily: reportFont,
+        );
+        await tester.pumpAndSettle();
+        final scroll = reportScroll(tester);
+        await regroupTo(tester, SuppliersByItemGroup.supplier);
+        scroll.jumpTo(1500);
+        await tester.pumpAndSettle();
+        final supplierBrowse = scroll.offset;
+        await regroupTo(tester, SuppliersByItemGroup.template);
+        // The nearby regroup kept the place, so Supplier's position was saved.
+        expect(scroll.offset, greaterThan(0));
+        scroll.jumpTo(0);
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField), 'no-such-product');
+        await tester.pumpAndSettle();
+        if (scrollEmpty) {
+          scroll.position.pointerScroll(40);
+          await tester.pumpAndSettle();
+          expect(scroll.offset, greaterThan(0));
+        }
+        // Search results open at the top in Supplier; the unfiltered
+        // Supplier position is kept for the clear, as in 2.58.2, whether or
+        // not the empty results were scrolled.
+        await regroupTo(tester, SuppliersByItemGroup.supplier);
+        await tester.tap(find.byTooltip('Clear search query'));
+        await tester.pumpAndSettle();
+        expect(scroll.offset, closeTo(supplierBrowse, .5));
+      },
+    );
+  }
+
+  testWidgets(
+    'an unmapped heading opened at top during search keeps the pre-search position',
+    (tester) async {
+      api.load = () async => oneVendorRows(160);
+      await openReport(
+        tester,
+        size: const Size(640, 450),
+        fontFamily: reportFont,
+      );
+      await tester.pumpAndSettle();
+      final scroll = reportScroll(tester);
+      scroll.jumpTo(4576);
+      await tester.pumpAndSettle();
+      final browse = scroll.offset;
+      await tester.enterText(find.byType(TextField), 'Vendor1');
+      await tester.pumpAndSettle();
+      await regroupTo(tester, SuppliersByItemGroup.supplier);
+      scroll.jumpTo(60);
+      await tester.pumpAndSettle();
+      await regroupTo(tester, SuppliersByItemGroup.template);
+      await tester.tap(find.byTooltip('Clear search query'));
+      await tester.pumpAndSettle();
+      expect(scroll.offset, closeTo(browse, .5));
+    },
+  );
+
+  testWidgets(
+    'a template heading during search maps to its variant the search shows',
+    (tester) async {
+      String id(int i) => i.toString().padLeft(2, '0');
+      api.load = () async => SuppliersByItemNode.parseRows([
+        for (var i = 0; i < 30; i++) ...[
+          {
+            'node_id': 'template:T${id(i)}',
+            'balance_qty': 60 - i,
+            'stock_uom': 'Nos',
+          },
+          for (final v in ['A', 'Z']) ...[
+            {
+              'node_id': 'item:$v${id(i)}',
+              'parent_id': 'template:T${id(i)}',
+              'balance_qty': 30 - i,
+              'stock_uom': 'Nos',
+              'supplier_count': 1,
+            },
+            {
+              'node_id': 'supplier:$v${id(i)}:Sup$v${id(i)}',
+              'parent_id': 'item:$v${id(i)}',
+              'supplier': 'Sup$v${id(i)}',
+              'item_code': '$v${id(i)}',
+            },
+          ],
+        ],
+      ]);
+      await openReport(
+        tester,
+        size: const Size(411, 890),
+        fontFamily: reportFont,
+      );
+      await tester.pumpAndSettle();
+      final controller = currentReport();
+      final scroll = reportScroll(tester);
+      await tester.enterText(find.byType(TextField), 'Z');
+      await tester.pumpAndSettle();
+      final template = reportRow('template:T01');
+      expect(template, findsOneWidget);
+      for (var i = 0; i < 3; i++) {
+        scroll.jumpTo(
+          scroll.offset +
+              tester.getTopLeft(template).dy -
+              pinnedBottom(tester) +
+              2,
+        );
+        await tester.pumpAndSettle();
+      }
+      expect(scroll.offset, greaterThan(0));
+      await regroupTo(tester, SuppliersByItemGroup.supplier);
+      final occurrence = controller.visibleRows.rows.singleWhere(
+        (row) => row.isPairOccurrence && row.node.row.itemCode == 'Z01',
+      );
+      final destination = find.byKey(
+        ValueKey<SuppliersByItemRowKey>(occurrence.key),
+      );
+      expect(destination, findsOneWidget);
+      expect(
+        tester.getTopLeft(destination).dy,
+        closeTo(pinnedBottom(tester), .5),
+      );
+    },
+  );
+
+  for (final target in [3, 425]) {
+    testWidgets(
+      'regroup during refresh resolves the occurrence at index $target when rows return',
+      (tester) async {
+        await openSupplierOccurrence(
+          tester,
+          count: 480,
+          target: target,
+          itemName: (_, code) => 'Stock item $code',
+        );
+        final rows = await api.load();
+        final pending = Completer<List<SuppliersByItemNode>>();
+        api.load = () => pending.future;
+        await tester.tap(find.byTooltip('Refresh report'));
+        await tester.pump();
+        // The View sheet can still change grouping while the rows are hidden.
+        await tester.tap(viewButton);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.tap(
+          find.byKey(const ValueKey(SuppliersByItemGroup.template)),
+        );
+        await tester.pump();
+        await tester.tap(find.widgetWithText(TextButton, 'Done'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(currentReport().view.value.group, SuppliersByItemGroup.template);
+        pending.complete(rows);
+        await tester.pumpAndSettle();
+        if (target == 3) {
+          expect(
+            tester.getTopLeft(reportRow(regroupSource)).dy,
+            closeTo(pinnedBottom(tester), .5),
+          );
+        } else {
+          expectReportAtTop(tester);
+        }
+      },
+    );
+  }
+
+  Future<void> checkPendingRegroup(
+    WidgetTester tester, {
+    int target = 425,
+    bool search = false,
+    bool switchBack = false,
+  }) async {
+    final scroll = await openSupplierOccurrence(
+      tester,
+      count: 480,
+      target: target,
+      itemName: (_, code) => 'Stock item $code',
+      additionalSupplierGroups: 0,
+    );
+    final rows = await api.load();
+    final pending = Completer<List<SuppliersByItemNode>>();
+    api.load = () => pending.future;
+    await tester.tap(find.byTooltip('Refresh report'));
+    await tester.pump();
+    final controller = currentReport();
+    final maxBuilds = await _maxTileBuildsPerFrame(tester, () async {
+      // The loading indicator animates until the request completes.
+      await tester.tap(viewButton);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(
+        find.byKey(const ValueKey(SuppliersByItemGroup.template)),
+      );
+      await tester.pump();
+      if (!search) {
+        final sort = find.byKey(
+          const ValueKey(SuppliersByItemSortField.lastPurchase),
+        );
+        await tester.ensureVisible(sort);
+        await tester.tap(sort);
+        await tester.pump();
+      }
+      await tester.tap(find.widgetWithText(TextButton, 'Done'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(controller.view.value.group, SuppliersByItemGroup.template);
+      if (search) {
+        await tester.enterText(find.byType(TextField), 'Vendor 21');
+      } else {
+        expect(
+          controller.view.value.sortField,
+          SuppliersByItemSortField.lastPurchase,
+        );
+        final field = SuppliersByItemField.itemProjected;
+        final shown = controller.fieldVisibility.shows(field);
+        await controller.setFieldVisible(field, !shown);
+        expect(controller.fieldVisibility.shows(field), !shown);
+      }
+      await tester.pump();
+      pending.complete(rows);
+      await tester.pumpAndSettle();
+      if (search) {
+        expect(controller.query.value, 'Vendor 21');
+        expectReportAtTop(tester);
+        if (switchBack) {
+          await openView(tester);
+          await selectView(tester, SuppliersByItemGroup.supplier);
+          await doneWithView(tester);
+        }
+        await tester.tap(find.byTooltip('Clear search query'));
+        await tester.pumpAndSettle();
+        expect(controller.query.value, isEmpty);
+      }
+    });
+    expect(
+      maxBuilds,
+      inExclusiveRange(0, 128),
+      reason: 'settled offset ${scroll.offset}',
+    );
+    if (target == 3) {
+      expect(
+        tester.getTopLeft(reportRow(regroupSource)).dy,
+        closeTo(pinnedBottom(tester), .5),
+      );
+    } else {
+      expectReportAtTop(tester);
+      if (!switchBack) expect(reportRow(regroupSource), findsNothing);
+    }
+    expect(api.requests, hasLength(2));
+  }
+
+  testWidgets(
+    'sort and Fields edits during a pending refresh keep a distant regroup bounded',
+    (tester) => checkPendingRegroup(tester),
+  );
+  testWidgets(
+    'search clear after a pending refresh and regroup forgets the Supplier position',
+    (tester) => checkPendingRegroup(tester, search: true),
+  );
+  testWidgets(
+    'search clear after a pending refresh aligns a nearby regroup at the header',
+    (tester) => checkPendingRegroup(tester, search: true, target: 3),
+  );
+  testWidgets(
+    'switching back during search after a pending refresh cannot revive the old grouping position',
+    (tester) => checkPendingRegroup(tester, search: true, switchBack: true),
+  );
+
+  for (final pageDown in [true, false]) {
+    final action = pageDown ? 'Page Down' : 'an accessibility tap';
+    testWidgets(
+      '$action after closing View acts on the new top rows without a later jump',
+      (tester) async {
+        const target = 700;
+        final scroll = await openSupplierOccurrence(
+          tester,
+          count: 900,
+          target: target,
+          itemName: (_, code) => 'Stock item $code',
+          purchaseActivity: true,
+        );
+        await openView(tester);
+        await tester.tap(
+          find.byKey(const ValueKey(SuppliersByItemGroup.template)),
+        );
+        await tester.pump();
+        await tester.tap(find.widgetWithText(TextButton, 'Done'));
+        for (
+          var frame = 0;
+          frame < 30 && find.byType(BottomSheet).evaluate().isNotEmpty;
+          frame++
+        ) {
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+        await tester.pump();
+        expect(find.byType(BottomSheet), findsNothing);
+        expect(
+          tester.widget<HeaderQuickChip>(viewButton).focusNode!.hasFocus,
+          isTrue,
+        );
+        if (pageDown) {
+          await tester.sendKeyEvent(LogicalKeyboardKey.pageDown);
+          for (var i = 0; i < 24; i++) {
+            await tester.pump(const Duration(milliseconds: 16));
+          }
+          final pixels = scroll.offset;
+          expect(
+            pixels,
+            inExclusiveRange(0, scroll.position.viewportDimension + 1),
+          );
+          await tester.pumpAndSettle();
+          expect(scroll.offset, closeTo(pixels, .5));
+        } else {
+          final code = 1004178 - target + 3;
+          final label = find.bySemanticsLabel(RegExp('^Item $code,'));
+          final node = tester.getSemantics(label);
+          final id = node.id;
+          final owner = node.owner!;
+          owner.performAction(id, SemanticsAction.didGainAccessibilityFocus);
+          await tester.pumpAndSettle();
+          expect(tester.getSemantics(label).id, id);
+          final key = (nodeId: 'item:$code');
+          expect(currentReport().isBranchExpanded(key), isFalse);
+          owner.performAction(id, SemanticsAction.tap);
+          await tester.pumpAndSettle();
+          expect(currentReport().isBranchExpanded(key), isTrue);
+          expect(reportRow('item:$code').hitTestable(), findsOneWidget);
+        }
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.windows),
+    );
+  }
 
   testWidgets(
     'regroup and sort restore the same pair below the painted header',
@@ -1437,7 +2687,9 @@ void main() {
     await tester.pumpAndSettle();
     reportScroll(tester).jumpTo(1800);
     await tester.pumpAndSettle();
-    await tester.binding.setSurfaceSize(const Size(320, 210));
+    // Leave room for a supplier heading and a row, with less than 144 dp
+    // below the search field so that search scrolls away with the toolbar.
+    await tester.binding.setSurfaceSize(const Size(320, 180));
     await tester.pumpAndSettle();
 
     final viewport = tester.renderObject<RenderViewport>(find.byType(Viewport));
@@ -1568,7 +2820,9 @@ void main() {
       await tester.pumpAndSettle();
       scroll.jumpTo(200);
       await tester.pumpAndSettle();
-      final base = pinnedBottom(tester, includesSupplier: false);
+      // Search unpins in both short viewports. Align the heading to the
+      // toolbar that stays pinned as the supplier overlay appears and disappears.
+      final base = pinnedBottom(tester, includesSearch: false);
       scroll.jumpTo(scroll.offset + tester.getTopLeft(group).dy - base + 2);
       await tester.pumpAndSettle();
       final heading = find.semantics.byLabel(
@@ -1578,6 +2832,10 @@ void main() {
       for (final space in [132.0, 72.0, 132.0]) {
         await tester.binding.setSurfaceSize(Size(390, base + space));
         await tester.pumpAndSettle();
+        expect(
+          pinnedBottom(tester, includesSupplier: false),
+          closeTo(base, .5),
+        );
         expect(tester.getTopLeft(group).dy, closeTo(base - 2, 0.5));
         expect(
           pinnedBottom(tester),
@@ -1684,7 +2942,7 @@ void main() {
     Navigator.of(tester.element(balanceField)).pop();
     await tester.pumpAndSettle();
     expect(reportRow('item:KIT'), findsNothing);
-    expect(currentReport().summary.itemCount, 0);
+    expect(currentReport().nodes, isEmpty);
     expect(api.requests, hasLength(1));
 
     api.columns = null;
@@ -1749,7 +3007,7 @@ void main() {
     await openReport(tester);
     await tester.pumpAndSettle();
     final report = currentReport();
-    const moved = SuppliersByItemField.summaryItemCount;
+    const moved = SuppliersByItemField.searchMatchCount;
     expect(report.fieldsSessionOnly.value, isTrue);
     await report.setFieldVisible(moved, false);
     expect(report.fieldVisibility.shows(moved), isFalse);
@@ -1965,14 +3223,148 @@ void main() {
       );
       await tester.pumpAndSettle();
     }
-    scroll.jumpTo(
-      scroll.offset +
+    // A jump can collapse the title or change the floating toolbar's height.
+    for (var attempt = 0; attempt < 4; attempt++) {
+      final delta =
           tester.getTopLeft(anchorRow(index)).dy -
           toolbarBottom(tester) +
-          offset,
-    );
-    await tester.pumpAndSettle();
+          offset;
+      if (delta.abs() <= .5) break;
+      scroll.jumpTo(scroll.offset + delta);
+      await tester.pumpAndSettle();
+    }
     return scroll;
+  }
+
+  String? wrappedName(int index, String code) => index <= 24
+      ? null
+      : 'Stock item $code with an unabridged description that wraps '
+            'across multiple lines on a phone screen.';
+
+  for (final (count, target) in [(260, 215), (220, 165)]) {
+    testWidgets(
+      'clearing search at the bottom restores the last of $count items',
+      (tester) async {
+        final scroll = await openItemGrouping(
+          tester,
+          count: count,
+          target: target,
+          itemName: count == 220
+              ? wrappedName
+              : (i, code) => i > 45 && i < 205 ? 'Stock item $code' : null,
+        );
+        await physicalBottom(tester, scroll);
+        final lastItem = reportRow('item:${1004178 - target + count - 1}');
+        final before = tester.getRect(lastItem);
+        expect(before.top, lessThan(890));
+        expect(before.bottom, greaterThan(pinnedBottom(tester)));
+
+        await tester.enterText(find.byType(TextField), 'AMARNY');
+        await tester.pumpAndSettle();
+        expect(lastItem, findsNothing);
+        await tester.tap(find.byTooltip('Clear search query'));
+        await tester.pumpAndSettle();
+        expect(scroll.position.extentAfter, closeTo(0, .5));
+        expect(tester.getTopLeft(lastItem).dy, closeTo(before.top, .5));
+      },
+    );
+  }
+
+  for (final interrupted in [false, true]) {
+    testWidgets(
+      'deep manual scroll survives search clear with wheel input = $interrupted',
+      (tester) async {
+        final scroll = await openItemGrouping(
+          tester,
+          count: 600,
+          target: 515,
+          itemName: wrappedName,
+        );
+        scroll.jumpTo(16000);
+        await tester.pumpAndSettle();
+        final before = readableRowTops(tester);
+        final row = before.entries.firstWhere(
+          (entry) => entry.value > pinnedBottom(tester) + 55,
+        );
+        final tile = projectedRow(row.key);
+        await tester.enterText(find.byType(TextField), 'AMARNY');
+        await tester.pumpAndSettle();
+        expect(tile, findsNothing);
+        await tester.tap(find.byTooltip('Clear search query'));
+        for (var i = 0; i < (interrupted ? 6 : 3); i++) {
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+        if (interrupted) {
+          scroll.position.pointerScroll(55);
+          await tester.pumpAndSettle();
+        }
+        expect(
+          tester.getTopLeft(tile).dy,
+          closeTo(row.value - (interrupted ? 55 : 0), .5),
+        );
+      },
+    );
+  }
+
+  for (final reverse in [true, false]) {
+    final change = reverse ? 'reversing sort' : 'selecting another sort field';
+    testWidgets('$change preserves a partially read row', (tester) async {
+      final count = reverse ? 121 : 100;
+      final anchor = reverse ? 60 : 40;
+      final hiddenExtent = reverse ? 65.0 : 24.0;
+      api.load = () async => SuppliersByItemNode.parseRows([
+        for (var i = 0; i < count; i++) ...[
+          {
+            'node_id': 'item:ROW-$i',
+            'item_code': 'ROW-$i',
+            'balance_qty': count - i,
+            'supplier_count': 1,
+            'stock_uom': 'Nos',
+            if (reverse && i == anchor)
+              'item_name':
+                  'Replacement steel handle with mounting hardware '
+                      'for motor assembly ' *
+                  4,
+          },
+          {
+            'node_id': 'supplier:ROW-$i:VENDOR',
+            'parent_id': 'item:ROW-$i',
+            'supplier': 'VENDOR',
+            // On Last Purchase, a neighbour moves far outside the cache
+            // while ROW-40 moves by just one slot.
+            if (!reverse)
+              'last_purchase_date': DateTime.utc(2025, 12, 1)
+                  .subtract(Duration(days: i == 44 ? 5 : i))
+                  .toIso8601String()
+                  .split('T')
+                  .first,
+          },
+        ],
+      ]);
+      await openReport(
+        tester,
+        size: reverse ? const Size(411, 890) : const Size(390, 720),
+        fontFamily: reverse ? reportFont : null,
+      );
+      await tester.pumpAndSettle();
+      await scrollIntoRow(tester, anchor, hiddenExtent);
+      final row = anchorRow(anchor);
+      double top() => tester.getTopLeft(row).dy - pinnedBottom(tester);
+      expect(top(), closeTo(-hiddenExtent, .5));
+      expect(tester.getSize(row).height, greaterThan(hiddenExtent));
+      await openView(tester);
+      if (reverse) {
+        await selectView(tester, SuppliersByItemSortDirection.asc);
+      } else {
+        await selectView(tester, SuppliersByItemSortField.lastPurchase);
+      }
+      await doneWithView(tester);
+      expect(
+        currentReport().visibleRows.indexByKey[(nodeId: 'item:ROW-$anchor')],
+        reverse ? anchor : anchor + 1,
+      );
+      expect(top(), closeTo(-hiddenExtent, .5));
+    });
   }
 
   testWidgets('changing and resetting fields preserves the visible row', (
@@ -2004,6 +3396,7 @@ void main() {
     final toolbarBottom = pinnedBottom(tester);
     final originalOffset = tester.getTopLeft(anchor).dy;
     final originalPixels = scroll.offset;
+    expect(originalOffset, closeTo(toolbarBottom - 8, .5));
 
     final fields = find.byTooltip('Fields');
     final sheet = find.byType(DraggableScrollableSheet);
@@ -2364,39 +3757,6 @@ void main() {
     });
   }
 
-  testWidgets('Suppliers summary shows zero suppliers for a BOM-only match', (
-    tester,
-  ) async {
-    final semantics = tester.ensureSemantics();
-    api.load = () async => SuppliersByItemNode.parseRows([
-      {'node_id': 'item:KIT', 'item_code': 'KIT', 'supplier_count': 0},
-      {'node_id': 'bom:KIT', 'parent_id': 'item:KIT'},
-      {
-        'node_id': 'component:PART',
-        'parent_id': 'bom:KIT',
-        'item_code': 'PART',
-      },
-      {
-        'node_id': 'supplier:PART:JOAP',
-        'parent_id': 'component:PART',
-        'supplier': 'JOAP',
-      },
-    ]);
-    await openReport(
-      tester,
-      filters: const SuppliersByItemFilters(
-        suppliers: ['JOAP'],
-        expandBom: true,
-      ),
-    );
-    await currentReport().setGroup(SuppliersByItemGroup.supplier);
-    await tester.pumpAndSettle();
-    expect(find.text('Suppliers'), findsOneWidget);
-    expect(find.bySemanticsLabel('Suppliers 0'), findsOneWidget);
-    expect(find.text('JOAP'), findsOneWidget);
-    semantics.dispose();
-  });
-
   for (final scale in [1.0, 1.3]) {
     testWidgets('drawer and Item Overview use the standard header at $scale', (
       tester,
@@ -2497,69 +3857,8 @@ void main() {
     });
   }
 
-  testWidgets('View and summary use the same returned balance caption', (
-    tester,
-  ) async {
-    api.columns = const [(fieldname: 'balance_qty', label: 'Bilanzmenge')];
-    api.load = () async => SuppliersByItemNode.parseRows([
-      {'node_id': 'item:SKU', 'balance_qty': 12, 'stock_uom': 'Nos'},
-      {'node_id': 'item:BOX', 'balance_qty': 3, 'stock_uom': 'Box'},
-    ]);
-    await openReport(tester, hideFields: [SuppliersByItemField.itemBalance]);
-    await tester.pumpAndSettle();
-
-    final summary = find.widgetWithText(TextButton, 'Bilanzmenge by Stock UOM');
-    expect(summary.hitTestable(), findsOneWidget);
-    await openView(tester);
-    const field = SuppliersByItemField.summaryStockByUom;
-    expect(
-      within(find.byKey(const ValueKey(field)), 'Bilanzmenge'),
-      findsOneWidget,
-    );
-    await selectView(tester, field);
-    await doneWithView(tester);
-    expect(summary.hitTestable(), findsNothing);
-  });
-
   testWidgets(
-    'Balance Qty by Stock UOM requires two known units with a Balance Qty',
-    (tester) async {
-      var includeBoxBalance = false;
-      api.load = () async => SuppliersByItemNode.parseRows([
-        {'node_id': 'item:A', 'balance_qty': 12, 'stock_uom': 'Nos'},
-        {
-          'node_id': 'item:B',
-          'total_qty_received': 1,
-          if (includeBoxBalance) 'balance_qty': 0,
-          'stock_uom': 'Box',
-        },
-        {'node_id': 'item:C', 'balance_qty': 5},
-        {'node_id': 'bom:A', 'parent_id': 'item:A'},
-        {
-          'node_id': 'component:A:C',
-          'parent_id': 'bom:A',
-          'balance_qty': 3,
-          'stock_uom': 'Kg',
-        },
-      ]);
-      await openReport(tester);
-      await tester.pumpAndSettle();
-
-      final stock = find.widgetWithText(TextButton, 'Balance Qty by Stock UOM');
-      expect(stock, findsNothing);
-      includeBoxBalance = true;
-      await tester.tap(find.byTooltip('Refresh report'));
-      await tester.pumpAndSettle();
-      await tester.tap(stock);
-      await tester.pumpAndSettle();
-      expect(find.text('12 Nos').hitTestable(), findsOneWidget);
-      expect(find.text('0 Box').hitTestable(), findsOneWidget);
-      expect(find.text('3 Kg').hitTestable(), findsNothing);
-    },
-  );
-
-  testWidgets(
-    'mixed stock summary, View and local search preserve browse state',
+    'View and local search preserve browse state across stock units',
     (tester) async {
       api.load = () async => SuppliersByItemNode.parseRows([
         ..._acp25Rows,
@@ -2572,19 +3871,6 @@ void main() {
       ]);
       await openReport(tester);
       await tester.pumpAndSettle();
-      final summary = find
-          .ancestor(of: find.text('Suppliers'), matching: find.byType(Wrap))
-          .first;
-      expect(within(summary, 'No supplier recorded'), findsOneWidget);
-      final stock = find.widgetWithText(TextButton, 'Balance Qty by Stock UOM');
-      expect(tester.getSize(stock).height, greaterThanOrEqualTo(48));
-      await tester.tap(stock);
-      await tester.pumpAndSettle();
-      expect(find.text('1 Kg').hitTestable(), findsOneWidget);
-      expect(find.text('12.5 Nos').hitTestable(), findsOneWidget);
-      Get.back<void>();
-      await tester.pumpAndSettle();
-
       final input = find.byType(TextField);
       await tester.enterText(input, 'cafe other');
       await tester.pumpAndSettle();
@@ -2601,10 +3887,7 @@ void main() {
       await tester.enterText(input, 'missing:code');
       await tester.pumpAndSettle();
       expect(find.text('No matches for “missing:code”'), findsOneWidget);
-      expect(
-        find.text('End of list · Totals for all loaded items'),
-        findsOneWidget,
-      );
+      expect(find.text('End of list'), findsOneWidget);
       expect(find.text('No items found for these filters'), findsNothing);
       await tester.tap(find.byTooltip('Clear search query'));
       await tester.pumpAndSettle();
@@ -2629,27 +3912,24 @@ void main() {
     },
   );
 
-  testWidgets(
-    'short keyboard viewport scrolls summary away and reaches footer',
-    (tester) async {
-      loadAnchorRows((index) => 'Item $index');
-      await openReport(tester, size: const Size(680, 340));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byType(TextField));
-      tester.view.devicePixelRatio = 1;
-      tester.view.viewInsets = const FakeViewPadding(bottom: 126);
-      addTearDown(tester.view.reset);
-      await tester.pumpAndSettle();
-      final view = find.byType(CustomScrollView);
-      final scroll = tester.widget<CustomScrollView>(view).controller!;
-      scroll.jumpTo(scroll.position.maxScrollExtent);
-      await tester.pumpAndSettle();
-      expect(find.text('Suppliers').hitTestable(), findsNothing);
-      expect(viewButton.hitTestable(), findsOneWidget);
-      expect(find.text('780 Nos').hitTestable(), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
+  testWidgets('short keyboard viewport reaches the end marker', (tester) async {
+    loadAnchorRows((index) => 'Item $index');
+    await openReport(tester, size: const Size(680, 340));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(TextField));
+    tester.view.devicePixelRatio = 1;
+    tester.view.viewInsets = const FakeViewPadding(bottom: 126);
+    addTearDown(tester.view.reset);
+    await tester.pumpAndSettle();
+    final view = find.byType(CustomScrollView);
+    final scroll = tester.widget<CustomScrollView>(view).controller!;
+    scroll.jumpTo(scroll.position.maxScrollExtent);
+    await tester.pumpAndSettle();
+    expect(find.text('Suppliers').hitTestable(), findsNothing);
+    expect(viewButton.hitTestable(), findsOneWidget);
+    expect(find.text('End of list').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   void expectFirstVisibleRow(WidgetTester tester, int index) {
     final header = toolbarBottom(tester);
@@ -2777,9 +4057,12 @@ void main() {
     tester,
   ) async {
     loadAnchorRows(
-      (index) => index == 2
-          ? List.filled(60, 'Wrapping description').join(' ')
-          : 'Item $index',
+      (index) => switch (index) {
+        2 => List.filled(60, 'Wrapping description').join(' '),
+        // Stock sorts by UOM. Leave space to align the row after it shrinks.
+        >= 30 => 'Yards',
+        _ => 'Item $index',
+      },
       balanceUnits: true,
     );
     await openReport(tester, size: const Size(320, 500));
@@ -2856,52 +4139,27 @@ void main() {
     expect(underlying.offset, lessThan(before));
   });
 
-  testWidgets(
-    'keeps the reading anchor as scaled summary cells wrap and disappear',
-    (tester) async {
-      tester.platformDispatcher.textScaleFactorTestValue = 1.3;
-      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-      loadAnchorRows((index) => 'Item $index');
-      await openReport(tester, size: const Size(320, 950));
-      await tester.pumpAndSettle();
-      await scrollIntoRow(tester, 8, 8);
-      expectFirstVisibleRow(tester, 8);
-      final originalBottom = toolbarBottom(tester);
-      expect(
-        tester.getTopLeft(anchorRow(8)).dy,
-        closeTo(originalBottom - 8, 0.5),
-      );
-
-      for (final field in [
-        SuppliersByItemField.summaryItemCount,
-        SuppliersByItemField.summarySupplierCount,
-        SuppliersByItemField.summaryNoDirectCount,
-        SuppliersByItemField.summaryStockByUom,
-      ]) {
-        await currentReport().setFieldVisible(field, false);
-      }
-      await tester.pumpAndSettle();
-      await tester.pump();
-      final smallerBottom = toolbarBottom(tester);
-      expect(smallerBottom, lessThan(originalBottom));
-      expect(find.text('Suppliers'), findsNothing);
-      expect(find.byType(TextField).hitTestable(), findsOneWidget);
-      expectFirstVisibleRow(tester, 8);
-      expect(
-        tester.getTopLeft(anchorRow(8)).dy,
-        closeTo(smallerBottom - 8, 0.5),
-      );
-
-      await currentReport().resetViewDisplayOptions();
-      await tester.pumpAndSettle();
-      await tester.pump();
-      expect(toolbarBottom(tester), closeTo(originalBottom, 0.5));
-      expect(
-        tester.getTopLeft(anchorRow(8)).dy,
-        closeTo(originalBottom - 8, 0.5),
-      );
-    },
-  );
+  testWidgets('search follows the filters in a shorter 411 dp report header', (
+    tester,
+  ) async {
+    loadAnchorRows((index) => 'Item $index');
+    await openReport(
+      tester,
+      size: const Size(411, 914),
+      fontFamily: reportFont,
+    );
+    await tester.pumpAndSettle();
+    final viewport = tester.renderObject<RenderViewport>(find.byType(Viewport));
+    final toolbar = viewport.firstChild!;
+    final search = viewport.childAfter(toolbar)!;
+    final input = tester.getRect(find.byType(TextField));
+    expect(input.top, closeTo(toolbar.geometry!.paintExtent + 4, .5));
+    expect(input.height, greaterThanOrEqualTo(48));
+    expect(search.geometry!.scrollExtent, closeTo(input.height + 12, .5));
+    // The previous expanded toolbar, chip band and results header occupied 320 dp.
+    expect(tester.getTopLeft(anchorRow(0)).dy, lessThan(320));
+    expect(find.text('Suppliers'), findsNothing);
+  });
 
   testWidgets('a user drag cancels pending restoration of an evicted row', (
     tester,
@@ -3130,62 +4388,23 @@ void main() {
     );
   });
 
-  testWidgets('clearing local search restores a footer-only viewport', (
+  testWidgets('clearing local search restores the end of the item list', (
     tester,
   ) async {
-    api.load = () async => SuppliersByItemNode.parseRows([
-      for (var index = 0; index < 20; index++)
-        {
-          'node_id': 'item:ROW-$index',
-          'balance_qty': index + 1,
-          'projected_qty': index + 1,
-          'open_order_qty': 1,
-          'reorder_qty': 1,
-          'draft_order_qty': 1,
-          'total_qty_received': 1,
-          'stock_uom': index.isEven ? 'Kg' : 'Nos',
-        },
-    ]);
-    await openReport(
-      tester,
-      size: const Size(390, 390),
-      hideFields: [
-        SuppliersByItemField.summaryItemCount,
-        SuppliersByItemField.summarySupplierCount,
-        SuppliersByItemField.summaryNoDirectCount,
-        SuppliersByItemField.summaryStockByUom,
-      ],
-    );
+    loadAnchorRows((index) => 'Item $index');
+    await openReport(tester, size: const Size(390, 600));
     await tester.pumpAndSettle();
-    final scroll = tester
-        .widget<CustomScrollView>(find.byType(CustomScrollView))
-        .controller!;
-    for (var attempt = 0; attempt < 5; attempt++) {
-      scroll.jumpTo(scroll.position.maxScrollExtent);
-      await tester.pumpAndSettle();
-    }
-    final offset = scroll.offset;
-    if (anchorRow(19).evaluate().isNotEmpty) {
-      expect(
-        tester.getBottomLeft(anchorRow(19)).dy,
-        lessThanOrEqualTo(pinnedBottom(tester)),
-      );
-    }
-    final footer = find.text('Total Qty Received');
-    expect(footer.hitTestable(), findsOneWidget);
-    final input = find.byType(TextField);
-    expect(input.hitTestable(), findsOneWidget);
-    await tester.enterText(input, 'ROW-2');
+    final scroll = reportScroll(tester);
+    final offset = await physicalBottom(tester, scroll);
+    final marker = find.text('End of list');
+    expect(marker.hitTestable(), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'ROW-2');
     await tester.pumpAndSettle();
     expect(scroll.offset, lessThan(offset));
-
     await tester.tap(find.byTooltip('Clear search query'));
     await tester.pumpAndSettle();
-    await tester.pump();
-
-    expect(scroll.offset, closeTo(offset, 0.5));
-    expect(footer.hitTestable(), findsOneWidget);
-    expect(anchorRow(0).hitTestable(), findsNothing);
+    expect(scroll.offset, closeTo(offset, .5));
+    expect(marker.hitTestable(), findsOneWidget);
   });
 
   testWidgets(
@@ -3241,168 +4460,184 @@ void main() {
     },
   );
 
-  testWidgets(
-    'promoted variant retains its supplier and protected template context',
-    (tester) async {
-      final database = _useFieldPreferences('buyer');
-      const key = 'suppliers_by_item_fields::https%3A%2F%2Ferp.example::buyer';
-      const saved = '{"itemTemplateContext":false}';
-      database.records[key] = saved;
-      api.load = () async => SuppliersByItemNode.parseRows([
-        {'node_id': 'template:MIX', 'template': 'MIX'},
-        {
-          'node_id': 'item:2002506',
-          'parent_id': 'template:MIX',
-          'item_code': '2002506',
-        },
-        {
-          'node_id': 'supplier:2002506:EDGE',
-          'parent_id': 'item:2002506',
-          'supplier': 'EDGE',
-        },
-      ]);
-      await openReport(tester);
-      await tester.pumpAndSettle();
-      expect(reportRow('template:MIX'), findsNothing);
-      final item = reportRow('item:2002506');
-      final supplier = reportRow('supplier:2002506:EDGE');
-      expect(item.hitTestable(), findsOneWidget);
-      expect(supplier.hitTestable(), findsOneWidget);
-      expect(within(item, 'Variant Of MIX'), findsOneWidget);
-
-      await tester.tap(find.byTooltip('Fields'));
-      await tester.pumpAndSettle();
-      final sheet = find.byType(DraggableScrollableSheet);
-      final tiles = _configuredFieldsTiles(
-        tester,
-        sheet,
-      ).map((tile) => tile.key);
-      expect(tiles, contains(const ValueKey(SuppliersByItemField.itemBalance)));
-      expect(
-        tiles,
-        isNot(
-          contains(const ValueKey(SuppliersByItemField.itemTemplateContext)),
-        ),
-      );
-      Navigator.of(tester.element(sheet)).pop();
-      await tester.pumpAndSettle();
-      expect(database.records[key], saved);
-      expect(within(item, 'Variant Of MIX'), findsOneWidget);
-      expect(item, findsOneWidget);
-      expect(supplier, findsOneWidget);
-    },
-  );
-
-  testWidgets('ACP-25 tree omits supplier placeholders in dark mode', (
+  testWidgets('a single variant and its supplier stay below their template', (
     tester,
   ) async {
     api.load = () async => SuppliersByItemNode.parseRows([
-      ..._acp25Rows,
-      {'node_id': 'item:GLOVES', 'item_name': 'Gloves', 'supplier_count': 1},
+      {'node_id': 'template:MIX', 'template': 'MIX'},
       {
-        'node_id': 'supplier:GLOVES:LEATHER',
-        'parent_id': 'item:GLOVES',
-        'is_placeholder': 0,
-        'supplier_name': 'Leather Shop',
-        'last_rate': '',
-        'currency': 'USD',
-        'rate_source': 'Purchase Order',
-        'rate_date': '2026-11-01',
+        'node_id': 'item:2002506',
+        'parent_id': 'template:MIX',
+        'item_code': '2002506',
+      },
+      {
+        'node_id': 'supplier:2002506:EDGE',
+        'parent_id': 'item:2002506',
+        'supplier': 'EDGE',
       },
     ]);
-    await openReport(
-      tester,
-      size: const Size(540, 800),
-      themeMode: ThemeMode.dark,
-      showFields: [
-        SuppliersByItemField.supplierPartNumber,
-        SuppliersByItemField.supplierSources,
-        SuppliersByItemField.supplierQtyReceived,
-        SuppliersByItemField.supplierLastPo,
-        SuppliersByItemField.supplierRate,
-        SuppliersByItemField.supplierRateSource,
-        SuppliersByItemField.supplierRateDate,
-      ],
-    );
+    await openReport(tester);
     await tester.pumpAndSettle();
+    final template = reportRow('template:MIX');
+    final variant = reportRow('item:2002506');
+    final supplier = reportRow('supplier:2002506:EDGE');
 
-    expect(within(rowWith('ACP-25'), 'Supplier Count 1'), findsOneWidget);
-    expect(within(rowWith('ACP-25'), 'Balance Qty 12.5 Nos'), findsOneWidget);
-
-    final itemWithoutSupplier = rowWith('2002492');
-    final noSupplier = find.descendant(
-      of: itemWithoutSupplier,
-      matching: find.text('No supplier recorded'),
-    );
-    expect(noSupplier, findsOneWidget);
-    expect(within(itemWithoutSupplier, '0 Nos'), findsOneWidget);
-    expect(
-      find.descendant(of: itemWithoutSupplier, matching: find.byType(InkWell)),
-      findsNothing,
-    );
-    expect(reportRow('none:7:2002492'), findsNothing);
-    expect(find.text('KANG KAI'), findsNothing);
-    expect(within(rowWith('2002506'), '12.5 Nos'), findsOneWidget);
-
-    final (background, expectedInk) = StatusPill.colourForStatus(
-      'Disabled',
-      brightness: Brightness.dark,
-    );
-    final ink = tester.widget<Text>(noSupplier).style!.color!;
-    expect(ink, expectedInk);
-    final foreground = Color.alphaBlend(ink, background);
-    final lighter = foreground.computeLuminance();
-    final darker = background.computeLuminance();
-    expect((lighter + 0.05) / (darker + 0.05), greaterThanOrEqualTo(4.5));
-
-    await tester.tap(find.text('2002506'));
-    await tester.pumpAndSettle();
-    final supplier = rowWith('KANG KAI');
-    expect(supplier, findsOneWidget);
-    expect(within(supplier, 'Sources'), findsNothing);
-    await tester.tap(find.text('KANG KAI'));
-    await tester.pumpAndSettle();
-    for (final detail in [
-      '1234-B',
-      'Purchase Order, Batch',
-      '0\u00a0Nos',
-      'AED 0.00',
-      'Purchase Order',
-    ]) {
+    void expectTree() {
+      for (final row in [template, variant, supplier]) {
+        expect(row.hitTestable(), findsOneWidget);
+      }
       expect(
-        find.descendant(of: supplier, matching: find.text(detail)),
-        findsOneWidget,
+        tester.getTopLeft(template).dy,
+        lessThan(tester.getTopLeft(variant).dy),
       );
+      expect(
+        tester.getTopLeft(variant).dy,
+        lessThan(tester.getTopLeft(supplier).dy),
+      );
+      expect(within(variant, 'Variant Of MIX'), findsNothing);
     }
-    expect(
-      find.descendant(of: supplier, matching: find.text('2026-11-05')),
-      findsNWidgets(2),
-    );
-    expect(
-      find.descendant(
-        of: supplier,
-        matching: find.textContaining('Balance Qty'),
-      ),
-      findsNothing,
-    );
 
-    await tester.tap(find.text('ACP-25'));
+    expectTree();
+    await viewCommand(tester, 'Collapse all');
+    expect(template.hitTestable(), findsOneWidget);
+    expect(variant, findsNothing);
+    await tester.enterText(find.byType(TextField), '2002506');
     await tester.pumpAndSettle();
-    expect(find.text('KANG KAI'), findsNothing);
-    expect(find.text('2002506'), findsNothing);
-
-    await tester.tap(find.text('GLOVES'));
+    expect(template.hitTestable(), findsOneWidget);
+    expect(variant.hitTestable(), findsOneWidget);
+    expect(
+      tester.getTopLeft(template).dy,
+      lessThan(tester.getTopLeft(variant).dy),
+    );
+    expect(find.text('Items 1'), findsOneWidget);
+    await tester.tap(find.byTooltip('Clear search query'));
     await tester.pumpAndSettle();
-    expect(find.text('Leather Shop'), findsOneWidget);
-    expect(find.text('Rate'), findsNothing);
-    expect(find.textContaining('Purchase Order'), findsNothing);
-    expect(find.textContaining('USD'), findsNothing);
-    expect(tester.takeException(), isNull);
+    expect(variant, findsNothing);
+    await viewCommand(tester, 'Expand all');
+    expectTree();
+    expect(api.requests, hasLength(1));
   });
 
-  testWidgets('regroup reuses measured sibling columns until inputs change', (
+  testWidgets(
+    'ACP-25 expands a variant to its placeholder with BOM off in dark mode',
+    (tester) async {
+      api.load = () async => SuppliersByItemNode.parseRows([
+        ..._acp25Rows,
+        {'node_id': 'item:GLOVES', 'item_name': 'Gloves', 'supplier_count': 1},
+        {
+          'node_id': 'supplier:GLOVES:LEATHER',
+          'parent_id': 'item:GLOVES',
+          'is_placeholder': 0,
+          'supplier_name': 'Leather Shop',
+          'last_rate': '',
+          'currency': 'USD',
+          'rate_source': 'Purchase Order',
+          'rate_date': '2026-11-01',
+        },
+      ]);
+      await openReport(
+        tester,
+        size: const Size(540, 800),
+        themeMode: ThemeMode.dark,
+        showFields: [
+          SuppliersByItemField.supplierPartNumber,
+          SuppliersByItemField.supplierSources,
+          SuppliersByItemField.supplierQtyReceived,
+          SuppliersByItemField.supplierLastPo,
+          SuppliersByItemField.supplierRate,
+          SuppliersByItemField.supplierRateSource,
+          SuppliersByItemField.supplierRateDate,
+        ],
+      );
+      await tester.pumpAndSettle();
+
+      expect(within(rowWith('ACP-25'), 'Supplier Count 1'), findsOneWidget);
+      expect(within(rowWith('ACP-25'), 'Balance Qty 12.5 Nos'), findsOneWidget);
+
+      final itemWithoutSupplier = rowWith('2002492');
+      final noSupplier = find.descendant(
+        of: itemWithoutSupplier,
+        matching: find.text('No supplier recorded'),
+      );
+      expect(noSupplier, findsOneWidget);
+      expect(within(itemWithoutSupplier, '0 Nos'), findsOneWidget);
+      final placeholder = reportRow('none:7:2002492');
+      expect(placeholder, findsNothing);
+      await tester.tap(itemWithoutSupplier);
+      await tester.pumpAndSettle();
+      expect(within(placeholder, 'No supplier recorded'), findsOneWidget);
+      expect(
+        tester.getTopLeft(placeholder).dy,
+        greaterThan(tester.getTopLeft(itemWithoutSupplier).dy),
+      );
+      await tester.tap(itemWithoutSupplier);
+      await tester.pumpAndSettle();
+      expect(find.text('KANG KAI'), findsNothing);
+      expect(within(rowWith('2002506'), '12.5 Nos'), findsOneWidget);
+
+      final (background, expectedInk) = StatusPill.colourForStatus(
+        'Disabled',
+        brightness: Brightness.dark,
+      );
+      final ink = tester.widget<Text>(noSupplier).style!.color!;
+      expect(ink, expectedInk);
+      final foreground = Color.alphaBlend(ink, background);
+      final lighter = foreground.computeLuminance();
+      final darker = background.computeLuminance();
+      expect((lighter + 0.05) / (darker + 0.05), greaterThanOrEqualTo(4.5));
+
+      await tester.tap(find.text('2002506'));
+      await tester.pumpAndSettle();
+      final supplier = rowWith('KANG KAI');
+      expect(supplier, findsOneWidget);
+      expect(within(supplier, 'Sources'), findsNothing);
+      await tester.tap(find.text('KANG KAI'));
+      await tester.pumpAndSettle();
+      for (final detail in [
+        '1234-B',
+        'Purchase Order, Batch',
+        '0\u00a0Nos',
+        'AED 0.00',
+        'Purchase Order',
+      ]) {
+        expect(
+          find.descendant(of: supplier, matching: find.text(detail)),
+          findsOneWidget,
+        );
+      }
+      expect(
+        find.descendant(of: supplier, matching: find.text('2026-11-05')),
+        findsNWidgets(2),
+      );
+      expect(
+        find.descendant(
+          of: supplier,
+          matching: find.textContaining('Balance Qty'),
+        ),
+        findsNothing,
+      );
+
+      await tester.tap(find.text('ACP-25'));
+      await tester.pumpAndSettle();
+      expect(find.text('KANG KAI'), findsNothing);
+      expect(find.text('2002506'), findsNothing);
+
+      await tester.tap(find.text('GLOVES'));
+      await tester.pumpAndSettle();
+      expect(find.text('Leather Shop'), findsOneWidget);
+      expect(find.text('Rate'), findsNothing);
+      expect(find.textContaining('Purchase Order'), findsNothing);
+      expect(find.textContaining('USD'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('system font changes remeasure columns in a saved grouping', (
     tester,
   ) async {
+    const family = 'SuppliersReportNewlyAvailableFont';
+    final caption = List.filled(46, 'i').join();
+    api.columns = [(fieldname: 'balance_qty', label: caption)];
     api.load = () async => SuppliersByItemNode.parseRows([
       for (final code in ['A', 'B', 'C']) ...[
         {
@@ -3418,41 +4653,33 @@ void main() {
         },
       ],
     ]);
-    await openReport(
-      tester,
-      size: const Size(600, 900),
-      fontFamily: reportFont,
-    );
+    await openReport(tester, size: const Size(510, 900), fontFamily: family);
     await tester.pumpAndSettle();
-    final view = currentReport();
-    SuppliersByItemColumnRun run() => tester
-        .widget<SuppliersByItemDisplayTile>(
-          find.descendant(
-            of: reportRow('item:A'),
-            matching: find.byType(SuppliersByItemDisplayTile),
-          ),
-        )
-        .columnRun!;
+    final heading = within(reportRow('item:A'), caption);
+    // The fallback font makes this ERPNext heading too wide for columns.
+    expect(heading, findsNothing);
 
-    final original = run();
+    final view = currentReport();
     await view.setGroup(SuppliersByItemGroup.supplier);
+    await tester.pumpAndSettle();
+    await tester.runAsync(() async {
+      final changed = Completer<void>();
+      final fonts = PaintingBinding.instance.systemFonts;
+      fonts.addListener(changed.complete);
+      try {
+        final loader = FontLoader(family)
+          ..addFont(rootBundle.load('lib/assets/fonts/Inter-Regular.ttf'));
+        await loader.load();
+        await changed.future.timeout(const Duration(seconds: 5));
+      } finally {
+        fonts.removeListener(changed.complete);
+      }
+    });
     await tester.pumpAndSettle();
     await view.setGroup(SuppliersByItemGroup.template);
     await tester.pumpAndSettle();
-    expect(run(), same(original));
-    view.toggleBranchKey((nodeId: 'item:B'));
-    await tester.pumpAndSettle();
-    expect(run(), same(original));
-
-    await view.setFieldVisible(SuppliersByItemField.itemSupplierCount, false);
-    await tester.pumpAndSettle();
-    final changedFields = run();
-    expect(changedFields, isNot(same(original)));
-    api.columns = const [(fieldname: 'balance_qty', label: 'Available Stock')];
-    await view.run();
-    await tester.pumpAndSettle();
-    expect(run(), isNot(same(changedFields)));
-    expect(within(reportRow('item:A'), 'Available Stock'), findsOneWidget);
+    expect(heading, findsOneWidget);
+    expect(api.requests, hasLength(1));
   });
 
   testWidgets(
@@ -3754,14 +4981,16 @@ void main() {
     await tester.pumpAndSettle();
 
     final item = rowWith('2002492');
-    expect(
-      find.descendant(of: item, matching: find.text('No supplier recorded')),
-      findsOneWidget,
-    );
-    expect(reportRow('none:7:2002492'), findsNothing);
+    final placeholder = reportRow('none:7:2002492');
+    expect(within(placeholder, 'No supplier recorded'), findsOneWidget);
+    expect(within(item, 'No supplier recorded'), findsNothing);
+    await tester.tap(item);
+    await tester.pumpAndSettle();
+    expect(placeholder, findsNothing);
+    expect(within(item, 'No supplier recorded'), findsOneWidget);
   });
 
-  testWidgets('All fields off preserves rows, suppliers, and footer totals', (
+  testWidgets('All fields off preserves rows, suppliers and the end marker', (
     tester,
   ) async {
     api.load = () async => SuppliersByItemNode.parseRows([
@@ -3819,13 +5048,7 @@ void main() {
       'BOM-PARTS',
       'KANG KAI',
       'Other Supplier',
-      'End of list · Totals for all loaded items',
-      'Balance Qty',
-      '12.5 Nos',
-      'Projected Qty',
-      '20 Nos',
-      'Open Order Qty',
-      '5 Nos',
+      'End of list',
     ]) {
       expect(find.text(text).hitTestable(), findsOneWidget);
     }
@@ -3840,8 +5063,15 @@ void main() {
       findsOneWidget,
     );
     expect(within(reportRow('item:2002506'), 'Supplier Count 1'), findsNothing);
-    expect(find.text('Draft Order Qty'), findsNothing);
-    expect(find.text('Total Qty Received'), findsOneWidget);
+    expect(
+      within(reportRow('template:ACP-25'), 'Balance Qty 12.5 Nos'),
+      findsOneWidget,
+    );
+    expect(
+      within(reportRow('item:STANDALONE'), 'Projected Qty 20 Nos'),
+      findsNothing,
+    );
+    expect(find.text('Total Qty Received'), findsNothing);
   });
 
   testWidgets('All fields off preserves only the affected stock unit warning', (
@@ -4991,7 +6221,7 @@ void main() {
   });
 
   testWidgets(
-    'footer totals all six signed quantities by UOM with Fields off',
+    'End of list clears the system inset and contains only its label',
     (tester) async {
       const systemBottomPadding = 48.0;
       tester.view.devicePixelRatio = 1;
@@ -5000,201 +6230,62 @@ void main() {
       addTearDown(tester.view.resetPadding);
       api.load = () async => SuppliersByItemNode.parseRows([
         {
-          ..._acp25Rows[0],
-          'total_qty_received': 26.5,
-          'projected_qty': 15,
-          'reorder_qty': 50,
-          'open_order_qty': 3,
-          'draft_order_qty': 12.25,
-        },
-        {
-          ..._acp25Rows[1],
-          'balance_qty': -2,
-          'projected_qty': 5,
-          'reorder_qty': -2,
+          'node_id': 'item:SIGNED',
+          'item_code': 'SIGNED',
+          'balance_qty': 24,
           'open_order_qty': -1,
           'draft_order_qty': 0,
-          'total_qty_received': 2,
+          'stock_uom': 'Kg',
         },
-        _acp25Rows[2],
-        for (final code in ['ONE', 'TWO'])
+        for (var i = 0; i < 12; i++)
           {
-            'node_id': 'supplier:2002492:$code',
-            'parent_id': 'item:2002492',
-            'supplier': code,
-            'last_rate': 870,
+            'node_id': 'item:BULK-$i',
+            'item_code': 'BULK-$i',
+            'balance_qty': i,
+            'stock_uom': 'Nos',
           },
-        {
-          ..._acp25Rows[3],
-          'supplier_count': 2,
-          'balance_qty': 5,
-          'total_qty_received': 26.5,
-          'projected_qty': 10,
-          'reorder_qty': 3,
-          'open_order_qty': 2,
-          'draft_order_qty': 11,
-        },
-        {
-          ..._acp25Rows[4],
-          'last_rate': 110,
-          'rate_source': 'Purchase Receipt',
-          'total_qty_received': 20,
-          'open_order_qty': 2,
-          'draft_order_qty': 11,
-          'po_count': 3,
-          'receipt_count': 4,
-        },
-        {
-          'node_id': 'supplier:7:2002506:OTHER',
-          'parent_id': 'item:2002506',
-          'supplier': 'OTHER',
-          'last_rate': 250,
-          'currency': 'AED',
-          'total_qty_received': 6.5,
-          'stock_uom': 'Nos',
-        },
-        {
-          'node_id': 'item:BULK',
-          'supplier_count': 1,
-          'total_qty_received': 4,
-          'balance_qty': 1,
-          'projected_qty': -1.5,
-          'reorder_qty': 6,
-          'open_order_qty': 0,
-          'draft_order_qty': -3,
-          'stock_uom': 'Kg',
-        },
-        {
-          'node_id': 'supplier:4:BULK:WHOLESALE',
-          'parent_id': 'item:BULK',
-          'total_qty_received': 4,
-          'open_order_qty': 8,
-          'stock_uom': 'Kg',
-          'last_rate': 510,
-          'currency': 'AED',
-        },
-        {'node_id': 'bom:BULK', 'parent_id': 'item:BULK'},
-        {
-          'node_id': 'component:BULK:PART',
-          'parent_id': 'bom:BULK',
-          'stock_uom': 'Nos',
-          'balance_qty': 100,
-          'reorder_qty': 500,
-          'draft_order_qty': 300,
-          'total_qty_received': 400,
-        },
-        {'node_id': 'item:LEGACY', 'balance_qty': 99},
       ]);
-      const quantities = [
-        SuppliersByItemField.itemBalance,
-        SuppliersByItemField.itemProjected,
-        SuppliersByItemField.itemOpenOrders,
-        SuppliersByItemField.itemReorderQty,
-        SuppliersByItemField.itemDraftOrders,
-        SuppliersByItemField.itemQtyReceived,
-      ];
       await openReport(
         tester,
-        size: const Size(390, 330),
-        showFields: quantities,
+        size: const Size(390, 620),
+        showFields: const [
+          SuppliersByItemField.itemOpenOrders,
+          SuppliersByItemField.itemDraftOrders,
+        ],
       );
       await tester.pumpAndSettle();
+      final item = reportRow('item:SIGNED');
+      expect(within(item, 'Open Order Qty -1 Kg'), findsOneWidget);
+      expect(within(item, 'Draft Order Qty 0 Kg'), findsOneWidget);
 
       final scrollView = find.byType(CustomScrollView);
-      final controller = tester
+      final scroll = reportScroll(tester);
+      final end = find.text('End of list');
+      await tester.scrollUntilVisible(
+        end,
+        220,
+        scrollable: find.byWidgetPredicate(
+          (widget) => widget is Scrollable && widget.controller == scroll,
+        ),
+      );
+      scroll.jumpTo(scroll.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      final lastSliver = tester
           .widget<CustomScrollView>(scrollView)
-          .controller!;
-      final scrollbar = tester.widget<Scrollbar>(find.byType(Scrollbar));
-      expect(scrollbar.controller, same(controller));
-      final footer = find.byType(SuppliersByItemFooter);
-      final scrollable = find
-          .descendant(of: scrollView, matching: find.byType(Scrollable))
-          .first;
-      Future<void> readFooter() async {
-        if (footer.evaluate().isEmpty) {
-          await tester.scrollUntilVisible(footer, 150, scrollable: scrollable);
-        }
-        controller.jumpTo(controller.position.maxScrollExtent);
-        await tester.pumpAndSettle();
-      }
-
-      void expectTotals() {
-        for (final (label, kg, nos) in [
-          ('Balance Qty', '1 Kg', '3 Nos'),
-          ('Projected Qty', '-1.5 Kg', '15 Nos'),
-          ('Open Order Qty', '0 Kg', '1 Nos'),
-          ('Reorder Qty', '6 Kg', '1 Nos'),
-          ('Draft Order Qty', '-3 Kg', '11 Nos'),
-          ('Total Qty Received', '4 Kg', '28.5 Nos'),
-        ]) {
-          final section = find
-              .ancestor(of: within(footer, label), matching: find.byType(Row))
-              .first;
-          expect(within(section, kg), findsOneWidget, reason: label);
-          expect(within(section, nos), findsOneWidget, reason: label);
-        }
-        expect(
-          within(footer, 'End of list · Totals for all loaded items'),
-          findsOneWidget,
-        );
-        expect(
-          within(footer, 'Quantities without a Stock UOM are excluded'),
-          findsOneWidget,
-        );
-        expect(
-          find.descendant(
-            of: footer,
-            matching: find.textContaining(RegExp('AED|870|100 Nos')),
-          ),
-          findsNothing,
-        );
-      }
-
-      await readFooter();
-      expectTotals();
-      final lastTotal = within(footer, '4 Kg');
+          .slivers
+          .last;
+      final labels = tester.widgetList<Text>(
+        find.descendant(
+          of: find.byWidget(lastSliver),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(labels.map((label) => label.data), ['End of list']);
+      expect(end.hitTestable(), findsOneWidget);
       expect(
-        tester.getBottomLeft(scrollView).dy -
-            tester.getBottomLeft(lastTotal).dy,
+        tester.getBottomLeft(scrollView).dy - tester.getBottomLeft(end).dy,
         greaterThanOrEqualTo(systemBottomPadding),
       );
-
-      final report = currentReport();
-      for (final field in [
-        ...quantities,
-        SuppliersByItemField.itemStockUom,
-        SuppliersByItemField.supplierStockUom,
-        SuppliersByItemField.componentStockUom,
-        SuppliersByItemField.summaryItemCount,
-        SuppliersByItemField.summarySupplierCount,
-        SuppliersByItemField.summaryNoDirectCount,
-        SuppliersByItemField.summaryStockByUom,
-      ]) {
-        await report.setFieldVisible(field, false);
-      }
-      await tester.pumpAndSettle();
-      await readFooter();
-      expectTotals();
-
-      for (final field in [...quantities, SuppliersByItemField.itemStockUom]) {
-        await report.setFieldVisible(field, true);
-      }
-      await tester.pumpAndSettle();
-      controller.jumpTo(0);
-      await tester.pumpAndSettle();
-      final item = reportRow('item:2002492');
-      if (item.evaluate().isEmpty) {
-        await tester.scrollUntilVisible(item, 110, scrollable: scrollable);
-        await tester.pumpAndSettle();
-      }
-      expect(
-        find.descendant(of: item, matching: find.textContaining('-2 Nos')),
-        findsAtLeastNWidgets(1),
-      );
-      expect(within(item, 'Open Order Qty -1 Nos'), findsOneWidget);
-      expect(within(item, 'Draft Order Qty 0 Nos'), findsOneWidget);
-      await readFooter();
-      expectTotals();
     },
   );
 
