@@ -121,11 +121,16 @@ class _AwesomeBarState extends State<AwesomeBar> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(right: 8),
+          padding: const EdgeInsets.only(top: 8, right: 8),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _sectionHeader(context, 'RECENT'),
+              // Centred against Clear all, so no vertical padding here.
+              _sectionHeader(
+                context,
+                'RECENT',
+                padding: const EdgeInsets.only(left: 16),
+              ),
               TextButton(
                 style: TextButton.styleFrom(
                   foregroundColor: context.scheme.text,
@@ -153,8 +158,12 @@ class _AwesomeBarState extends State<AwesomeBar> {
     );
   }
 
-  Widget _sectionHeader(BuildContext context, String text) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+  Widget _sectionHeader(
+    BuildContext context,
+    String text, {
+    EdgeInsets padding = const EdgeInsets.fromLTRB(16, 16, 16, 4),
+  }) => Padding(
+    padding: padding,
     child: Text(
       text,
       style: TextStyle(
