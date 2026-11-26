@@ -109,6 +109,7 @@ class _DeliveryProvider extends PosUploadProvider {
     if (pendingApply case final pending?) return pending.future;
     status = switch (action) {
       PosDeliveryAction.revertToPending => 'Pending',
+      PosDeliveryAction.complete => 'Completed',
       PosDeliveryAction.deliveryReturn => 'To Deliver',
       _ => action.label,
     };
@@ -133,7 +134,9 @@ class _DeliveryProvider extends PosUploadProvider {
 class _PagedDeliveryProvider extends _DeliveryProvider {
   static const uploadName = 'PU-0001';
   final listRequests =
-      <({int limit, int start, Map<String, dynamic>? filters, String orderBy})>[];
+      <
+        ({int limit, int start, Map<String, dynamic>? filters, String orderBy})
+      >[];
 
   @override
   Future<Response> getPosUploads({
@@ -303,7 +306,10 @@ void main() {
     expect(list.posUploads, hasLength(40));
     final previousRevision = list.posUploads.first.modified;
 
-    final row = find.widgetWithText(ListTile, _PagedDeliveryProvider.uploadName);
+    final row = find.widgetWithText(
+      ListTile,
+      _PagedDeliveryProvider.uploadName,
+    );
     Finder rowStatus(String status) => find.descendant(
       of: row,
       matching: find.widgetWithText(StatusPill, status),
@@ -458,6 +464,58 @@ void main() {
     expect(find.byType(BottomSheet), findsNothing);
     expect(provider.applied, isEmpty);
     expect(provider.driverRequests, isEmpty);
+    expect(controller.deliveryActionBusy.value, isFalse);
+  });
+
+  testWidgets('Complete confirms without asking for a driver', (tester) async {
+    const action = PosDeliveryAction.complete;
+    final provider = _DeliveryProvider()
+      ..status = 'Delivered'
+      ..actions = [action];
+    await pumpForm(tester, provider);
+
+    expect(
+      find.descendant(
+        of: _action(action),
+        matching: find.byIcon(Icons.task_alt),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(_action(action));
+    await _animateOverlay(tester);
+    final sheet = find.byType(BottomSheet);
+    expect(sheet, findsOneWidget);
+    expect(
+      find.descendant(of: sheet, matching: find.byType(DropdownButton<String>)),
+      findsNothing,
+    );
+    expect(find.textContaining('closed as Completed'), findsOneWidget);
+    await tester.tap(_confirm);
+    await tester.pumpAndSettle();
+
+    expect(provider.driverRequests, isEmpty);
+    final (applied, selection) = provider.applied.single;
+    expect(applied, action);
+    expect(selection.driver, isNull);
+    expect(selection.reason, isNull);
+    expect(provider.status, 'Completed');
+    expect(find.text('POS Upload marked Completed'), findsOneWidget);
+  });
+
+  testWidgets('cancelling Complete sends nothing', (tester) async {
+    const action = PosDeliveryAction.complete;
+    final provider = _DeliveryProvider()
+      ..status = 'Delivered'
+      ..actions = [action];
+    final controller = await pumpForm(tester, provider);
+
+    await tester.tap(_action(action));
+    await _animateOverlay(tester);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(provider.applied, isEmpty);
     expect(controller.deliveryActionBusy.value, isFalse);
   });
 

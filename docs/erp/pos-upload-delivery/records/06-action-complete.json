@@ -1,0 +1,6 @@
+{
+  "doctype": "Workflow Action Master",
+  "name": "Complete",
+  "workflow_action_name": "Complete",
+  "_if_missing": true
+}

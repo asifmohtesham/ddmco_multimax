@@ -17,9 +17,21 @@ Future<PosDeliverySelection?> showPosDeliveryActionSheet(
   );
 }
 
-/// Confirms the Stock Manager's Revert to Pending. Resolves `true` only on
-/// Confirm; dismissing the sheet sends nothing.
-Future<bool?> showPosRevertToPendingSheet(BuildContext context) {
+/// Confirms a Stock Manager action that takes no driver (Revert to Pending,
+/// Complete). Resolves `true` only on Confirm; dismissing sends nothing.
+Future<bool?> showPosConfirmActionSheet(
+  BuildContext context,
+  PosDeliveryAction action,
+) {
+  final explanation = switch (action) {
+    PosDeliveryAction.complete =>
+      'The delivered POS Upload is closed as Completed. Its Delivery Note must '
+          'still be submitted. No further delivery actions are possible.',
+    _ =>
+      'The POS Upload goes back to Pending so it can be edited or '
+          're-imported. Saving its Delivery Note or Stock Entry moves it '
+          'to In Progress again.',
+  };
   return showModalBottomSheet<bool>(
     context: context,
     backgroundColor: context.scheme.fg,
@@ -38,14 +50,12 @@ Future<bool?> showPosRevertToPendingSheet(BuildContext context) {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                PosDeliveryAction.revertToPending.label,
+                action.label,
                 style: theme.textTheme.titleLarge?.copyWith(color: scheme.text),
               ),
               const SizedBox(height: 16),
               Text(
-                'The POS Upload goes back to Pending so it can be edited or '
-                're-imported. Saving its Delivery Note or Stock Entry moves it '
-                'to In Progress again.',
+                explanation,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: scheme.textMuted,
                 ),
