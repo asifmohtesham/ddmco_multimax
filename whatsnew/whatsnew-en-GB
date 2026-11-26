@@ -1,1 +1,1 @@
-Suppliers by Item: switching between Group by Item and Group by Supplier no longer freezes. If the row you were reading would be far down, the new grouping opens at the top. Group by Item now always shows Item Template > Item Variant > Supplier. The summary row above the search box and the totals under End of list are removed.
+Item: the Suppliers card is removed from the Overview tab, so the Item form shows only the Item's own details. To see an item's suppliers, open Buying > Reports > Suppliers by Item.
