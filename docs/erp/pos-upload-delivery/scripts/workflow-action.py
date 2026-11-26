@@ -50,6 +50,7 @@ edges = {
     "Delivery Return": ("Out for Delivery", "To Deliver"),
     "Delivered": ("Out for Delivery", "Delivered"),
     "Revert to Pending": ("In Progress", "Pending"),
+    "Complete": ("Delivered", "Completed"),
 }
 edge = edges.get(requested_action)
 locked = frappe.db.get_value("POS Upload", doc.name, ["status", "modified", "customer"], as_dict=True, for_update=True)
@@ -72,6 +73,17 @@ if requested_action == "Revert to Pending":
     dn = None
     doc.custom_return_reason = ""
     text = f"POS delivery · Revert to Pending · recorded by {frappe.utils.escape_html(recorded_by_name)}"
+elif requested_action == "Complete":
+    # Stock Manager closes a delivered DN-route POS, so every finished POS Upload ends in Completed
+    # (as Stock Entry-route ones already do). The delivered Delivery Note must still stand.
+    driver = None
+    driver_name = None
+    reason = None
+    dn = eligible_dn(doc.name, locked.customer, True)
+    text = (
+        f"POS delivery · Complete · recorded by {frappe.utils.escape_html(recorded_by_name)}"
+        f" · Delivery Note: {frappe.utils.escape_html(dn)}"
+    )
 else:
     driver_id = request_doc.get("pos_delivery_driver")
     if not isinstance(driver_id, str) or not driver_id:

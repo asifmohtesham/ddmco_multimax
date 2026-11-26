@@ -6,14 +6,14 @@ frappe.listview_settings['POS Upload'] = {
     get_indicator: function (doc) {
         // Status color map
         const status_map = {
-            "Pending": "orange",
+            "Pending": "gray",
             "New": "blue",
             "In Progress": "purple",
             "To Deliver": "orange",
             "Out for Delivery": "blue",
             "Delivered": "green",
             "Completed": "green",
-            "Cancelled": "gray",
+            "Cancelled": "red",
             "Rejected": "red"
         };
 

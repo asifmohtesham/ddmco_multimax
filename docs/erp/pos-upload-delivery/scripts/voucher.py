@@ -73,7 +73,7 @@ def handle_voucher(voucher, event, expected_docstatus):
             return
         pos = frappe.get_doc("POS Upload", reference, for_update=True)
         current = pos.status or "Pending"
-        managed = current in ("To Deliver", "Out for Delivery", "Delivered")
+        managed = current in ("To Deliver", "Out for Delivery", "Delivered", "Completed")
 
         if original:
             if managed:
@@ -92,7 +92,7 @@ def handle_voucher(voucher, event, expected_docstatus):
             return
 
         notes = submitted_outbound(reference)
-        if event == "cancel" and current in ("Out for Delivery", "Delivered"):
+        if event == "cancel" and current in ("Out for Delivery", "Delivered", "Completed"):
             review(pos, voucher, event, "An outbound Delivery Note was cancelled. Review the recorded delivery.")
             return
         if len(notes) > 1:
