@@ -210,4 +210,125 @@ void main() {
     );
     expect(AwesomeBarRecentStore.scanRevision, startingRevision + 1);
   });
+
+  group('times, removal and saved searches', () {
+    final now = DateTime(2026, 11, 26, 15, 30);
+    setUp(() => AwesomeBarRecentStore.clock = () => now);
+    tearDown(() => AwesomeBarRecentStore.clock = DateTime.now);
+
+    test(
+      'each save is stamped and survives a reload with its item code',
+      () async {
+        await AwesomeBarRecentStore.record(
+          AwesomeBarOption.scan(
+            code: '10048832',
+            kind: ScanType.item,
+            outcome: ScanOutcome.ok,
+            itemLabel: 'POUCH',
+            itemCode: ' ITM-1 ',
+          ),
+        );
+        final [saved] = await AwesomeBarRecentStore.read();
+        expect(saved.recordedAt, now);
+        expect(saved.itemCode, 'ITM-1');
+      },
+    );
+
+    test('a failed scan keeps no item code', () {
+      final scan = AwesomeBarOption.scan(
+        code: 'X',
+        kind: ScanType.item,
+        outcome: ScanOutcome.notFound,
+        itemCode: 'ITM-1',
+      );
+      expect(scan.itemCode, isNull);
+    });
+
+    test(
+      'remove drops one entry and clear can keep the ones it skips',
+      () async {
+        for (final code in ['A', 'B']) {
+          await AwesomeBarRecentStore.record(
+            AwesomeBarOption.scan(
+              code: code,
+              kind: ScanType.unknown,
+              outcome: ScanOutcome.notFound,
+            ),
+          );
+        }
+        await AwesomeBarRecentStore.record(AwesomeBarOption.query('typed'));
+
+        await AwesomeBarRecentStore.remove(
+          AwesomeBarOption.scan(
+            code: 'a',
+            kind: ScanType.unknown,
+            outcome: ScanOutcome.notFound,
+          ),
+        );
+        expect((await AwesomeBarRecentStore.read()).map((o) => o.value), [
+          'typed',
+          'B',
+        ]);
+
+        await AwesomeBarRecentStore.clear(where: (option) => !option.isScan);
+        expect((await AwesomeBarRecentStore.read()).map((o) => o.value), ['B']);
+
+        await AwesomeBarRecentStore.clear();
+        expect(await AwesomeBarRecentStore.read(), isEmpty);
+      },
+    );
+
+    test(
+      'saved searches de-duplicate regardless of case and keep no route',
+      () async {
+        await AwesomeBarRecentStore.record(AwesomeBarOption.query('Pouch'));
+        await AwesomeBarRecentStore.record(AwesomeBarOption.query(' pouch '));
+        final [saved] = await AwesomeBarRecentStore.read();
+        expect(saved.isQuery, isTrue);
+        expect(saved.value, 'pouch');
+        expect(saved.description, 'No results');
+        expect(saved.route, isEmpty);
+        expect(saved.icon, Icons.manage_search);
+      },
+    );
+
+    test('time labels and day groups', () {
+      expect(
+        recentTimeLabel(now.subtract(const Duration(seconds: 30)), now),
+        'Just now',
+      );
+      expect(
+        recentTimeLabel(now.subtract(const Duration(minutes: 59)), now),
+        '59 min ago',
+      );
+      expect(recentTimeLabel(DateTime(2026, 11, 26, 0, 5), now), '00:05');
+      expect(
+        recentTimeLabel(DateTime(2026, 11, 25, 23, 59), now),
+        'Yesterday 23:59',
+      );
+      expect(recentTimeLabel(DateTime(2026, 10, 2, 7, 0), now), '2 Oct 07:00');
+      expect(recentDayGroup(null, now), RecentDayGroup.earlier);
+      expect(
+        recentDayGroup(DateTime(2026, 11, 26, 0, 1), now),
+        RecentDayGroup.today,
+      );
+      expect(
+        recentDayGroup(DateTime(2026, 11, 25, 23, 59), now),
+        RecentDayGroup.yesterday,
+      );
+      expect(
+        recentDayGroup(DateTime(2026, 11, 24, 12), now),
+        RecentDayGroup.earlier,
+      );
+      // A clock set slightly behind still counts a save as today.
+      expect(
+        recentDayGroup(now.add(const Duration(minutes: 2)), now),
+        RecentDayGroup.today,
+      );
+      expect(
+        recentTimeLabel(now.add(const Duration(minutes: 2)), now),
+        'Just now',
+      );
+    });
+  });
 }

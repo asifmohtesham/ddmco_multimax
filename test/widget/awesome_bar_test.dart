@@ -36,14 +36,16 @@ void main() {
       await tester.tap(find.byTooltip('Search or type a command'));
       await tester.pumpAndSettle();
 
+      // Nothing typed and nothing recent: a start hint, not "No results".
+      expect(find.text('No results found'), findsNothing);
       for (final finder in [
-        find.text('No results found'),
-        find.textContaining('Try searching for an ID'),
+        find.text('Search or type a command').last,
+        find.textContaining('Type an ID'),
       ]) {
         expect(tester.widget<Text>(finder).style?.color, scheme.textMuted);
       }
       expect(
-        tester.widget<Icon>(find.byIcon(Icons.search_off)).color,
+        tester.widget<Icon>(find.byIcon(Icons.search).last).color,
         scheme.textSubtle,
       );
     });
@@ -240,7 +242,7 @@ void main() {
 
     expect(find.text('DASHBOARD-SCAN'), findsNothing);
     expect(find.text('RECENT'), findsNothing);
-    expect(find.text('No results found'), findsOneWidget);
+    expect(find.textContaining('Type an ID'), findsOneWidget);
   });
 }
 

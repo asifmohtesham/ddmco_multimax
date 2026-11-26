@@ -60,6 +60,35 @@ The AwesomeBar keeps up to ten entries on the device, newest first, across
 scans and navigation picks. Scanning the same code again replaces the earlier
 scan entry. Empty input and POS Upload labels are excluded.
 
+## AwesomeBar RECENT list
+
+- **When.** Each entry shows when it was saved: "Just now", "5 min ago",
+  "14:05", "Yesterday 14:05" or "24 Nov 14:05". When the entries span more
+  than one day, they sit under **Today**, **Yesterday** and **Earlier**.
+  Entries saved before 2.63 have no time, so they show under Earlier.
+- **Remove.** × removes one entry. **Clear all** asks first. Outside
+  Dashboard, scans are hidden, so Clear all keeps them.
+- **Failed scans.** A failed scan has an edit button. It opens the code for
+  correction, for example after a smudged barcode, and then scans the edited
+  code.
+- **Long press** opens the actions for an entry:
+  - Scans: **Scan again**, **Edit code and scan**, **Open item** (successful
+    item or batch scans only), **Search for this code** (puts the code into
+    the search field), **Copy code** and **Remove from recent**.
+  - Other entries: **Open** or **Search again**, and **Remove from recent**.
+- **Searches that found nothing.** A search submitted with the keyboard's
+  search key that finds nothing is saved as "No results". Tapping it runs
+  the search again. Typing alone saves nothing, and neither does a failed
+  request, such as when the device is offline.
+- **Empty state.** With nothing typed and nothing recent, the overlay shows
+  a start hint. "No results found" appears only after a search.
+- **Loading.** While a search runs, a thin bar shows at the top of the
+  list. The previous results stay on screen until the new ones arrive.
+- **Colours.** Section headings use muted ink, and matches are marked in
+  bold body ink. The accent colour falls below 4.5:1 on the search view's
+  surface for dark Maroon and light Blue and Purple, so it isn't used for
+  text there.
+
 ## Out of scope
 
 History stays on the device. There is no server sync. The AwesomeBar's recent
