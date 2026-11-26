@@ -129,10 +129,15 @@ class _FieldsSheet extends StatelessWidget {
         !showsRate &&
         (field == SuppliersByItemField.supplierRateCurrency ||
             field == SuppliersByItemField.supplierRateUom);
+    final columnsFull =
+        field.group == SuppliersByItemFieldGroup.supplierColumns &&
+        !visibility.shows(field) &&
+        visibility.supplierColumnCount >= maxSupplierColumns;
     final enabled =
         editable &&
         !field.fixed &&
         !needsRate &&
+        !columnsFull &&
         !controller.fieldsResetting.value &&
         !controller.isSavingField(field);
     final label = controller.fieldLabel(field);
@@ -148,6 +153,10 @@ class _FieldsSheet extends StatelessWidget {
       subtitle: needsRate
           ? Text(
               'Needs ${controller.fieldLabel(SuppliersByItemField.supplierRate)}',
+            )
+          : columnsFull
+          ? const Text(
+              'Up to $maxSupplierColumns columns fit. Turn one off first.',
             )
           : field.qualifier == null
           ? null

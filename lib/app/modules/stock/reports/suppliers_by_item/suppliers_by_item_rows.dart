@@ -21,7 +21,7 @@ typedef _ItemPresentation = ({
   String? name,
   List<_Detail> metrics,
   List<String> qualifiers,
-  List<_Badge> badges,
+  List<SuppliersByItemBadge> badges,
   List<_Detail> details,
   List<String> warnings,
 });
@@ -31,12 +31,15 @@ typedef _PurchasePresentation = ({
   String? status,
   bool matched,
   bool filterMatch,
-  List<_Badge> badges,
+  List<SuppliersByItemBadge> badges,
   List<_Detail> details,
 });
 
 const _maxIndentDepth = 3;
+const _indentStep = 14.0;
 const _disclosureWidth = 24.0;
+const _emptyCell = '–';
+const _minSupplierNameWidth = 96.0;
 const _columnGap = 10.0;
 const _tabularFigures = [FontFeature.tabularFigures()];
 const _nonBreakingSpace = '\u00a0';
@@ -45,6 +48,23 @@ const _nonBreakingSpace = '\u00a0';
 String _quantityLabel(num quantity) => quantity != 0 && quantity.abs() < 0.005
     ? quantity.toStringAsPrecision(1)
     : FormattingHelper.formatQtyGrouped(quantity.toDouble());
+
+/// Where a row sits in its group's card: the group's first row rounds the top
+/// corners, its last row the bottom ones, and every later row draws a hairline.
+enum SuppliersByItemSegment {
+  first,
+  middle,
+  last,
+  only;
+
+  static SuppliersByItemSegment of({required bool first, required bool last}) =>
+      first
+      ? (last ? only : SuppliersByItemSegment.first)
+      : (last ? SuppliersByItemSegment.last : middle);
+
+  bool get isFirst => this == first || this == only;
+  bool get isLast => this == last || this == only;
+}
 
 bool _isComponent(SuppliersByItemRow row) =>
     row.kind == SuppliersByItemRowKind.component || row.isComponent;
@@ -55,6 +75,7 @@ Map<SuppliersByItemRowKey, SuppliersByItemColumnRun> suppliersByItemColumnRuns(
   Iterable<SuppliersByItemLayoutRow> rows,
   bool Function(SuppliersByItemField) shows, [
   SuppliersByItemFieldCaption label = _defaultCaption,
+  String? Function(SuppliersByItemLayoutRow)? groupUnit,
 ]) {
   final runs = <List<SuppliersByItemLayoutRow>>[];
   final active = <SuppliersByItemRowKey?, List<SuppliersByItemLayoutRow>>{};
@@ -92,7 +113,12 @@ Map<SuppliersByItemRowKey, SuppliersByItemColumnRun> suppliersByItemColumnRuns(
   final byRow = <SuppliersByItemRowKey, SuppliersByItemColumnRun>{};
   for (final siblings in [...runs, ...suppliersByParent.values]) {
     if (siblings.length < 2) continue;
-    final run = SuppliersByItemColumnRun._(siblings, shows, label);
+    final run = SuppliersByItemColumnRun._(
+      siblings,
+      shows,
+      label,
+      groupUnit ?? _noGroupUnit,
+    );
     for (final row in siblings) {
       byRow[row.key] = run;
     }
@@ -100,12 +126,54 @@ Map<SuppliersByItemRowKey, SuppliersByItemColumnRun> suppliersByItemColumnRuns(
   return byRow;
 }
 
+String? _noGroupUnit(SuppliersByItemLayoutRow _) => null;
+
 class SuppliersByItemColumnRun {
-  SuppliersByItemColumnRun._(this._rows, this._shows, this._label);
+  SuppliersByItemColumnRun._(
+    this._rows,
+    this._shows,
+    this._label,
+    this._groupUnit,
+  );
 
   final List<SuppliersByItemLayoutRow> _rows;
   final bool Function(SuppliersByItemField) _shows;
   final SuppliersByItemFieldCaption _label;
+  final String? Function(SuppliersByItemLayoutRow) _groupUnit;
+  Object? _tableLayout;
+  List<double>? _tableWidths;
+
+  bool _startsWith(SuppliersByItemLayoutRow row) => _rows.first.key == row.key;
+
+  List<double>? _supplierWidths(
+    BuildContext context,
+    double availableWidth,
+    List<SuppliersByItemField> columns,
+    TextStyle? captionStyle,
+    TextStyle? valueStyle,
+  ) {
+    final layout = (
+      availableWidth,
+      Directionality.of(context),
+      MediaQuery.textScalerOf(context),
+      Object.hashAll(columns),
+      captionStyle,
+      valueStyle,
+    );
+    if (_tableLayout == layout) return _tableWidths;
+    _tableLayout = layout;
+    return _tableWidths = _supplierColumnWidths(
+      context,
+      availableWidth,
+      [for (final row in _rows) (row.pairNode ?? row.node).row],
+      columns,
+      _shows,
+      _label,
+      captionStyle,
+      valueStyle,
+    );
+  }
+
   ({
     double width,
     TextDirection direction,
@@ -179,7 +247,7 @@ class SuppliersByItemColumnRun {
     if (required > maximum) return null;
     final measured = <String, double>{};
     for (final row in _rows) {
-      final values = _itemMetrics(row, _shows, _label);
+      final values = _itemMetrics(row, _shows, _label, _groupUnit(row));
       for (var i = 0; i < values.length; i++) {
         final value = values[i].value;
         final width = measured.putIfAbsent(
@@ -211,6 +279,9 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
     this.parentOutputUom,
     this.fieldLabel = _defaultCaption,
     this.columnLabel,
+    this.segment = SuppliersByItemSegment.only,
+    this.groupUnit,
+    this.supplierColumns = const [],
   });
 
   final SuppliersByItemLayoutRow entry;
@@ -226,26 +297,81 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
   final SuppliersByItemFieldCaption fieldLabel;
   final SuppliersByItemColumnCaption? columnLabel;
 
+  /// Position in the group's card.
+  final SuppliersByItemSegment segment;
+
+  /// The template's Stock UOM, shown once in its header. Rows in that unit
+  /// leave it out.
+  final String? groupUnit;
+
+  /// Supplier table columns, in order. Empty shows the supplier name only.
+  final List<SuppliersByItemField> supplierColumns;
+
+  /// Card-coloured space closing every row of a group but its last.
+  static const rowGap = 4.0;
+
   SuppliersByItemRow get _row => entry.node.row;
+
+  bool get _sharesGroupUnit =>
+      groupUnit != null &&
+      _row.kind != SuppliersByItemRowKind.template &&
+      _row.stockUom == groupUnit;
+
+  bool get _supplierBand =>
+      entry.group == null &&
+      !entry.isPairOccurrence &&
+      (_row.kind == SuppliersByItemRowKind.supplier ||
+          _row.kind == SuppliersByItemRowKind.placeholder);
 
   String? get _depthLabel =>
       entry.depth > _maxIndentDepth ? 'Depth ${entry.depth}' : null;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: EdgeInsetsDirectional.only(
-      start: 12.0 + entry.depth.clamp(0, _maxIndentDepth) * 16.0,
-      end: 12,
-    ),
-    child: switch ((entry.group, entry.isPairOccurrence, _row.kind)) {
-      (final group?, _, _) => _group(context, group),
-      (_, true, _) => _pairOccurrence(context),
-      (_, _, SuppliersByItemRowKind.supplier) => _supplier(context),
-      (_, _, SuppliersByItemRowKind.bom) => _bom(context),
-      (_, _, SuppliersByItemRowKind.placeholder) => _placeholder(context),
-      _ => _item(),
-    },
-  );
+  Widget build(BuildContext context) {
+    final scheme = context.scheme;
+    const radius = Radius.circular(AppRadius.lg);
+    final shape = BorderRadius.vertical(
+      top: segment.isFirst ? radius : Radius.zero,
+      bottom: segment.isLast ? radius : Radius.zero,
+    );
+    final indent = (entry.depth - 1).clamp(0, _maxIndentDepth) * _indentStep;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: ClipRRect(
+        borderRadius: shape,
+        child: ColoredBox(
+          color: _supplierBand ? scheme.subtle : scheme.fg,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (!segment.isFirst) Container(height: 1, color: scheme.border),
+              Padding(
+                padding: EdgeInsetsDirectional.only(
+                  start: 4 + indent,
+                  end: 4,
+                  bottom: segment.isLast ? 0 : rowGap,
+                ),
+                child: switch ((
+                  entry.group,
+                  entry.isPairOccurrence,
+                  _row.kind,
+                )) {
+                  (final group?, _, _) => _group(context, group),
+                  (_, true, _) => _pairOccurrence(context),
+                  (_, _, SuppliersByItemRowKind.supplier) => _supplier(context),
+                  (_, _, SuppliersByItemRowKind.bom) => _bom(context),
+                  (_, _, SuppliersByItemRowKind.placeholder) => _placeholder(
+                    context,
+                  ),
+                  _ => _item(),
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   _ItemPresentation _itemPresentation({bool pairOccurrence = false}) {
     final isComponent = _isComponent(_row);
@@ -259,7 +385,7 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
     final componentPurchaseDate = pairOccurrence
         ? entry.pairNode?.row.lastPurchaseDate
         : _row.lastPurchaseDate;
-    final metrics = _itemMetrics(entry, shows, fieldLabel);
+    final metrics = _itemMetrics(entry, shows, fieldLabel, groupUnit);
     final showsPlaceholder =
         expanded &&
         entry.children.any(
@@ -267,14 +393,14 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
         );
     final badges = [
       if (!isTemplate && !entry.hasDirectSupplier && !showsPlaceholder)
-        const _Badge(
+        const SuppliersByItemBadge(
           SuppliersByItemColumnLabels.noSupplierRecorded,
           'Disabled',
         ),
       if (!pairOccurrence && !isComponent && !isTemplate)
         ..._poBadges(_row, supplier: false, detailsVisible: true),
       if (!isComponent && _row.isBelowReorderLevel)
-        _Badge(
+        SuppliersByItemBadge(
           '${fieldLabel(_Field.itemProjected)} below ${fieldLabel(_Field.itemReorderLevel)}',
           'On Hold',
         ),
@@ -354,6 +480,44 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
     final item = _itemPresentation();
     final isTemplate = _row.kind == SuppliersByItemRowKind.template;
     final role = _isComponent(_row) ? 'Component' : 'Item';
+    if (isTemplate) {
+      final variants = shows(_Field.templateVariantCount)
+          ? countLabel(entry.variantCount, 'variant')
+          : null;
+      return _TileSurface(
+        label: [
+          '$role ${_row.itemTitle}',
+          if (item.name case final name?)
+            '${fieldLabel(_Field.itemName)} $name',
+          for (final metric in item.metrics) _metricSemantics(metric),
+          ...item.qualifiers,
+          for (final badge in item.badges) badge.label,
+          for (final detail in item.details) '${detail.label} ${detail.value}',
+          ...item.warnings,
+        ].join(', '),
+        heading: true,
+        onTap: onToggleBranch,
+        expanded: entry.children.isEmpty ? null : expanded,
+        child: _TemplateHeader(
+          identity: _row.itemTitle,
+          name: item.name,
+          stats: [
+            if (variants != null)
+              (label: 'Variants', value: '${entry.variantCount}'),
+            ...item.metrics,
+          ],
+          notes: [
+            for (final qualifier in item.qualifiers)
+              if (qualifier != variants) qualifier,
+            for (final detail in item.details)
+              '${detail.label} ${detail.value}',
+            ...item.warnings,
+          ],
+          badges: item.badges,
+          expanded: onToggleBranch == null ? null : expanded,
+        ),
+      );
+    }
     return _TileSurface(
       label: [
         '$role ${_row.itemTitle}',
@@ -418,55 +582,191 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
 
   Widget _supplier(BuildContext context) {
     final purchase = _purchasePresentation(_row);
-    final onTap = purchase.details.isEmpty ? null : onToggleEvidence;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _TileSurface(
-          label: [
-            _spokenSupplier(entry.supplierLabel, entry.hasNamedSupplier),
-            ?purchase.spokenLastBuy,
-            if (purchase.filterMatch) 'Matches Suppliers filter',
-            if (purchase.status case final status?)
-              '${fieldLabel(_Field.supplierStatus)} $status',
-            for (final badge in purchase.badges) badge.label,
-            ?_depthLabel,
-          ].join(', '),
-          onTap: onTap,
-          expanded: onTap == null ? null : evidenceExpanded,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _LastBuyLine(
-                identity: entry.supplierLabel,
-                matched: purchase.matched,
-                lastBuy: purchase.lastBuy,
-                disclosure: onTap == null ? null : evidenceExpanded,
-                columnRun: columnRun,
-              ),
-              if (purchase.status != null ||
-                  purchase.badges.isNotEmpty ||
-                  (purchase.filterMatch && !purchase.matched) ||
-                  _depthLabel != null)
-                _RowWrap(
-                  children: [
-                    ..._purchaseBadges(purchase),
-                    if (purchase.filterMatch && !purchase.matched)
-                      Text(
-                        'Matches Suppliers filter',
-                        style: _mutedStyle(context),
-                      ),
-                    if (_depthLabel case final label?)
-                      Text(label, style: _mutedStyle(context)),
-                  ],
-                ),
-            ],
-          ),
+    final columns = supplierColumns;
+    final shownLabels = {for (final field in columns) fieldLabel(field)};
+    final details = [
+      for (final detail in purchase.details)
+        if (!shownLabels.contains(detail.label)) detail,
+    ];
+    final onTap = details.isEmpty ? null : onToggleEvidence;
+    final cells = [
+      for (final field in columns)
+        (
+          field: field,
+          label: fieldLabel(field),
+          value: _supplierColumnValue(_row, field, shows),
         ),
-        if (onTap != null && evidenceExpanded)
-          _SupplierDetailPanel(details: purchase.details),
-      ],
+    ];
+    final run = columnRun;
+    final heading = cells.isNotEmpty && (run == null || run._startsWith(entry))
+        ? columnLabel?.call('supplier_name', 'Supplier Name') ?? 'Supplier Name'
+        : null;
+    // A supplier never bought from stays marked even with the column hidden.
+    final lastBuyLabel = fieldLabel(_Field.supplierLastBuyColumn);
+    final undated =
+        !columns.contains(_Field.supplierLastBuyColumn) &&
+        strictReportDate(_row.lastPurchaseDate) == null;
+    final notes = [
+      if (undated) '$lastBuyLabel -',
+      if (purchase.filterMatch && !purchase.matched) 'Matches Suppliers filter',
+      ?_depthLabel,
+    ];
+    final spoken = [
+      _spokenSupplier(entry.supplierLabel, entry.hasNamedSupplier),
+      if (undated) '$lastBuyLabel unavailable',
+      for (final cell in cells)
+        cell.value == _emptyCell
+            ? '${cell.label} unavailable'
+            : cell.field == _Field.supplierLastBuyColumn
+            ? '${cell.label} ${DateFormat('d MMMM yyyy').format(strictReportDate(_row.lastPurchaseDate)!)}'
+            : '${cell.label} ${cell.value}',
+      if (purchase.filterMatch) 'Matches Suppliers filter',
+      if (purchase.status case final status?)
+        '${fieldLabel(_Field.supplierStatus)} $status',
+      ?_depthLabel,
+    ].join(', ');
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final caption = _captionStyle(context);
+        final value = Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(fontFeatures: _tabularFigures);
+        // The tile pads its content by 10 on each side.
+        final available = constraints.maxWidth - 20 - _disclosureWidth;
+        final widths = cells.isEmpty
+            ? const <double>[]
+            : run?._supplierWidths(
+                    context,
+                    available,
+                    columns,
+                    caption,
+                    value,
+                  ) ??
+                  _supplierColumnWidths(
+                    context,
+                    available,
+                    [_row],
+                    columns,
+                    shows,
+                    fieldLabel,
+                    caption,
+                    value,
+                  );
+        final (_, draftColour) = StatusPill.colourForStatus(
+          'On Hold',
+          brightness: Theme.of(context).brightness,
+        );
+        Widget cell(int i, Widget child) => Padding(
+          padding: const EdgeInsetsDirectional.only(start: _columnGap),
+          child: SizedBox(width: widths![i], child: child),
+        );
+        TextStyle? cellStyle(_Field field, String text) =>
+            field == _Field.supplierDraftPoBadge && text != _emptyCell
+            ? value?.copyWith(color: draftColour, fontWeight: FontWeight.w600)
+            : text == _emptyCell
+            ? value?.copyWith(color: context.scheme.textSubtle)
+            : value;
+        final name = Wrap(
+          spacing: 6,
+          runSpacing: 2,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              entry.supplierLabel,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: context.scheme.text,
+                fontWeight: purchase.matched
+                    ? FontWeight.w800
+                    : FontWeight.w600,
+              ),
+            ),
+            if (purchase.status case final status?)
+              SupplierStatusPill(
+                status: status,
+                compact: true,
+                wrapLabel: true,
+              ),
+          ],
+        );
+        final disclosure = onTap == null
+            ? const SizedBox(width: _disclosureWidth)
+            : _disclosure(context, evidenceExpanded);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _TileSurface(
+              label: spoken,
+              onTap: onTap,
+              expanded: onTap == null ? null : evidenceExpanded,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (heading != null && widths != null)
+                    ExcludeSemantics(
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Expanded(child: Text(heading, style: caption)),
+                            for (var i = 0; i < cells.length; i++)
+                              cell(
+                                i,
+                                Text(
+                                  cells[i].label,
+                                  style: caption,
+                                  textAlign: TextAlign.end,
+                                ),
+                              ),
+                            const SizedBox(width: _disclosureWidth),
+                          ],
+                        ),
+                      ),
+                    ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: name),
+                      if (widths != null)
+                        for (var i = 0; i < cells.length; i++)
+                          cell(
+                            i,
+                            Text(
+                              cells[i].value,
+                              style: cellStyle(cells[i].field, cells[i].value),
+                              textAlign: TextAlign.end,
+                            ),
+                          ),
+                      disclosure,
+                    ],
+                  ),
+                  if (widths == null && cells.isNotEmpty)
+                    _RowWrap(
+                      children: [
+                        for (final item in cells)
+                          _MetricText(
+                            (label: item.label, value: item.value),
+                            labelStyle: _mutedStyle(context),
+                            valueStyle: cellStyle(item.field, item.value),
+                          ),
+                      ],
+                    ),
+                  if (notes.isNotEmpty)
+                    _RowWrap(
+                      children: [
+                        for (final note in notes)
+                          Text(note, style: _mutedStyle(context)),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+            if (onTap != null && evidenceExpanded)
+              _SupplierDetailPanel(details: details),
+          ],
+        );
+      },
     );
   }
 
@@ -704,7 +1004,7 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
                 ),
                 for (final label in labels)
                   Text(label, style: _mutedStyle(context)),
-                if (showDraft) const _Badge('Draft BOM', 'Draft'),
+                if (showDraft) const SuppliersByItemBadge('Draft BOM', 'Draft'),
               ],
             ),
           ),
@@ -737,17 +1037,21 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
     return '$label $identity';
   }
 
-  String? _stockUom(_Field field, {bool forceUnit = false}) =>
-      _displayUnit(_row, forceUnit || shows(field), fieldLabel(field));
+  String? _stockUom(_Field field, {bool forceUnit = false}) => _displayUnit(
+    _row,
+    !_sharesGroupUnit && (forceUnit || shows(field)),
+    fieldLabel(field),
+  );
 
-  List<_Badge> _poBadges(
+  List<SuppliersByItemBadge> _poBadges(
     SuppliersByItemRow row, {
     required bool supplier,
     required bool detailsVisible,
   }) {
     final unit = _displayUnit(
       row,
-      shows(supplier ? _Field.supplierStockUom : _Field.itemStockUom),
+      !(!supplier && _sharesGroupUnit) &&
+          shows(supplier ? _Field.supplierStockUom : _Field.itemStockUom),
       fieldLabel(_Field.itemStockUom),
     );
     return [
@@ -760,7 +1064,11 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
               )) &&
           (row.openOrderQty ?? 0) > 0)
         if (_amount(row.openOrderQty, unit) case final value?)
-          _Badge('${fieldLabel(_Field.itemOpenOrders)} $value', 'Submitted'),
+          SuppliersByItemBadge.quantity(
+            fieldLabel(_Field.itemOpenOrders),
+            value,
+            'Submitted',
+          ),
       if (includeDrafts &&
           shows(
             supplier ? _Field.supplierDraftPoBadge : _Field.itemDraftPoBadge,
@@ -771,7 +1079,11 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
               )) &&
           (row.draftOrderQty ?? 0) > 0)
         if (_amount(row.draftOrderQty, unit) case final value?)
-          _Badge('${fieldLabel(_Field.itemDraftOrders)} $value', 'On Hold'),
+          SuppliersByItemBadge.quantity(
+            fieldLabel(_Field.itemDraftOrders),
+            value,
+            'On Hold',
+          ),
     ];
   }
 }
@@ -779,11 +1091,14 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
 List<_Detail> _itemMetrics(
   SuppliersByItemLayoutRow entry,
   bool Function(SuppliersByItemField) shows,
-  SuppliersByItemFieldCaption fieldLabel,
-) {
+  SuppliersByItemFieldCaption fieldLabel, [
+  String? groupUnit,
+]) {
   final row = entry.node.row;
   final component = _isComponent(row);
   final template = row.kind == SuppliersByItemRowKind.template;
+  final sharedUnit =
+      !template && groupUnit != null && row.stockUom == groupUnit;
   return [
     if (template
         ? row.stockUom != null
@@ -796,11 +1111,12 @@ List<_Detail> _itemMetrics(
               _displayUnit(
                 row,
                 template ||
-                    shows(
-                      component
-                          ? _Field.componentStockUom
-                          : _Field.itemStockUom,
-                    ),
+                    (!sharedUnit &&
+                        shows(
+                          component
+                              ? _Field.componentStockUom
+                              : _Field.itemStockUom,
+                        )),
                 fieldLabel(_Field.itemStockUom),
               ),
             ) ??
@@ -834,6 +1150,100 @@ bool suppliersByItemHasDetails(
   _defaultCaption,
   true,
 ).isNotEmpty;
+
+String _supplierColumnValue(
+  SuppliersByItemRow row,
+  SuppliersByItemField field,
+  bool Function(SuppliersByItemField) shows,
+) {
+  String quantity(num? value) => value == null || !value.isFinite || value == 0
+      ? _emptyCell
+      : _quantityLabel(value);
+  switch (field) {
+    case _Field.supplierLastBuyColumn:
+      final date = strictReportDate(row.lastPurchaseDate);
+      return date == null ? _emptyCell : DateFormat('d MMM yy').format(date);
+    case _Field.supplierOpenPoBadge:
+      return quantity(row.openOrderQty);
+    case _Field.supplierDraftPoBadge:
+      return quantity(row.draftOrderQty);
+    case _Field.supplierRateColumn:
+      final rate = row.lastRate;
+      if (rate == null || !rate.isFinite) return _emptyCell;
+      return [
+        if (shows(_Field.supplierRateCurrency)) ?row.currency,
+        FormattingHelper.formatAmount(rate.toDouble()),
+      ].join(_nonBreakingSpace);
+    case _Field.supplierLeadTimeColumn:
+      return row.leadTimeDays?.toStringAsFixed(1) ?? _emptyCell;
+    case _Field.supplierQtyReceivedColumn:
+      return quantity(row.totalQtyReceived);
+    default:
+      return _emptyCell;
+  }
+}
+
+/// Shared supplier column widths, or null when the columns leave the supplier
+/// name too little room and the row should list its values instead.
+List<double>? _supplierColumnWidths(
+  BuildContext context,
+  double availableWidth,
+  Iterable<SuppliersByItemRow> rows,
+  List<SuppliersByItemField> columns,
+  bool Function(SuppliersByItemField) shows,
+  SuppliersByItemFieldCaption label,
+  TextStyle? captionStyle,
+  TextStyle? valueStyle,
+) {
+  final values = List.filled(columns.length, 0.0);
+  final measured = <String, double>{};
+  for (final row in rows) {
+    for (var i = 0; i < columns.length; i++) {
+      final text = _supplierColumnValue(row, columns[i], shows);
+      final width = measured.putIfAbsent(
+        text,
+        () => _width(context, text, valueStyle),
+      );
+      if (width > values[i]) values[i] = width;
+    }
+  }
+  double widest(double a, double b) => a > b ? a : b;
+  // Prefer headings on one line, then on two, then one word per line.
+  final words = [
+    for (final field in columns)
+      label(
+        field,
+      ).split(' ').map((word) => _width(context, word, captionStyle)).toList(),
+  ];
+  List<double> layout(double Function(List<double> words) heading) => [
+    for (var i = 0; i < columns.length; i++)
+      widest(values[i], widest(32, heading(words[i]))),
+  ];
+  final space = _width(context, ' ', captionStyle);
+  double line(List<double> words) =>
+      words.fold(0.0, (sum, word) => sum + word) + space * (words.length - 1);
+  double twoLines(List<double> words) {
+    var best = double.infinity;
+    for (var split = 1; split < words.length; split++) {
+      final width = widest(
+        line(words.sublist(0, split)),
+        line(words.sublist(split)),
+      );
+      if (width < best) best = width;
+    }
+    return best.isFinite ? best : line(words);
+  }
+
+  for (final widths in [
+    layout(line),
+    layout(twoLines),
+    layout((words) => words.fold(0.0, widest)),
+  ]) {
+    final total = widths.fold(0.0, (sum, width) => sum + width + _columnGap);
+    if (availableWidth - total >= _minSupplierNameWidth) return widths;
+  }
+  return null;
+}
 
 String _lastBuyLabel(DateTime? date, String label) =>
     '$label ${date == null ? '-' : DateFormat('d MMM yy').format(date)}';
@@ -944,7 +1354,7 @@ class _ItemContent extends StatelessWidget {
   final String? name;
   final List<_Detail> metrics;
   final List<String> qualifiers;
-  final List<_Badge> badges;
+  final List<SuppliersByItemBadge> badges;
   final List<_Detail> details;
   final List<String> warnings;
   final bool expanded;
@@ -962,8 +1372,7 @@ class _ItemContent extends StatelessWidget {
     final values = theme.textTheme.bodyMedium?.copyWith(
       fontFeatures: _tabularFigures,
     );
-    final hasSecondLine =
-        name != null || badges.isNotEmpty || qualifiers.isNotEmpty;
+    final hasSecondLine = name != null || qualifiers.isNotEmpty;
     final hasDetails = details.isNotEmpty || warnings.isNotEmpty;
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1013,7 +1422,7 @@ class _ItemContent extends StatelessWidget {
                         widths[i],
                         Text(
                           metrics[i].label,
-                          style: muted,
+                          style: _captionStyle(context),
                           textAlign: TextAlign.end,
                         ),
                       ),
@@ -1070,10 +1479,10 @@ class _ItemContent extends StatelessWidget {
                           labelStyle: muted,
                           valueStyle: values,
                         ),
-                    ...badges,
                   ],
                 ),
               ),
+            if (badges.isNotEmpty) _RowWrap(children: badges),
             if (hasDetails)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
@@ -1302,11 +1711,7 @@ class _TileSurface extends StatelessWidget {
     );
     final actions = controls;
     return Material(
-      color: heading ? context.scheme.subtle : context.scheme.fg,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadius.md),
-      ),
-      clipBehavior: Clip.antiAlias,
+      type: MaterialType.transparency,
       child: actions == null
           ? summary
           : Column(
@@ -1317,19 +1722,183 @@ class _TileSurface extends StatelessWidget {
   }
 }
 
-class _Badge extends StatelessWidget {
-  const _Badge(this.label, this.colorStatus);
+/// A row badge: a status pill, or a quiet quantity note with a status dot.
+class SuppliersByItemBadge extends StatelessWidget {
+  const SuppliersByItemBadge(this.label, this.colorStatus, {super.key})
+    : caption = null,
+      value = null;
+
+  /// A quiet quantity note: a status dot, a muted caption and the value.
+  const SuppliersByItemBadge.quantity(
+    String this.caption,
+    String this.value,
+    this.colorStatus, {
+    super.key,
+  }) : label = '$caption $value';
 
   final String label;
   final String colorStatus;
+  final String? caption;
+  final String? value;
 
   @override
-  Widget build(BuildContext context) => StatusPill(
-    status: label,
-    colorStatus: colorStatus,
-    compact: true,
-    wrapLabel: true,
+  Widget build(BuildContext context) {
+    final caption = this.caption;
+    if (caption == null) {
+      return StatusPill(
+        status: label,
+        colorStatus: colorStatus,
+        compact: true,
+        wrapLabel: true,
+      );
+    }
+    final (_, valueColour) = StatusPill.colourForStatus(
+      colorStatus,
+      brightness: Theme.of(context).brightness,
+    );
+    final muted = _mutedStyle(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 7,
+          height: 7,
+          decoration: BoxDecoration(
+            color: StatusPill.dotColorForStatus(colorStatus),
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(text: '$caption ', style: muted),
+                TextSpan(
+                  text: value,
+                  style: muted?.copyWith(
+                    color: valueColour,
+                    fontWeight: FontWeight.w600,
+                    fontFeatures: _tabularFigures,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// One figure in a template header: a caption above its value.
+class SuppliersByItemStat extends StatelessWidget {
+  const SuppliersByItemStat({
+    super.key,
+    required this.label,
+    required this.value,
+    this.valueStyle,
+  });
+
+  final String label;
+  final String value;
+  final TextStyle? valueStyle;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(label, style: _captionStyle(context)),
+      const SizedBox(height: 2),
+      Text(value, style: valueStyle),
+    ],
   );
+}
+
+class _TemplateHeader extends StatelessWidget {
+  const _TemplateHeader({
+    required this.identity,
+    required this.name,
+    required this.stats,
+    required this.notes,
+    required this.badges,
+    required this.expanded,
+  });
+
+  final String identity;
+  final String? name;
+  final List<_Detail> stats;
+  final List<String> notes;
+  final List<SuppliersByItemBadge> badges;
+  final bool? expanded;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = _mutedStyle(context);
+    final title = theme.textTheme.titleSmall?.copyWith(
+      fontWeight: FontWeight.w700,
+    );
+    final value = theme.textTheme.titleSmall?.copyWith(
+      fontWeight: FontWeight.w600,
+      fontFeatures: _tabularFigures,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Wrap(
+                spacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.end,
+                children: [
+                  Text(identity, style: title),
+                  if (name case final name?)
+                    Text(
+                      '· $name',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: context.scheme.textMuted,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            if (expanded case final open?) _disclosure(context, open),
+          ],
+        ),
+        if (stats.isNotEmpty)
+          Container(
+            margin: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.only(top: 7),
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: context.scheme.border)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final stat in stats)
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsetsDirectional.only(end: 8),
+                      child: SuppliersByItemStat(
+                        label: stat.label,
+                        value: stat.value,
+                        valueStyle: value,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        if (notes.isNotEmpty)
+          _RowWrap(
+            children: [for (final note in notes) Text(note, style: muted)],
+          ),
+        if (badges.isNotEmpty) _RowWrap(children: badges),
+      ],
+    );
+  }
 }
 
 class _SectionTitle extends StatelessWidget {
@@ -1432,6 +2001,12 @@ Widget _disclosure(BuildContext context, bool expanded) => SizedBox(
 TextStyle? _mutedStyle(BuildContext context) => Theme.of(
   context,
 ).textTheme.bodySmall?.copyWith(color: context.scheme.textMuted);
+
+/// Column and stat captions: small, medium weight, subtle.
+TextStyle? _captionStyle(BuildContext context) => Theme.of(context)
+    .textTheme
+    .labelSmall
+    ?.copyWith(color: context.scheme.textSubtle, fontWeight: FontWeight.w500);
 
 String? _amount(num? quantity, String? unit) =>
     quantity == null || !quantity.isFinite

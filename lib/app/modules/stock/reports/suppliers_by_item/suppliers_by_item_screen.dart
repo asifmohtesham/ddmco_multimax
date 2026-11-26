@@ -232,6 +232,7 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
     final padding = MediaQuery.paddingOf(context);
 
     return AppShellScaffold(
+      backgroundColor: context.scheme.bg,
       bottomNavigationBar: Obx(() {
         final settingsError = _controller.settingsScopeLoadError.value;
         if (settingsError == null &&
@@ -994,7 +995,20 @@ class _SuppliersTree extends StatefulWidget {
 }
 
 class _SuppliersTreeState extends State<_SuppliersTree> {
-  static const _rowGap = 4.0;
+  // Within a group each tile ends in this much card-coloured space, so rows
+  // read as one card; the group's last row is followed by [_groupGap].
+  static const _rowGap = SuppliersByItemDisplayTile.rowGap;
+  static const _groupGap = 10.0;
+
+  /// The space below the row at [index]: the gap closing its group, if any.
+  double _gapAt(int index) {
+    final rows = _laidOut?.rows;
+    if (rows == null || index < 0 || index >= rows.length) return _rowGap;
+    return index == rows.length - 1 || rows[index + 1].depth == 0
+        ? _groupGap
+        : _rowGap;
+  }
+
   static const _precision = 0.5;
   var _listKey = GlobalKey();
   late SuppliersByItemGroup _preparedGroup;
@@ -1330,8 +1344,8 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
     for (var box = list.firstChild; box != null; box = list.childAfter(box)) {
       final top = box.localToGlobal(Offset.zero, ancestor: viewport).dy;
       if (top >= position.viewportDimension) break;
-      if (top + box.size.height - _rowGap <= headerBottom) continue;
       final index = list.indexOf(box);
+      if (top + box.size.height - _gapAt(index) <= headerBottom) continue;
       final row = visible.rows[index];
       // A heading without its own occurrence (an Item Template) is found in
       // the other grouping through its first child that has one.
@@ -1543,7 +1557,7 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
       child = list.childAfter(child)!;
     }
     final rowTop = topOf(child);
-    final rowHeight = child.size.height - _rowGap;
+    final rowHeight = child.size.height - _gapAt(index);
     if (!identical(anchor.originalBox.target, child)) anchor.evicted = true;
     final keepSearchOffset =
         anchor.returningFromSearch &&
@@ -1596,10 +1610,12 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
 
   Widget _groupTile(
     SuppliersByItemLayoutRow row,
-    SuppliersByItemFieldVisibility fields,
-  ) {
+    SuppliersByItemFieldVisibility fields, [
+    SuppliersByItemSegment segment = SuppliersByItemSegment.only,
+  ]) {
     final view = widget.controller;
     return SuppliersByItemDisplayTile(
+      segment: segment,
       entry: row,
       shows: fields.shows,
       fieldLabel: view.fieldLabel,
@@ -1663,7 +1679,7 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
     // as the measured rows require and recheck after the next layout.
     final supplierBottom = lastBox
         .localToGlobal(
-          Offset(0, lastBox.size.height - _rowGap),
+          Offset(0, lastBox.size.height - _gapAt(list.indexOf(lastBox))),
           ancestor: viewport,
         )
         .dy;
@@ -1686,10 +1702,30 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
     final view = widget.controller;
     final filters = view.filters.value;
     final indexByKey = visible?.indexByKey ?? const {};
+    // A template's Stock UOM shows once in its header; its variants in the
+    // same unit leave it out.
+    final groupUnits = <SuppliersByItemRowKey, String>{};
+    SuppliersByItemLayoutRow? head;
+    for (final row in rows) {
+      if (row.depth == 0) {
+        head = row;
+        continue;
+      }
+      final headRow = head?.node.row;
+      if (row.depth == 1 &&
+          row.parentKey == head?.key &&
+          headRow?.kind == SuppliersByItemRowKind.template) {
+        if (headRow?.stockUom case final unit?) groupUnits[row.key] = unit;
+      }
+    }
     final columnRuns = suppliersByItemColumnRuns(
       rows,
       widget.fields.shows,
       view.fieldLabel,
+      (row) => groupUnits[row.key],
+    );
+    final supplierColumns = widget.fields.supplierColumns(
+      includeDrafts: filters.includeDrafts,
     );
     final list = SliverList.builder(
       key: _listKey,
@@ -1703,11 +1739,16 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
         final parentIndex = indexByKey[row.parentKey];
         final parent = parentIndex == null ? null : rows[parentIndex];
         final ownerIndex = indexByKey[parent?.parentKey];
+        final last = index == rows.length - 1 || rows[index + 1].depth == 0;
+        final segment = SuppliersByItemSegment.of(
+          first: index == 0 || row.depth == 0,
+          last: last,
+        );
         return Padding(
           key: key is ({String nodeId})
               ? ValueKey(key)
               : ValueKey<SuppliersByItemRowKey>(key),
-          padding: const EdgeInsets.only(bottom: _rowGap),
+          padding: EdgeInsets.only(bottom: last ? _groupGap : 0),
           child: row.group == null
               ? SuppliersByItemDisplayTile(
                   entry: row,
@@ -1729,10 +1770,13 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
                   parentOutputUom: ownerIndex == null
                       ? null
                       : rows[ownerIndex].node.row.stockUom,
+                  segment: segment,
+                  groupUnit: groupUnits[row.key],
+                  supplierColumns: supplierColumns,
                 )
               : ValueListenableBuilder(
                   valueListenable: widget.paintedSupplier,
-                  child: _groupTile(row, widget.fields),
+                  child: _groupTile(row, widget.fields, segment),
                   builder: (context, painted, child) => ExcludeSemantics(
                     excluding: painted == row.key,
                     child: child,

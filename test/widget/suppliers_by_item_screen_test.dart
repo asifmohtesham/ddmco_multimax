@@ -151,6 +151,17 @@ Finder rowWith(String text) => find.ancestor(
 Finder within(Finder row, String text) =>
     find.descendant(of: row, matching: find.text(text));
 
+/// A template header figure: its caption above its value.
+Finder stat(Finder row, String label, String value) => find.descendant(
+  of: row,
+  matching: find.byWidgetPredicate(
+    (widget) =>
+        widget is SuppliersByItemStat &&
+        widget.label == label &&
+        widget.value == value,
+  ),
+);
+
 Iterable<CheckboxListTile> _configuredFieldsTiles(
   WidgetTester tester,
   Finder sheet,
@@ -458,7 +469,9 @@ void registerSuppliersByItemFieldsContract() {
       }
 
       expectBalance(false);
-      expect(within(supplier, 'Letzter Einkauf 1 Oct 25'), findsOneWidget);
+      // The supplier table heads its date column with the report's label.
+      expect(within(supplier, 'Letzter Einkauf'), findsOneWidget);
+      expect(within(supplier, '1 Oct 25'), findsOneWidget);
       expect(
         find.bySemanticsLabel(
           RegExp(r'^Item / Supplier VENDOR,.*Letzter Einkauf 1 October 2025'),
@@ -1300,7 +1313,7 @@ void main() {
       );
       await mouse.down(thumb);
       await tester.pump(const Duration(milliseconds: 600));
-      await mouse.moveTo(box.localToGlobal(Offset(x, 27)));
+      await mouse.moveTo(box.localToGlobal(Offset(x, 28)));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
       await mouse.up();
@@ -3099,6 +3112,8 @@ void main() {
       }) async {
         final tile = find.byKey(ValueKey(field));
         await tester.scrollUntilVisible(tile, 140, scrollable: sheetScroll);
+        await tester.ensureVisible(tile);
+        await tester.pumpAndSettle();
         expect(tester.widget<CheckboxListTile>(tile).value, was);
         if (locked) {
           expect(tester.widget<CheckboxListTile>(tile).onChanged, isNull);
@@ -4537,8 +4552,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(within(rowWith('ACP-25'), 'Supplier Count 1'), findsOneWidget);
-      expect(within(rowWith('ACP-25'), 'Balance Qty 12.5 Nos'), findsOneWidget);
+      expect(stat(rowWith('ACP-25'), 'Supplier Count', '1'), findsOneWidget);
+      expect(
+        stat(rowWith('ACP-25'), 'Balance Qty', '12.5 Nos'),
+        findsOneWidget,
+      );
 
       final itemWithoutSupplier = rowWith('2002492');
       final noSupplier = find.descendant(
@@ -4546,7 +4564,9 @@ void main() {
         matching: find.text('No supplier recorded'),
       );
       expect(noSupplier, findsOneWidget);
-      expect(within(itemWithoutSupplier, '0 Nos'), findsOneWidget);
+      // Variants in the template's Stock UOM leave the unit to its header.
+      expect(within(itemWithoutSupplier, '0'), findsWidgets);
+      expect(within(itemWithoutSupplier, '0 Nos'), findsNothing);
       final placeholder = reportRow('none:7:2002492');
       expect(placeholder, findsNothing);
       await tester.tap(itemWithoutSupplier);
@@ -4559,7 +4579,7 @@ void main() {
       await tester.tap(itemWithoutSupplier);
       await tester.pumpAndSettle();
       expect(find.text('KANG KAI'), findsNothing);
-      expect(within(rowWith('2002506'), '12.5 Nos'), findsOneWidget);
+      expect(within(rowWith('2002506'), '12.5'), findsOneWidget);
 
       final (background, expectedInk) = StatusPill.colourForStatus(
         'Disabled',
@@ -4701,14 +4721,15 @@ void main() {
       await tester.pumpAndSettle();
 
       final template = rowWith('ALS');
+      // The template header reads "ALS · Automatic watches" on one line.
       final templateName = find.descendant(
         of: template,
-        matching: find.text('Automatic watches'),
+        matching: find.text('· Automatic watches'),
       );
       expect(templateName, findsOneWidget);
       expect(
-        tester.getTopLeft(templateName).dy,
-        greaterThan(tester.getTopLeft(find.text('ALS')).dy),
+        tester.getTopLeft(templateName).dx,
+        greaterThan(tester.getTopRight(find.text('ALS')).dx),
       );
       final first = rowWith('2002906');
       final second = rowWith('2002907');
@@ -5045,12 +5066,12 @@ void main() {
     expect(within(reportRow('bom:PARTS'), '1 component'), findsNothing);
     expect(find.text('Optional item name'), findsOneWidget);
     expect(
-      within(reportRow('template:ACP-25'), 'Supplier Count 1'),
+      stat(reportRow('template:ACP-25'), 'Supplier Count', '1'),
       findsOneWidget,
     );
     expect(within(reportRow('item:2002506'), 'Supplier Count 1'), findsNothing);
     expect(
-      within(reportRow('template:ACP-25'), 'Balance Qty 12.5 Nos'),
+      stat(reportRow('template:ACP-25'), 'Balance Qty', '12.5 Nos'),
       findsOneWidget,
     );
     expect(
@@ -5114,7 +5135,7 @@ void main() {
 
       final template = reportRow('template:ACP-25');
       final leaves = ['2002492', '2002506'];
-      expect(within(template, 'Supplier Count 1'), findsOneWidget);
+      expect(stat(template, 'Supplier Count', '1'), findsOneWidget);
       for (final leaf in leaves) {
         expect(
           find.bySemanticsLabel(RegExp('^Item $leaf,.*Supplier Count 1')),
@@ -5126,7 +5147,7 @@ void main() {
         false,
       );
       await tester.pumpAndSettle();
-      expect(within(template, 'Supplier Count 1'), findsOneWidget);
+      expect(stat(template, 'Supplier Count', '1'), findsOneWidget);
       for (final leaf in leaves) {
         expect(reportRow('item:$leaf'), findsOneWidget);
         expect(
@@ -5233,12 +5254,16 @@ void main() {
         ],
       );
       await tester.pumpAndSettle();
-      expect(within(rowWith('ACP-25'), 'Balance Qty 12.5 Nos'), findsOneWidget);
-      expect(within(rowWith('2002506'), '12.5 Nos'), findsOneWidget);
+      expect(
+        stat(rowWith('ACP-25'), 'Balance Qty', '12.5 Nos'),
+        findsOneWidget,
+      );
+      // The template header carries the unit; its variants leave it out.
+      expect(within(rowWith('2002506'), '12.5'), findsOneWidget);
       expect(find.text('Projected Qty 7 Nos'), findsOneWidget);
-      expect(find.text('Projected Qty 3 Nos'), findsOneWidget);
+      expect(find.text('Projected Qty 3'), findsOneWidget);
       expect(find.text('Reorder Level 9 Nos'), findsOneWidget);
-      expect(find.text('Reorder Level 5 Nos'), findsOneWidget);
+      expect(find.text('Reorder Level 5'), findsOneWidget);
       final warnings = tester.widgetList<Text>(
         find.text('Projected Qty below Reorder Level'),
       );
@@ -5299,18 +5324,23 @@ void main() {
       );
       await tester.pumpAndSettle();
       final supplier = rowWith('KANG KAI');
-      final valid = within(supplier, 'Last Purchase Date 1 Oct 25');
-      final compactNameWidth = tester.getSize(find.text('KANG KAI')).width;
+      final valid = within(supplier, '1 Oct 25');
       expect(valid, findsOneWidget);
+      // The supplier table heads its columns once, above the first supplier.
+      expect(find.text('Last Purchase Date'), findsOneWidget);
       expect(
         find.bySemanticsLabel(RegExp('Last Purchase Date 1 October 2025')),
         findsOneWidget,
       );
       for (final identity in ['Second Supplier', 'Invalid Date Supplier']) {
         final leaf = rowWith(identity);
-        final date = within(leaf, 'Last Purchase Date -');
-        expect(date, findsOneWidget);
-        expect(tester.getTopRight(date).dx, tester.getTopRight(valid).dx);
+        final dashes = find.descendant(of: leaf, matching: find.text('–'));
+        expect(dashes, findsWidgets);
+        final edges = [
+          for (final element in dashes.evaluate())
+            tester.getTopRight(find.byElementPredicate((e) => e == element)).dx,
+        ]..sort();
+        expect(edges.first, closeTo(tester.getTopRight(valid).dx, 0.5));
         final label = find.bySemanticsLabel(
           RegExp('Supplier Name $identity, Last Purchase Date unavailable'),
         );
@@ -5326,17 +5356,16 @@ void main() {
           findsNothing,
         );
       }
-      expect(within(supplier, 'Last Purchase Date'), findsNothing);
       await tester.tap(find.text('KANG KAI'));
       await tester.pumpAndSettle();
       for (final detail in [
         'On Hold (Orders) until 2027-01-01',
         'Open Order Qty',
-        '1,234.5\u00a0Nos',
+        '1,234.5',
         'Draft Order Qty',
-        '2.5\u00a0Nos',
+        '2.5',
         'Last Purchase Date',
-        '1 Oct 2025',
+        '1 Oct 25',
         'Lead Time (Days)',
         '4.0 days',
         'Lead Time Receipts',
@@ -5344,8 +5373,10 @@ void main() {
         'Receipt Count',
         sources,
       ]) {
-        expect(within(supplier, detail), findsOneWidget);
+        expect(within(supplier, detail), findsOneWidget, reason: detail);
       }
+      // A column already shows the date, so the details leave it out.
+      expect(within(supplier, '1 Oct 2025'), findsNothing);
       expect(within(supplier, 'Last Rate'), findsNothing);
       await currentReport().setFieldVisible(
         SuppliersByItemField.supplierLastBuyColumn,
@@ -5366,11 +5397,9 @@ void main() {
         );
       }
       expect(within(supplier, 'Open Order Qty'), findsOneWidget);
+      // With the column hidden, the open details list the full date.
       expect(within(supplier, 'Last Purchase Date'), findsOneWidget);
-      expect(
-        tester.getSize(find.text('KANG KAI')).width,
-        greaterThan(compactNameWidth),
-      );
+      expect(within(supplier, '1 Oct 2025'), findsOneWidget);
     },
   );
 
@@ -5423,25 +5452,32 @@ void main() {
         final open = rowWith('OPEN');
         final item = rowWith('BUY');
         final bom = rowWith('BOM-BUY');
-        for (final (row, openQty, draftQty) in [(both, 2, 3), (item, 4, 2)]) {
-          expect(within(row, 'Open Order Qty $openQty Nos'), findsOneWidget);
-          expect(within(row, 'Draft Order Qty $draftQty Nos'), findsOneWidget);
+        const dash = '–';
+        // The item keeps quiet quantity notes; suppliers show signed values
+        // in the table's Open Order Qty and Draft Order Qty columns.
+        expect(within(item, 'Open Order Qty 4 Nos'), findsOneWidget);
+        expect(within(item, 'Draft Order Qty 2 Nos'), findsOneWidget);
+        for (final (row, values) in [
+          (both, ['2', '3']),
+          (open, ['2']),
+          (draft, ['-1', '1']),
+          (rowWith('NEGATIVE'), ['-5', '-2']),
+        ]) {
+          for (final value in values) {
+            expect(within(row, value), findsOneWidget, reason: value);
+          }
         }
-        Finder orderQty(Finder row, String label) =>
-            find.descendant(of: row, matching: find.textContaining(label));
-        expect(within(open, 'Open Order Qty 2 Nos'), findsOneWidget);
-        expect(orderQty(open, 'Draft Order Qty'), findsNothing);
-        expect(orderQty(draft, 'Open Order Qty'), findsNothing);
-        expect(within(draft, 'Draft Order Qty 1 Nos'), findsOneWidget);
-        for (final row in [rowWith('NEGATIVE'), rowWith('UNKNOWN'), bom]) {
-          expect(orderQty(row, 'Open Order Qty'), findsNothing);
-          expect(orderQty(row, 'Draft Order Qty'), findsNothing);
-        }
+        expect(within(open, dash), findsNWidgets(2));
+        expect(within(rowWith('UNKNOWN'), dash), findsNWidgets(3));
+        expect(
+          find.descendant(of: bom, matching: find.textContaining('Order Qty')),
+          findsNothing,
+        );
         expect(within(bom, 'Draft BOM'), findsOneWidget);
         expect(
           find.bySemanticsLabel(
             RegExp(
-              'Item / Supplier BOTH.*Supplier Status ${RegExp.escape(hold)}.*Open Order Qty 2 Nos.*Draft Order Qty 3 Nos',
+              'Item / Supplier BOTH.*Open Order Qty 2, Draft Order Qty 3.*Supplier Status ${RegExp.escape(hold)}',
             ),
           ),
           findsOneWidget,
@@ -5457,13 +5493,7 @@ void main() {
         for (final (row, text, ramp, ink) in [
           (
             both,
-            'Open Order Qty 2 Nos',
-            'Submitted',
-            dark ? AppColors.blue300 : AppColors.blue700,
-          ),
-          (
-            both,
-            'Draft Order Qty 3 Nos',
+            '3',
             'On Hold',
             dark ? AppColors.orange300 : AppColors.orange700,
           ),
@@ -5487,7 +5517,7 @@ void main() {
           ),
         ]) {
           final pill = tester.widget<Text>(within(row, text));
-          expect(pill.style?.color, ink);
+          expect(pill.style?.color, ink, reason: text);
           final (background, _) = StatusPill.colourForStatus(
             ramp,
             brightness: dark ? Brightness.dark : Brightness.light,
@@ -5512,10 +5542,10 @@ void main() {
           false,
         );
         await tester.pumpAndSettle();
-        expect(orderQty(item, 'Open Order Qty'), findsNothing);
+        expect(within(item, 'Open Order Qty 4 Nos'), findsNothing);
         expect(within(item, 'Draft Order Qty 2 Nos'), findsOneWidget);
-        expect(within(both, 'Open Order Qty 2 Nos'), findsOneWidget);
-        expect(orderQty(both, 'Draft Order Qty'), findsNothing);
+        expect(within(both, '2'), findsOneWidget);
+        expect(within(both, '3'), findsNothing);
         await report.setFieldVisible(
           SuppliersByItemField.itemDraftPoBadge,
           false,
@@ -5529,8 +5559,8 @@ void main() {
           false,
         );
         await tester.pumpAndSettle();
-        expect(orderQty(both, 'Open Order Qty'), findsNothing);
-        expect(orderQty(item, 'Draft Order Qty'), findsNothing);
+        expect(within(both, '2'), findsNothing);
+        expect(within(item, 'Draft Order Qty 2 Nos'), findsNothing);
         expect(within(both, hold), findsOneWidget);
         expect(within(draft, 'Disabled'), findsOneWidget);
         expect(within(bom, 'Draft BOM'), findsOneWidget);
@@ -5590,7 +5620,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(within(rowWith('STYLE'), 'Supplier Count $count'), findsOneWidget);
+      expect(
+        stat(rowWith('STYLE'), 'Supplier Count', '$count'),
+        findsOneWidget,
+      );
       final supplier = reportRow('supplier:KIT:VENDOR');
       await tester.tap(supplier);
       await tester.pumpAndSettle();

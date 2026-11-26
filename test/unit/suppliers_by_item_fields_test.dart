@@ -396,12 +396,12 @@ void main() {
           'itemOpenPoBadge',
           'itemDraftPoBadge',
         ],
-        'Supplier rows': [
+        'Supplier table columns': [
           'supplierLastBuyColumn',
           'supplierOpenPoBadge',
           'supplierDraftPoBadge',
-          'supplierMatchEmphasis',
         ],
+        'Supplier rows': ['supplierMatchEmphasis'],
         'BOM and tree labels': [
           'bomDefaultMarker',
           'bomDraftBadge',
@@ -459,10 +459,17 @@ void main() {
         'supplierGroupComponentCount': 'Supplier rows',
         'componentMatchPath': 'BOM component rows',
       };
+      // Supplier table columns that start switched off.
+      const stage3 = [
+        'supplierRateColumn',
+        'supplierLeadTimeColumn',
+        'supplierQtyReceivedColumn',
+      ];
       final releasedIds = [
         ...previous,
         ...added.values.expand((ids) => ids),
         ...stage2.keys,
+        ...stage3,
       ];
       // The remaining released IDs defaulted on in b08ea347.
       const releasedDefaultOff = {
@@ -491,6 +498,7 @@ void main() {
         'componentProjected',
         'componentLastPurchase',
         'componentUsedInBoms',
+        ...stage3,
       };
       final releasedDefaults = {
         for (final id in releasedIds) id: !releasedDefaultOff.contains(id),
@@ -499,7 +507,12 @@ void main() {
         SuppliersByItemField.values.map((field) => field.name),
         releasedIds,
       );
-      expect(releasedIds, hasLength(57));
+      expect(releasedIds, hasLength(60));
+      for (final id in stage3) {
+        final field = SuppliersByItemField.values.byName(id);
+        expect(field.group, SuppliersByItemFieldGroup.supplierColumns);
+        expect(defaults.shows(field), isFalse);
+      }
       for (final entry in added.entries) {
         for (final id in entry.value) {
           final field = SuppliersByItemField.values.byName(id);

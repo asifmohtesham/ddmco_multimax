@@ -3,6 +3,7 @@ import 'package:multimax/app/data/utils/suppliers_by_item_labels.dart';
 enum SuppliersByItemFieldGroup {
   item('Item rows'),
   supplier('Supplier rows'),
+  supplierColumns('Supplier table columns'),
   component('BOM component rows'),
   bom('BOM and tree labels'),
   search('Search');
@@ -76,21 +77,12 @@ enum SuppliersByItemField {
     qualifier: 'Badge',
     onByDefault: true,
   ),
-  supplierLastBuyColumn.supplier(
-    'Last Purchase Date',
-    qualifier: 'Comparison column',
-    onByDefault: true,
-  ),
-  supplierOpenPoBadge.supplier(
+  supplierLastBuyColumn.supplierColumn('Last Purchase Date', onByDefault: true),
+  supplierOpenPoBadge.supplierColumn(
     SuppliersByItemColumnLabels.openOrderQty,
-    qualifier: 'Badge',
     onByDefault: true,
   ),
-  supplierDraftPoBadge.supplier(
-    'Draft Order Qty',
-    qualifier: 'Badge',
-    onByDefault: true,
-  ),
+  supplierDraftPoBadge.supplierColumn('Draft Order Qty', onByDefault: true),
   supplierMatchEmphasis.supplier(
     'Highlight Suppliers filter matches',
     onByDefault: true,
@@ -120,7 +112,13 @@ enum SuppliersByItemField {
     'Item / Supplier',
     qualifier: 'BOM path',
     onByDefault: true,
-  );
+  ),
+  // Added after release: keep new IDs last so stored preferences stay valid.
+  supplierRateColumn.supplierColumn('Last Rate'),
+  supplierLeadTimeColumn.supplierColumn(
+    SuppliersByItemColumnLabels.leadTimeDays,
+  ),
+  supplierQtyReceivedColumn.supplierColumn('Total Qty Received');
 
   const SuppliersByItemField.item(
     this.label, {
@@ -133,6 +131,12 @@ enum SuppliersByItemField {
     this.onByDefault = false,
     this.qualifier,
   }) : group = SuppliersByItemFieldGroup.supplier;
+
+  const SuppliersByItemField.supplierColumn(
+    this.label, {
+    this.onByDefault = false,
+  }) : group = SuppliersByItemFieldGroup.supplierColumns,
+       qualifier = null;
 
   const SuppliersByItemField.component(
     this.label, {
@@ -165,7 +169,9 @@ enum SuppliersByItemField {
     supplierDraftOrders ||
     itemDraftPoBadge ||
     supplierDraftPoBadge => 'draft_order_qty',
-    itemQtyReceived || supplierQtyReceived => 'total_qty_received',
+    itemQtyReceived ||
+    supplierQtyReceived ||
+    supplierQtyReceivedColumn => 'total_qty_received',
     supplierStatus => 'supplier_status',
     supplierPartNumber => 'supplier_part_number',
     supplierSources => 'sources',
@@ -174,13 +180,13 @@ enum SuppliersByItemField {
     supplierLastBuyColumn => 'last_purchase_date',
     supplierLastPurchaseReceipt => 'last_purchase_receipt',
     supplierLastPo => 'last_po_date',
-    supplierRate => 'last_rate',
+    supplierRate || supplierRateColumn => 'last_rate',
     supplierRateCurrency => 'currency',
     supplierRateUom => 'rate_uom',
     supplierRateSource => 'rate_source',
     supplierRateDate => 'rate_date',
     supplierRateDocument => 'rate_document',
-    supplierLeadTime => 'lead_time_days',
+    supplierLeadTime || supplierLeadTimeColumn => 'lead_time_days',
     supplierLeadTimeReceipts => 'lead_time_receipts',
     supplierPoCount => 'po_count',
     supplierReceiptCount => 'receipt_count',
@@ -206,6 +212,18 @@ enum SuppliersByItemField {
   bool get movedToView => column == null && !fixed;
 }
 
+/// Supplier table columns in display order. Only [maxSupplierColumns] fit on a
+/// phone, so the Fields sheet stops more from being switched on.
+const supplierTableColumns = [
+  SuppliersByItemField.supplierLastBuyColumn,
+  SuppliersByItemField.supplierOpenPoBadge,
+  SuppliersByItemField.supplierDraftPoBadge,
+  SuppliersByItemField.supplierRateColumn,
+  SuppliersByItemField.supplierLeadTimeColumn,
+  SuppliersByItemField.supplierQtyReceivedColumn,
+];
+const maxSupplierColumns = 3;
+
 class SuppliersByItemFieldVisibility {
   const SuppliersByItemFieldVisibility.defaults() : overrides = const {};
 
@@ -220,6 +238,17 @@ class SuppliersByItemFieldVisibility {
 
   bool shows(SuppliersByItemField field) =>
       field.fixed || (overrides[field.name] ?? field.onByDefault);
+
+  /// The supplier table's columns, capped at [maxSupplierColumns]. Draft Order
+  /// Qty needs draft purchase orders to be included by the report filter.
+  List<SuppliersByItemField> supplierColumns({required bool includeDrafts}) => [
+    for (final field in supplierTableColumns)
+      if (shows(field) &&
+          (includeDrafts || field != SuppliersByItemField.supplierDraftPoBadge))
+        field,
+  ].take(maxSupplierColumns).toList();
+
+  int get supplierColumnCount => supplierTableColumns.where(shows).length;
 
   SuppliersByItemFieldVisibility withField(
     SuppliersByItemField field,

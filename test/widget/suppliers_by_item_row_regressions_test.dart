@@ -19,8 +19,12 @@ Finder _row(String id) => find.byKey(ValueKey((nodeId: id)));
 Finder _within(Finder row, String text) =>
     find.descendant(of: row, matching: find.text(text));
 
-Finder _badge(Finder row, String label) =>
-    find.descendant(of: row, matching: find.widgetWithText(StatusPill, label));
+Finder _badge(Finder row, String label) => find.descendant(
+  of: row,
+  matching: find.byWidgetPredicate(
+    (widget) => widget is SuppliersByItemBadge && widget.label == label,
+  ),
+);
 
 Finder _tile(bool Function(SuppliersByItemLayoutRow) matches) =>
     find.byWidgetPredicate(
@@ -101,6 +105,7 @@ Future<void> _pumpRows(
                       : null,
                   onToggleEvidence: () => onEvidence?.call(entry),
                   columnRun: columnRuns[entry.key],
+                  supplierColumns: fields.supplierColumns(includeDrafts: true),
                 ),
             ],
           ),
@@ -713,9 +718,9 @@ void main() {
   );
 
   testWidgets(
-    'dated and undated sibling suppliers reflow to the same Last Purchase Date edge',
+    'dated and undated sibling suppliers share the Last Purchase Date column',
     (tester) async {
-      await _pumpRows(tester, [
+      final fixture = [
         {'node_id': 'item:ITEM'},
         {
           'node_id': 'supplier:ITEM:NONE',
@@ -730,26 +735,37 @@ void main() {
           'open_order_qty': 1,
           'stock_uom': 'Kg',
         },
-      ], textScale: 2);
+      ];
+      await _pumpRows(tester, fixture);
 
-      final rightEdges = <double>[];
-      for (final (identity, label) in [
-        ('Date unavailable', 'Last Purchase Date -'),
-        ('Date available', 'Last Purchase Date 10 Nov 25'),
+      final heading = find.text('Last Purchase Date');
+      expect(heading, findsOneWidget);
+      expect(find.text('Supplier Name'), findsOneWidget);
+      final dated = find.text('10 Nov 25');
+      final undated = _within(_row('supplier:ITEM:NONE'), '\u2013');
+      // Last Purchase Date, Open Order Qty and Draft Order Qty are all empty.
+      expect(undated, findsNWidgets(3));
+      final edge = tester.getTopRight(heading).dx;
+      expect(tester.getTopRight(dated).dx, closeTo(edge, 0.5));
+      final undatedEdges = [
+        for (final element in undated.evaluate())
+          tester.getTopRight(find.byElementPredicate((e) => e == element)).dx,
+      ]..sort();
+      expect(undatedEdges.first, closeTo(edge, 0.5));
+      for (final (name, value) in [
+        ('Date unavailable', 'Last Purchase Date unavailable'),
+        ('Date available', 'Last Purchase Date 10 November 2025'),
       ]) {
-        final date = find.text(label);
         expect(
-          tester.getTopLeft(date).dy,
-          closeTo(tester.getBottomLeft(find.text(identity)).dy, 0.5),
-        );
-        final paragraph = tester.renderObject<RenderParagraph>(date);
-        rightEdges.add(
-          paragraph
-              .localToGlobal(_glyph(paragraph, label.length - 1).topRight)
-              .dx,
+          find.bySemanticsLabel(RegExp('Item / Supplier $name, $value')),
+          findsOneWidget,
         );
       }
-      expect(rightEdges.first, closeTo(rightEdges.last, 0.5));
+
+      // At 2x the columns no longer fit, so each value carries its label.
+      await _pumpRows(tester, fixture, textScale: 2);
+      expect(find.text('Last Purchase Date 10 Nov 25'), findsOneWidget);
+      expect(find.text('Last Purchase Date –'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -794,14 +810,14 @@ void main() {
         expect(_within(top, 'Open Order Qty 0.004 Kg'), findsOneWidget);
         expect(_within(top, 'Draft Order Qty 0.004 Kg'), findsOneWidget);
         expect(_badge(supplier, 'Open Order Qty 0.004 Kg'), findsNothing);
-        expect(_within(supplier, '0.004\u00a0Kg'), findsWidgets);
+        expect(_within(supplier, '0.004'), findsWidgets);
       }
       final positive = _row('supplier:A:SUPPLIER');
       expect(_badge(positive, 'Draft Order Qty 0.004 Kg'), findsNothing);
-      expect(_within(positive, '0.004\u00a0Kg'), findsNWidgets(2));
+      expect(_within(positive, '0.004'), findsNWidgets(2));
       final negative = _row('supplier:B:SUPPLIER');
       expect(_badge(negative, 'Draft Order Qty -0.004 Kg'), findsNothing);
-      expect(_within(negative, '-0.004\u00a0Kg'), findsOneWidget);
+      expect(_within(negative, '-0.004'), findsOneWidget);
     },
   );
 
@@ -827,16 +843,22 @@ void main() {
       final item = _row('item:KIT');
       final supplier = _row('supplier:KIT:VENDOR');
       await _pumpRows(tester, fixture, evidenceExpanded: false);
-      for (final (row, open, draft) in [(item, 12, 8), (supplier, 4, 2)]) {
-        expect(_badge(row, 'Open Order Qty $open Nos'), findsOneWidget);
-        expect(_badge(row, 'Draft Order Qty $draft Nos'), findsOneWidget);
-        expect(
-          find.bySemanticsLabel(
-            RegExp('Open Order Qty $open Nos, Draft Order Qty $draft Nos'),
-          ),
-          findsOneWidget,
-        );
-      }
+      expect(_badge(item, 'Open Order Qty 12 Nos'), findsOneWidget);
+      expect(_badge(item, 'Draft Order Qty 8 Nos'), findsOneWidget);
+      expect(
+        find.bySemanticsLabel(
+          RegExp('Open Order Qty 12 Nos, Draft Order Qty 8 Nos'),
+        ),
+        findsOneWidget,
+      );
+      // Supplier quantities sit in the supplier table's columns.
+      expect(_badge(supplier, 'Open Order Qty 4 Nos'), findsNothing);
+      expect(_within(supplier, '4'), findsOneWidget);
+      expect(_within(supplier, '2'), findsOneWidget);
+      expect(
+        find.bySemanticsLabel(RegExp('Open Order Qty 4, Draft Order Qty 2')),
+        findsOneWidget,
+      );
       await _pumpRows(
         tester,
         fixture,
