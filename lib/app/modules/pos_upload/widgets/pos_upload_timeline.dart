@@ -422,7 +422,7 @@ class _TimelineRow extends StatelessWidget {
     final eventAction = PosDeliveryAction.fromLabel(checkpoint.title);
 
     final rows = <Widget>[
-      if (isDeliveryEvent && eventAction != null)
+      if (isDeliveryEvent && eventAction != null && eventAction.requiresDriver)
         StatusPill(status: eventAction.label)
       else
         Text(

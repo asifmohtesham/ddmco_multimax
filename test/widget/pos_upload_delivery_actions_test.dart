@@ -107,7 +107,11 @@ class _DeliveryProvider extends PosUploadProvider {
     appliedRevisions.add(upload.modified);
     if (applyError case final error?) throw error;
     if (pendingApply case final pending?) return pending.future;
-    status = action.requiresReason ? 'To Deliver' : action.label;
+    status = switch (action) {
+      PosDeliveryAction.revertToPending => 'Pending',
+      PosDeliveryAction.deliveryReturn => 'To Deliver',
+      _ => action.label,
+    };
     modified = '2026-11-25 19:20:13.000001';
     actions = [];
     return PosUpload.fromJson(_pos(upload.name));
@@ -403,6 +407,57 @@ void main() {
 
     expect(find.byType(BottomSheet), findsNothing);
     expect(provider.applied, isEmpty);
+    expect(controller.deliveryActionBusy.value, isFalse);
+  });
+
+  testWidgets('Revert to Pending confirms without asking for a driver', (
+    tester,
+  ) async {
+    const action = PosDeliveryAction.revertToPending;
+    final provider = _DeliveryProvider()
+      ..status = 'In Progress'
+      ..actions = [action];
+    await pumpForm(tester, provider);
+
+    expect(
+      find.descendant(of: _action(action), matching: find.byIcon(Icons.undo)),
+      findsOneWidget,
+    );
+    await tester.tap(_action(action));
+    await _animateOverlay(tester);
+    final sheet = find.byType(BottomSheet);
+    expect(sheet, findsOneWidget);
+    expect(
+      find.descendant(of: sheet, matching: find.byType(DropdownButton<String>)),
+      findsNothing,
+    );
+    expect(find.textContaining('goes back to Pending'), findsOneWidget);
+    await tester.tap(_confirm);
+    await tester.pumpAndSettle();
+
+    expect(provider.driverRequests, isEmpty);
+    final (applied, selection) = provider.applied.single;
+    expect(applied, action);
+    expect(selection.driver, isNull);
+    expect(selection.reason, isNull);
+    expect(find.text('POS Upload reverted to Pending'), findsOneWidget);
+  });
+
+  testWidgets('cancelling Revert to Pending sends nothing', (tester) async {
+    const action = PosDeliveryAction.revertToPending;
+    final provider = _DeliveryProvider()
+      ..status = 'In Progress'
+      ..actions = [action];
+    final controller = await pumpForm(tester, provider);
+
+    await tester.tap(_action(action));
+    await _animateOverlay(tester);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(provider.applied, isEmpty);
+    expect(provider.driverRequests, isEmpty);
     expect(controller.deliveryActionBusy.value, isFalse);
   });
 

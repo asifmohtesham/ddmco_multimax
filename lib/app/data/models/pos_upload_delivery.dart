@@ -1,13 +1,18 @@
 enum PosDeliveryAction {
   outForDelivery('Out for Delivery'),
   deliveryReturn('Delivery Return'),
-  delivered('Delivered');
+  delivered('Delivered'),
+  revertToPending('Revert to Pending');
 
   const PosDeliveryAction(this.label);
 
   final String label;
 
   bool get requiresReason => this == deliveryReturn;
+
+  /// Delivery actions record the outsourced driver. Revert to Pending (Stock
+  /// Manager only) just reopens preparation, so it takes no driver.
+  bool get requiresDriver => this != revertToPending;
 
   static PosDeliveryAction? fromLabel(Object? label) {
     for (final action in values) {
@@ -53,8 +58,8 @@ class PosDeliveryDriverOptions {
 }
 
 class PosDeliverySelection {
-  const PosDeliverySelection({required this.driver, this.reason});
+  const PosDeliverySelection({this.driver, this.reason});
 
-  final String driver;
+  final String? driver;
   final PosDeliveryReason? reason;
 }

@@ -1,0 +1,6 @@
+{
+  "doctype": "Workflow Action Master",
+  "name": "Revert to Pending",
+  "workflow_action_name": "Revert to Pending",
+  "_if_missing": true
+}
