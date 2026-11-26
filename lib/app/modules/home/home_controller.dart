@@ -1097,6 +1097,7 @@ class HomeController extends GetxController {
                 ? itemName
                 : item?.itemCode ?? result?.itemCode,
             rackId: result?.rackId,
+            itemCode: item?.itemCode ?? result?.itemCode,
           ),
         );
       }

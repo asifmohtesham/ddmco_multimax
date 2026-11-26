@@ -23,6 +23,8 @@ class AwesomeBarController extends GetxController {
   
   Timer? _debounce;
   int _searchSequence = 0;
+  String? _completedQuery;
+  String? _submittedQuery;
   StreamSubscription<List<AwesomeBarOption>>? _recentSubscription;
   
   @override
@@ -52,9 +54,15 @@ class AwesomeBarController extends GetxController {
     _debounce?.cancel();
     final sequence = ++_searchSequence;
     final trimmedQuery = query.trim();
+    if (trimmedQuery != _submittedQuery) _submittedQuery = null;
+    _completedQuery = null;
+    // Previous results stay on screen until the new ones arrive, so the list
+    // doesn't flash empty on every keystroke.
     isLoading.value = trimmedQuery.isNotEmpty;
-    options.clear();
-    if (trimmedQuery.isEmpty) return;
+    if (trimmedQuery.isEmpty) {
+      options.clear();
+      return;
+    }
 
     _debounce = Timer(const Duration(milliseconds: 300), () {
       _performSearch(trimmedQuery, sequence);
@@ -74,6 +82,7 @@ class AwesomeBarController extends GetxController {
     results.addAll(_getLocalSearchOptions(query));
     
     // 3. Global Search Results
+    var searchFailed = false;
     try {
       final globalResponse = await _globalSearch(query);
       if (sequence != _searchSequence) return;
@@ -86,6 +95,7 @@ class AwesomeBarController extends GetxController {
       }
     } catch (e) {
       debugPrint('Global search failed: $e');
+      searchFailed = true;
     }
     
     if (sequence != _searchSequence) return;
@@ -100,6 +110,24 @@ class AwesomeBarController extends GetxController {
     });
     options.value = results;
     isLoading.value = false;
+    // A failed request isn't "no results", so it is never saved.
+    _completedQuery = searchFailed ? null : query;
+    if (_submittedQuery == query && !searchFailed) _saveIfNothingFound(query);
+  }
+
+  /// The keyboard's search key commits the query. One that finds nothing is
+  /// saved to RECENT so it can be tried again later.
+  void onQuerySubmitted(String text) {
+    final query = text.trim();
+    if (query.isEmpty) return;
+    _submittedQuery = query;
+    if (_completedQuery == query) _saveIfNothingFound(query);
+  }
+
+  void _saveIfNothingFound(String query) {
+    _submittedQuery = null;
+    if (options.isNotEmpty) return;
+    unawaited(AwesomeBarRecentStore.record(AwesomeBarOption.query(query)));
   }
   
   AwesomeBarOption? _evaluateMathExpression(String query) {
@@ -171,7 +199,7 @@ class AwesomeBarController extends GetxController {
   }
   
   void onOptionSelected(AwesomeBarOption option) {
-    if (option.isScan) return;
+    if (option.isScan || option.isQuery) return;
     if (option.type == 'Calculator') {
       Get.snackbar('Result', option.value);
       return;
