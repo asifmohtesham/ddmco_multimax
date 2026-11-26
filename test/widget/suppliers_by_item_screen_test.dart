@@ -13,11 +13,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
-import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/models/suppliers_by_item_report.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
-import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/services/database_service.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
@@ -31,8 +29,6 @@ import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/header_chip_band.dart';
 import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
 import 'package:multimax/app/modules/theme/theme_controller.dart';
-import 'package:multimax/app/modules/item/form/item_form_controller.dart';
-import 'package:multimax/app/modules/item/form/widgets/item_suppliers_card.dart';
 import 'package:multimax/app/modules/stock/reports/suppliers_by_item/suppliers_by_item_binding.dart';
 import 'package:multimax/app/modules/stock/reports/suppliers_by_item/suppliers_by_item_controller.dart';
 import 'package:multimax/app/modules/stock/reports/suppliers_by_item/suppliers_by_item_fields.dart';
@@ -3758,7 +3754,7 @@ void main() {
   }
 
   for (final scale in [1.0, 1.3]) {
-    testWidgets('drawer and Item Overview use the standard header at $scale', (
+    testWidgets('drawer and pushed route use the standard header at $scale', (
       tester,
     ) async {
       tester.view.devicePixelRatio = 2.625;
@@ -3767,9 +3763,6 @@ void main() {
       addTearDown(tester.view.reset);
       addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
       Get.put<PermissionService>(_DrawerPermissions());
-      Get.put(ItemProvider());
-      final itemController = ItemFormController();
-      final item = Item.fromJson({'name': 'ITEM', 'item_code': 'ITEM'});
       loadAnchorRows((index) => 'Item $index');
       await openReport(
         tester,
@@ -3783,19 +3776,12 @@ void main() {
                   onPressed: () => Scaffold.of(context).openDrawer(),
                   child: const Text('Open reports drawer'),
                 ),
-                ItemSuppliersCard(
-                  itemCode: item.itemCode,
-                  isTemplate: false,
-                  loadReport: () async => SuppliersByItemNode.parseRows([
-                    {'node_id': 'item:ITEM'},
-                    {
-                      'node_id': 'supplier:ITEM:SUP',
-                      'parent_id': 'item:ITEM',
-                      'supplier': 'SUP',
-                    },
-                  ]),
-                  onViewReport: (expandBom) => itemController
-                      .openSuppliersReport(item, expandBom: expandBom),
+                TextButton(
+                  onPressed: () => Get.toNamed(
+                    AppRoutes.SUPPLIERS_BY_ITEM,
+                    arguments: const SuppliersByItemFilters(items: ['ITEM']),
+                  ),
+                  child: const Text('Open report for ITEM'),
                 ),
               ],
             ),
@@ -3848,7 +3834,7 @@ void main() {
       expect(tester.getTopLeft(title).dy, lessThan(expandedY));
       Get.back<void>();
       await tester.pumpAndSettle();
-      await tester.tap(find.text('View full report'));
+      await tester.tap(find.text('Open report for ITEM'));
       await tester.pumpAndSettle();
       checkHeader(Icons.arrow_back);
       expect(api.requests.last.items, ['ITEM']);
@@ -5921,64 +5907,6 @@ void main() {
       FontWeight.w800,
     );
     expect(tester.takeException(), isNull);
-  });
-
-  Future<void> showItemCard(
-    WidgetTester tester,
-    List<Map<String, Object?>> rows, {
-    required bool isTemplate,
-  }) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ItemSuppliersCard(
-            key: ValueKey(rows),
-            itemCode: isTemplate ? 'ACP-25' : '2002492',
-            isTemplate: isTemplate,
-            loadReport: () async => SuppliersByItemNode.parseRows(rows),
-            onViewReport: (_) {},
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-  }
-
-  testWidgets(
-    'Item Overview shows the item or template balance and suppliers',
-    (tester) async {
-      final rows = [
-        {..._acp25Rows[0], 'balance_qty': 1234.5},
-        {..._acp25Rows[1], 'balance_qty': 0},
-        ..._acp25Rows.skip(2),
-      ];
-
-      await showItemCard(tester, rows, isTemplate: true);
-      expect(find.text('Balance Qty 1,234.5 Nos'), findsOneWidget);
-      expect(find.text('KANG KAI'), findsOneWidget);
-      expect(find.text('No supplier recorded'), findsNothing);
-
-      await showItemCard(tester, rows.take(3).toList(), isTemplate: false);
-      expect(find.text('Balance Qty 0 Nos'), findsOneWidget);
-      expect(find.text('Balance Qty 1,234.5 Nos'), findsNothing);
-      expect(find.text('No supplier recorded'), findsOneWidget);
-      expect(find.text('KANG KAI'), findsNothing);
-    },
-  );
-
-  testWidgets('Item Overview leaves mixed-UOM template balance blank', (
-    tester,
-  ) async {
-    await showItemCard(tester, [
-      {..._acp25Rows[0], 'stock_uom': null, 'balance_qty': null},
-      {..._acp25Rows[1], 'balance_qty': 4},
-      _acp25Rows[2],
-      {..._acp25Rows[3], 'stock_uom': 'Kg', 'balance_qty': 6.5},
-      _acp25Rows[4],
-    ], isTemplate: true);
-
-    expect(find.textContaining('Balance Qty'), findsNothing);
-    expect(find.text('KANG KAI'), findsOneWidget);
   });
 
   testWidgets('refresh shows busy feedback and guards against re-entry', (

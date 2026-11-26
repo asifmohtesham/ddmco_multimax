@@ -23,7 +23,6 @@ import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 import 'package:multimax/app/modules/global_widgets/inline_banner.dart';
 import 'package:multimax/app/modules/item/form/widgets/item_prices_tab.dart';
-import 'package:multimax/app/modules/item/form/widgets/item_suppliers_card.dart';
 import 'package:multimax/app/modules/item/form/widgets/reorder_rule_card.dart';
 import 'package:multimax/app/modules/item/form/widgets/reorder_rule_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
@@ -151,8 +150,6 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
 
   Widget _buildOverviewTab(BuildContext context, Item item, ColorScheme cs) {
     final String baseUrl = Get.find<ApiProvider>().baseUrl;
-    final showSuppliers = Get.isRegistered<PermissionService>() &&
-        Get.find<PermissionService>().canViewSuppliersByItem;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12),
@@ -226,22 +223,9 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
             ),
           ],
 
-          if (showSuppliers) _buildSuppliersCard(item),
-
           const SizedBox(height: 80),
         ],
       ),
-    );
-  }
-
-  Widget _buildSuppliersCard(Item item) {
-    return ItemSuppliersCard(
-      key: ValueKey((item.itemCode, item.hasVariants)),
-      itemCode: item.itemCode,
-      isTemplate: item.hasVariants,
-      loadReport: () => controller.loadSuppliers(item),
-      onViewReport: (expandBom) =>
-          controller.openSuppliersReport(item, expandBom: expandBom),
     );
   }
 

@@ -19,7 +19,7 @@ status, order quantities, receipt history and latest qualifying rate.
 | Server-side scripts | The site must already have `server_script_enabled` for custom Script Reports. |
 | Report roles | **Purchase User** and **Stock User**. Either role can qualify. Frappe also checks report access through the reference DocType, Purchase Receipt. |
 | Desk setup | A System Manager can create or edit the Report record. |
-| App access | The drawer entry and Item Overview card use the signed-in session's roles. When the User document omits roles on v16, the shared session code can recover them from the signed-in user's Desk boot data. |
+| App access | The drawer entry uses the signed-in session's roles. When the User document omits roles on v16, the shared session code can recover them from the signed-in user's Desk boot data. |
 
 ## 2. Filters
 
@@ -193,25 +193,10 @@ has `BOM-3000338-001` with a component `3000281` that expands draft
   **Item / Supplier**, **No supplier recorded**, navigation and the
   **End of list** marker remain available with every Field off.
   [Report screen](../lib/app/modules/stock/reports/suppliers_by_item/suppliers_by_item_screen.dart)
-- **Item → Overview → Suppliers** runs with `items=[itemCode]` and
-  `expand_bom=1`. For a template it also sends `variant_of=[itemCode]` to
-  collect its variants' suppliers. The card previews the available **Balance
-  Qty** and **Projected Qty** for the item and the applicable **Supplier Status**,
-  **Supplier Part Number** for a single item, positive **Open Order Qty** and
-  available **Lead Time (Days)** with its **Lead Time Receipts**. A template
-  groups **Open Order Qty** by **Stock UOM** and weights **Lead Time (Days)**
-  using **Lead Time Receipts**. If **Lead Time Receipts** is missing or zero for
-  a variant with **Lead Time (Days)**, the card shows the available durations by
-  variant. When the current item has BOMs, **Made from (BOM)** shows the
-  immediate components under each BOM, with the component code first, any
-  distinct **Item Name** beneath it and then the supplier names.
-  **View full report** opens with `items=[itemCode]` and `expand_bom=1` when
-  the card shows BOMs. Otherwise it opens with the item or template selection
-  and expansion off.
-  [Item Overview](../lib/app/modules/item/form/item_form_screen.dart)
-  [Suppliers card](../lib/app/modules/item/form/widgets/item_suppliers_card.dart)
+The Item form has no Suppliers card, because the Item DocType has no supplier
+field. Supplier lookups use this report.
 
-Both screens use `ApiProvider.runSuppliersByItem`, which sends a form-encoded POST to
+The report screen uses `ApiProvider.runSuppliersByItem`, which sends a form-encoded POST to
 `/api/method/frappe.desk.query_report.run` with `report_name=Suppliers by Item`,
 a JSON `filters` field, `ignore_prepared_report=true` and
 `are_default_filters=false`. The JSON carries selections from `items`,

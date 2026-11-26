@@ -10,7 +10,6 @@ import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/models/item_price_model.dart';
 import 'package:multimax/app/data/models/pricing_rule_model.dart';
-import 'package:multimax/app/data/models/suppliers_by_item_report.dart';
 import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/item_price_provider.dart';
@@ -234,22 +233,6 @@ class ItemFormController extends GetxController with OptimisticLockingMixin {
     } finally {
       isLoading.value = false;
     }
-  }
-
-  Future<List<SuppliersByItemNode>> loadSuppliers(Item item) =>
-      _apiProvider.runSuppliersByItem(
-        SuppliersByItemFilters(
-          items: [item.itemCode],
-          variantOf: item.hasVariants ? [item.itemCode] : const [],
-          expandBom: true,
-        ),
-      );
-
-  void openSuppliersReport(Item item, {required bool expandBom}) {
-    final filters = item.hasVariants && !expandBom
-        ? SuppliersByItemFilters(variantOf: [item.itemCode])
-        : SuppliersByItemFilters(items: [item.itemCode], expandBom: expandBom);
-    Get.toNamed(AppRoutes.SUPPLIERS_BY_ITEM, arguments: filters);
   }
 
   Future<void> fetchAttachments() async {
