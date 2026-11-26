@@ -769,6 +769,7 @@ class PosUploadFormController extends GetxController
     PosDeliveryAction action,
     Future<PosDeliverySelection?> Function(PosDeliveryDriverOptions) select, {
     bool Function()? isFormCurrent,
+    Future<bool?> Function()? confirm,
   }) async {
     final upload = posUpload.value;
     if (deliveryActionBusy.value ||
@@ -787,13 +788,21 @@ class PosUploadFormController extends GetxController
     deliveryActionBusy.value = true;
     int? applyGeneration;
     try {
-      final options = await _provider.getDeliveryDrivers(upload.name, action);
-      if (!isActiveForm()) return;
-      final selection = await select(options);
-      if (!isActiveForm() || selection == null) return;
-      if (!options.drivers.any((driver) => driver.name == selection.driver) ||
-          (action.requiresReason && selection.reason == null)) {
-        return;
+      final PosDeliverySelection selection;
+      if (action.requiresDriver) {
+        final options = await _provider.getDeliveryDrivers(upload.name, action);
+        if (!isActiveForm()) return;
+        final selected = await select(options);
+        if (!isActiveForm() || selected == null) return;
+        if (!options.drivers.any((driver) => driver.name == selected.driver) ||
+            (action.requiresReason && selected.reason == null)) {
+          return;
+        }
+        selection = selected;
+      } else {
+        // Revert to Pending takes no driver; it only needs a confirmation.
+        if (await confirm?.call() != true || !isActiveForm()) return;
+        selection = const PosDeliverySelection();
       }
 
       // A reload while the sheet is open can leave the revision unchanged.
@@ -814,12 +823,20 @@ class PosUploadFormController extends GetxController
       }
       if (!_isCurrentDocument(generation) || !isActiveForm()) return;
       if (await _refreshDocument(savedUpload: saved) && isActiveForm()) {
-        GlobalSnackbar.success(message: 'Delivery action recorded');
+        GlobalSnackbar.success(
+          message: action.requiresDriver
+              ? 'Delivery action recorded'
+              : 'POS Upload reverted to Pending',
+        );
       }
     } catch (error) {
       if (!isActiveForm()) return;
       if (applyGeneration == null) {
-        GlobalSnackbar.error(message: 'Unable to load delivery drivers');
+        GlobalSnackbar.error(
+          message: action.requiresDriver
+              ? 'Unable to load delivery drivers'
+              : 'Unable to revert the POS Upload',
+        );
         return;
       }
       if (!_isCurrentDocument(applyGeneration)) return;

@@ -98,6 +98,10 @@ class PosUploadProvider {
     if (action.requiresReason && reason == null) {
       throw ArgumentError('Delivery Return requires a reason');
     }
+    final driver = selection.driver;
+    if (action.requiresDriver && (driver == null || driver.isEmpty)) {
+      throw ArgumentError('${action.label} requires a driver');
+    }
     final response = await _apiProvider.callMethodPost(
       'frappe.model.workflow.apply_workflow',
       jsonBody: true,
@@ -107,7 +111,7 @@ class PosUploadProvider {
           'doctype': 'POS Upload',
           'name': upload.name,
           'modified': upload.modified,
-          'pos_delivery_driver': selection.driver,
+          if (action.requiresDriver) 'pos_delivery_driver': driver,
           if (action.requiresReason) 'pos_delivery_reason': reason!.label,
         },
       },

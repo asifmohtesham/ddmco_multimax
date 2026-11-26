@@ -17,6 +17,61 @@ Future<PosDeliverySelection?> showPosDeliveryActionSheet(
   );
 }
 
+/// Confirms the Stock Manager's Revert to Pending. Resolves `true` only on
+/// Confirm; dismissing the sheet sends nothing.
+Future<bool?> showPosRevertToPendingSheet(BuildContext context) {
+  return showModalBottomSheet<bool>(
+    context: context,
+    backgroundColor: context.scheme.fg,
+    isScrollControlled: true,
+    useSafeArea: true,
+    showDragHandle: true,
+    builder: (sheetContext) {
+      final theme = Theme.of(sheetContext);
+      final scheme = sheetContext.scheme;
+      return SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                PosDeliveryAction.revertToPending.label,
+                style: theme.textTheme.titleLarge?.copyWith(color: scheme.text),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'The POS Upload goes back to Pending so it can be edited or '
+                're-imported. Saving its Delivery Note or Stock Entry moves it '
+                'to In Progress again.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: scheme.textMuted,
+                ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () {
+                  if (ModalRoute.isCurrentOf(sheetContext) == true) {
+                    Navigator.of(sheetContext).pop(true);
+                  }
+                },
+                child: const Text('Confirm'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(sheetContext).maybePop(),
+                style: TextButton.styleFrom(foregroundColor: scheme.textMuted),
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
 class _PosDeliveryActionSheet extends StatefulWidget {
   final PosDeliveryAction action;
   final PosDeliveryDriverOptions options;

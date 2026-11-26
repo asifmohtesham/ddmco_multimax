@@ -39,6 +39,7 @@ class _WorkflowServer implements HttpClientAdapter {
             {'action': 'Delivery Return'},
             {'action': 'Delivered'},
             {'action': 'Delivery Return'},
+            {'action': 'Revert to Pending'},
           ],
         });
       case _getDrivers:
@@ -185,13 +186,37 @@ void main() {
             'doctype': 'POS Upload',
             'name': _name,
             'modified': _revision,
-            'pos_delivery_driver': 'DRV-2',
+            if (action.requiresDriver) 'pos_delivery_driver': 'DRV-2',
             if (action.requiresReason) 'pos_delivery_reason': 'Late',
           },
         });
       },
     );
   }
+
+  test('Revert to Pending POSTs without a driver or reason', () async {
+    await provider.applyDeliveryAction(
+      PosUpload.fromJson({'name': _name, 'modified': _revision}),
+      PosDeliveryAction.revertToPending,
+      const PosDeliverySelection(),
+    );
+    expect(jsonDecode(server.applyBodies.last), {
+      'action': 'Revert to Pending',
+      'doc': {'doctype': 'POS Upload', 'name': _name, 'modified': _revision},
+    });
+  });
+
+  test('a delivery action without a driver is rejected before POST', () async {
+    await expectLater(
+      provider.applyDeliveryAction(
+        PosUpload.fromJson({'name': _name, 'modified': _revision}),
+        PosDeliveryAction.outForDelivery,
+        const PosDeliverySelection(),
+      ),
+      throwsArgumentError,
+    );
+    expect(server.requests, isEmpty);
+  });
 
   test('timeline GET reads docinfo from the top-level envelope', () async {
     expect(await provider.getDeliveryDocinfo(_name), {

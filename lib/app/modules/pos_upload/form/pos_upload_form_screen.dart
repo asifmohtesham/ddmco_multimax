@@ -139,7 +139,12 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                       showSpinnerWhenBusy: () =>
                           controller.isApplyingDeliveryAction(action),
                       label: action.label,
-                      icon: const Icon(Icons.local_shipping_outlined, size: 18),
+                      icon: Icon(
+                        action.requiresDriver
+                            ? Icons.local_shipping_outlined
+                            : Icons.undo,
+                        size: 18,
+                      ),
                       style: style,
                       spinnerColor: colors.onPrimary,
                       onPressed: () => controller.runDeliveryAction(
@@ -151,6 +156,7 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                         ),
                         isFormCurrent: () =>
                             context.mounted && (route?.isCurrent ?? true),
+                        confirm: () => showPosRevertToPendingSheet(context),
                       ),
                     ),
                   ),
