@@ -75,11 +75,14 @@ if requested_action == "Revert to Pending":
     text = f"POS delivery · Revert to Pending · recorded by {frappe.utils.escape_html(recorded_by_name)}"
 elif requested_action == "Complete":
     # Stock Manager closes a delivered DN-route POS, so every finished POS Upload ends in Completed
-    # (as Stock Entry-route ones already do). The delivered Delivery Note must still stand.
+    # (as Stock Entry-route ones already do). The delivered Delivery Note must still stand:
+    # a replacement submitted after delivery was never dispatched, so it can't close the POS.
     driver = None
     driver_name = None
     reason = None
     dn = eligible_dn(doc.name, locked.customer, True)
+    if dn != current_dispatch_dn(doc.name):
+        frappe.throw("The Delivery Note has changed since it was delivered. Reconcile it before completing the POS Upload.")
     text = (
         f"POS delivery · Complete · recorded by {frappe.utils.escape_html(recorded_by_name)}"
         f" · Delivery Note: {frappe.utils.escape_html(dn)}"
