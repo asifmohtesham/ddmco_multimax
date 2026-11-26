@@ -1,1 +1,1 @@
-POS Upload: Pending now has its own grey status colour, so it no longer looks like To Deliver. In Progress is purple and Cancelled red, matching the ERP list.
+POS Upload: the status filter chips above the list now use the same colours as the status pills, so Pending is grey and In Progress purple there too.
