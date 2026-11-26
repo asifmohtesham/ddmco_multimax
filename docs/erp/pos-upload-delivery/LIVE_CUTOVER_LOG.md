@@ -4,7 +4,7 @@ The cutover ran on `erp.multimax.cloud` and on n8n at `automation.milanoleather.
 
 ## Decisions applied
 
-- **Delivery Dispatcher:** the role exists but is granted to nobody. Stock Managers record delivery actions.
+- **Delivery Dispatcher:** granted to nobody at cutover. At 11:32 it was granted to the five Stock User-only accounts (see the timeline). Stock Managers act through their own role.
 - **Enrolment:** the list was empty. None of the 10 open POS Uploads had a submitted outbound Delivery Note.
 - **Smoke test:** ZZTEST fixtures on live, with a dedicated non-stock item, so no stock moved.
 - **Telegram:** a one-time test of all five alert types went to the production Updates channel, on ZZTEST POS Uploads only.
@@ -35,6 +35,7 @@ The cutover ran on `erp.multimax.cloud` and on n8n at `automation.milanoleather.
 | 11:06 | Overdue on | The product owner approved it, and **POS Upload Delivery Overdue** was activated. First scheduled tick: 12:00. |
 | 11:10 | Test records removed | The product owner asked for cleanup. Deleted: DNs MAT-DN-2026-01213, 01214 and 01215 (cancelled), the auto-created Item Price, POS `ML-ZZTEST-261126-A/B/C`, item `1005003` and `ZZTEST Delivery Customer`. No comments or Versions remain. Frappe keeps Deleted Document copies. |
 | 11:15 | TEST posts removed | The product owner asked for removal, and MilanoLeatherBot deleted all five TEST posts from Updates (messages 5678, 5679, 5680, 5681, 5682). The product owner confirmed which messages they were. |
+| 11:32 | Delivery Dispatcher granted | The product owner decided that Stock Manager and Stock User holders record deliveries. Stock Managers already qualify. Delivery Dispatcher was added to the five enabled users who have Stock User without Stock Manager: abdulmunayeem, jaffar, maqbool, mujahid and tajammulahmed (each `@multimax.cloud`). Each grant added one role row and removed none. The `n8n` service account was excluded. Role permissions verified: POS Upload read/write at permlevels 0 and 1, Driver select only, and the three delivery transitions. The first real POS, KA-2026-03764, reached To Deliver after the cutover. |
 
 ## Final state
 
