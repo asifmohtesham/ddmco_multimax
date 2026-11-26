@@ -1,1 +1,1 @@
-The app now tells you when an update is available. On Android it downloads in the background while you keep working, then a banner lets you restart to install it. On iPhone and iPad, a message takes you to the App Store.
+Suppliers by Item: switching between Group by Item and Group by Supplier no longer freezes. If the row you were reading would be far down, the new grouping opens at the top. Group by Item now always shows Item Template > Item Variant > Supplier. The summary row above the search box and the totals under End of list are removed.
