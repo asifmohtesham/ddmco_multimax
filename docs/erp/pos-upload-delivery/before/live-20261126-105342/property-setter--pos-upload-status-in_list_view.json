@@ -1,0 +1,17 @@
+{
+  "name": "POS Upload-status-in_list_view",
+  "owner": "asif@multimax.cloud",
+  "creation": "2025-10-29 16:35:06.241961",
+  "modified": "2025-10-30 10:21:13.868259",
+  "modified_by": "asif@multimax.cloud",
+  "docstatus": 0,
+  "idx": 0,
+  "is_system_generated": 1,
+  "doctype_or_field": "DocField",
+  "doc_type": "POS Upload",
+  "field_name": "status",
+  "property": "in_list_view",
+  "property_type": "Check",
+  "value": "0",
+  "doctype": "Property Setter"
+}
