@@ -33,7 +33,8 @@ The cutover ran on `erp.multimax.cloud` and on n8n at `automation.milanoleather.
 | 11:03:15–11:03:19 | Finish B | The delivery Webhook was disabled for 4 seconds while B went Out for Delivery, then Delivered, and was then re-enabled. No real POS changed in that window. |
 | 11:03 | Cleanup | DNs MAT-DN-2026-01213, 01214 and 01215 cancelled. All three POS stay Delivered, each with a "Delivery Note was cancelled" review comment. No Sales Orders were created. The test customer and item are disabled. |
 | 11:06 | Overdue on | The product owner approved it, and **POS Upload Delivery Overdue** was activated. First scheduled tick: 12:00. |
-| 11:10 | Test records removed | The product owner asked for cleanup. Deleted: DNs MAT-DN-2026-01213, 01214 and 01215 (cancelled), the auto-created Item Price, POS `ML-ZZTEST-261126-A/B/C`, item `1005003` and `ZZTEST Delivery Customer`. No comments or Versions remain. Frappe keeps Deleted Document copies. The five TEST posts remain in Telegram Updates. |
+| 11:10 | Test records removed | The product owner asked for cleanup. Deleted: DNs MAT-DN-2026-01213, 01214 and 01215 (cancelled), the auto-created Item Price, POS `ML-ZZTEST-261126-A/B/C`, item `1005003` and `ZZTEST Delivery Customer`. No comments or Versions remain. Frappe keeps Deleted Document copies. |
+| 11:15 | TEST posts removed | The product owner asked for removal, and MilanoLeatherBot deleted all five TEST posts from Updates (messages 5678, 5679, 5680, 5681, 5682). The product owner confirmed which messages they were. |
 
 ## Final state
 
