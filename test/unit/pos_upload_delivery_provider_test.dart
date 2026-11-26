@@ -40,6 +40,7 @@ class _WorkflowServer implements HttpClientAdapter {
             {'action': 'Delivered'},
             {'action': 'Delivery Return'},
             {'action': 'Revert to Pending'},
+            {'action': 'Complete'},
           ],
         });
       case _getDrivers:
@@ -202,6 +203,18 @@ void main() {
     );
     expect(jsonDecode(server.applyBodies.last), {
       'action': 'Revert to Pending',
+      'doc': {'doctype': 'POS Upload', 'name': _name, 'modified': _revision},
+    });
+  });
+
+  test('Complete POSTs without a driver or reason', () async {
+    await provider.applyDeliveryAction(
+      PosUpload.fromJson({'name': _name, 'modified': _revision}),
+      PosDeliveryAction.complete,
+      const PosDeliverySelection(),
+    );
+    expect(jsonDecode(server.applyBodies.last), {
+      'action': 'Complete',
       'doc': {'doctype': 'POS Upload', 'name': _name, 'modified': _revision},
     });
   });

@@ -2,7 +2,8 @@ enum PosDeliveryAction {
   outForDelivery('Out for Delivery'),
   deliveryReturn('Delivery Return'),
   delivered('Delivered'),
-  revertToPending('Revert to Pending');
+  revertToPending('Revert to Pending'),
+  complete('Complete');
 
   const PosDeliveryAction(this.label);
 
@@ -10,9 +11,17 @@ enum PosDeliveryAction {
 
   bool get requiresReason => this == deliveryReturn;
 
-  /// Delivery actions record the outsourced driver. Revert to Pending (Stock
-  /// Manager only) just reopens preparation, so it takes no driver.
-  bool get requiresDriver => this != revertToPending;
+  /// Delivery actions record the outsourced driver. The Stock Manager-only
+  /// actions (Revert to Pending, Complete) only need a confirmation.
+  bool get requiresDriver =>
+      this == outForDelivery || this == deliveryReturn || this == delivered;
+
+  /// Snackbar after a confirmed action is saved.
+  String get successMessage => switch (this) {
+    revertToPending => 'POS Upload reverted to Pending',
+    complete => 'POS Upload marked Completed',
+    _ => 'Delivery action recorded',
+  };
 
   static PosDeliveryAction? fromLabel(Object? label) {
     for (final action in values) {
