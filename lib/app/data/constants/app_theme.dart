@@ -317,3 +317,8 @@ extension StatusInkX on BuildContext {
   /// material `Colors.green` is 2.5:1 on white.
   Color get successInk => _isDark ? AppColors.green300 : AppColors.green700;
 }
+
+/// [ink] when it clears WCAG AA (4.5:1) as small text on [surface], else
+/// [fallback]. For caller-supplied colours, such as an item sheet's accent.
+Color readableInk(Color ink, Color surface, Color fallback) =>
+    contrastRatio(ink, surface) >= 4.5 ? ink : fallback;

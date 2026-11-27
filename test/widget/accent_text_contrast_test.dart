@@ -9,6 +9,7 @@ import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
 import 'package:multimax/app/modules/global_widgets/global_document_search_delegate.dart';
 import 'package:multimax/app/modules/global_widgets/global_filter_bottom_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
+import 'package:multimax/app/shared/item_sheet/batch_picker_sheet.dart';
 import 'package:multimax/main.dart' show buildAppTheme;
 
 import '../support/recent_search_test_box.dart';
@@ -202,6 +203,65 @@ void main() {
           // BalanceChip fills with its ink at 15%.
           final chip = Color.alphaBlend(ink.withValues(alpha: .15), fg);
           expect(contrastRatio(ink, chip), greaterThanOrEqualTo(4.5));
+        }
+      });
+
+      testWidgets('batch picker Retry for caller accents $tag', (tester) async {
+        final t = theme();
+        for (final callerAccent in [
+          Colors.teal,
+          Colors.purple,
+          t.colorScheme.primary,
+        ]) {
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: t,
+              home: Material(
+                color: t.colorScheme.surface,
+                child: BatchPickerErrorState(
+                  message: 'Could not load batches',
+                  onRetry: () {},
+                  accentColor: callerAccent,
+                ),
+              ),
+            ),
+          );
+          _expectReadable(tester, ['Could not load batches', 'Retry']);
+
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: t,
+              home: Material(
+                color: t.colorScheme.surface,
+                child: BatchPickerEmptyState(
+                  hasSearch: false,
+                  accentColor: callerAccent,
+                  warehouseFiltered: true,
+                  onShowAll: () {},
+                ),
+              ),
+            ),
+          );
+          _expectReadable(tester, ['Show all warehouses']);
+
+          // The subtitle sits on the sheet, the toggle label on a 12% tint
+          // and the balance chip on a 15% tint of the caller's accent.
+          final context = tester.element(find.text('Show all warehouses'));
+          final surface = t.colorScheme.surface;
+          for (final tint in [0.0, 0.12, 0.15]) {
+            final behind = Color.alphaBlend(
+              callerAccent.withValues(alpha: tint),
+              surface,
+            );
+            expect(
+              contrastRatio(
+                batchPickerInk(context, callerAccent, tint: tint),
+                behind,
+              ),
+              greaterThanOrEqualTo(4.5),
+              reason: 'tint $tint',
+            );
+          }
         }
       });
 
