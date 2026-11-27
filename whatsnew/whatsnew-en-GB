@@ -1,1 +1,1 @@
-Suppliers by Item is tidier: each template sits in one card with Variants, Balance Qty and Supplier Count at the top, and variants line up beneath it without repeating the unit. Expand a variant to see its suppliers as a table. Pick up to 3 columns in Fields, including Last Rate, Lead Time (Days) and Total Qty Received.
+Suppliers by Item: the list now starts below a small gap under the search box, and a thin line marks the search box once rows scroll beneath it. While you scroll through a template's variants, its code, variant count and Balance Qty stay pinned at the top.
