@@ -94,6 +94,6 @@ The sender is n8n credential **Firebase FCM (multimax-fb26b)** (`googleApi` serv
 | Firebase project + Android apps | done (2026-11-27) |
 | CI secret `GOOGLE_SERVICES_JSON_BASE64` | set 2026-11-27 |
 | ERP DocType + API methods | staging and **live** done and tested 2026-11-27 (live 23:28 Dubai; ZZTEST row deleted) |
-| App token registration, tap-to-open, settings switch | built, not released |
-| n8n push branch (Events + Overdue) | built in the repo sources and tested end to end on 2026-11-27 with a temporary workflow against live ERP and the XCover. **Not yet on the live workflows.** |
+| App token registration, tap-to-open, settings switch | built and checked on the XCover (.smoke); **not released**, so no production phone is registered yet. Tap-to-open is untested on a device. |
+| n8n push branch (Events + Overdue) | **live** 2026-11-27 23:46 Dubai (Events b35dd949, Overdue 1b474087); tested end to end first |
 | iOS | not started |
