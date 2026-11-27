@@ -203,6 +203,9 @@ Future<int> _maxTileBuildsPerFrame(
   }
 }
 
+/// The page-background space between the search field and the first card.
+const listTopGap = 12.0;
+
 double pinnedBottom(
   WidgetTester tester, {
   bool includesSearch = true,
@@ -218,7 +221,8 @@ double pinnedBottom(
     );
     final search = viewport.childAfter(viewport.firstChild!);
     if (search is RenderSliverToBoxAdapter) {
-      final sticky = viewport.childAfter(search)!;
+      // The list's top gap sits between the search field and the overlay.
+      final sticky = viewport.childAfter(viewport.childAfter(search)!)!;
       supplierExtent = includesSupplier
           ? sticky.geometry!.maxScrollObstructionExtent
           : 0.0;
@@ -2706,7 +2710,7 @@ void main() {
       find.byType(DocTypeListHeader, skipOffstage: false),
     );
     final search = viewport.childAfter(viewport.firstChild!)!;
-    final supplier = viewport.childAfter(search)!;
+    final supplier = viewport.childAfter(viewport.childAfter(search)!)!;
     expect(
       DocTypeListHeader.extentInViewport(header.sliverKey!, viewport),
       lessThan(0),
@@ -2784,6 +2788,74 @@ void main() {
     },
   );
 
+  testWidgets(
+    'a template heading pins as a slim strip once its card scrolls away',
+    (tester) async {
+      api.load = () async => SuppliersByItemNode.parseRows([
+        {
+          'node_id': 'template:STRAP',
+          'item_name': 'Straps',
+          'balance_qty': 600,
+          'stock_uom': 'Nos',
+        },
+        for (var i = 0; i < 30; i++)
+          {
+            'node_id': 'item:V$i',
+            'parent_id': 'template:STRAP',
+            'item_name': 'Strap $i',
+            'balance_qty': 20,
+            'stock_uom': 'Nos',
+            'supplier_count': 1,
+          },
+        {'node_id': 'item:PLAIN', 'balance_qty': 1, 'stock_uom': 'Nos'},
+      ]);
+      await openReport(tester, fontFamily: reportFont);
+      await tester.pumpAndSettle();
+      final controller = currentReport();
+      if (!controller.isExpanded('template:STRAP')) {
+        controller.toggleBranch('template:STRAP');
+      }
+      await tester.pumpAndSettle();
+      final strip = find.byType(SuppliersByItemPinnedHeading);
+      expect(strip, findsNothing);
+
+      final scroll = reportScroll(tester);
+      // Below the search field; the large title collapses as rows scroll.
+      double base() => pinnedBottom(tester, includesSupplier: false);
+      final heading = reportRow('template:STRAP');
+      // Most of the template card is still in view: no strip yet.
+      scroll.jumpTo(scroll.offset + tester.getTopLeft(heading).dy - base() + 4);
+      await tester.pumpAndSettle();
+      expect(strip, findsNothing);
+
+      final variant = reportRow('item:V1');
+      scroll.jumpTo(scroll.offset + tester.getTopLeft(variant).dy - base());
+      await tester.pumpAndSettle();
+      expect(strip.hitTestable(), findsOneWidget);
+      expect(tester.widget<SuppliersByItemPinnedHeading>(strip).entry.key, (
+        nodeId: 'template:STRAP',
+      ));
+      expect(tester.getTopLeft(strip).dy, closeTo(base(), 0.5));
+      expect(pinnedBottom(tester), greaterThan(base()));
+
+      // A plain item has no strip: its card is short.
+      await tester.scrollUntilVisible(
+        reportRow('item:PLAIN'),
+        200,
+        scrollable: find.byWidgetPredicate(
+          (w) => w is Scrollable && w.controller == scroll,
+        ),
+      );
+      scroll.jumpTo(scroll.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(reportRow('item:PLAIN')).dy,
+        greaterThanOrEqualTo(base()),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('a child at the header boundary keeps its supplier heading', (
     tester,
   ) async {
@@ -2797,7 +2869,10 @@ void main() {
     final heading = stickySupplierGroup();
     final child = pairOccurrence('supplier:STICKY-0:SUP');
     final initialBase = pinnedBottom(tester, includesSupplier: false);
-    expect(tester.getTopLeft(heading).dy, closeTo(initialBase, 0.5));
+    expect(
+      tester.getTopLeft(heading).dy,
+      closeTo(initialBase + listTopGap, 0.5),
+    );
     expect(pinnedBottom(tester), closeTo(initialBase, 0.5));
 
     final scroll = reportScroll(tester);
@@ -4293,6 +4368,10 @@ void main() {
     }
     await tester.pumpAndSettle();
     final scroll = reportScroll(tester);
+    // The template's pinned strip covers the variant; measure from the
+    // search field, which the strip and the rows both sit below.
+    double searchBottom(WidgetTester tester) =>
+        pinnedBottom(tester, includesSupplier: false);
     final heading = reportRow('template:402--WAL');
     final variant = reportRow('item:1000052');
     await tester.scrollUntilVisible(
@@ -4307,16 +4386,16 @@ void main() {
     scroll.jumpTo(
       scroll.offset +
           tester.getBottomLeft(heading).dy -
-          toolbarBottom(tester) -
+          searchBottom(tester) -
           5,
     );
     await tester.pumpAndSettle();
-    final signedOffset = tester.getTopLeft(heading).dy - toolbarBottom(tester);
+    final signedOffset = tester.getTopLeft(heading).dy - searchBottom(tester);
     final variantTop = tester.getTopLeft(variant).dy;
-    expect(variantTop, closeTo(toolbarBottom(tester) + 5, 0.5));
+    expect(variantTop, closeTo(searchBottom(tester) + 5, 0.5));
     expect(
       tester.getBottomLeft(heading).dy,
-      closeTo(toolbarBottom(tester) + 5, 0.5),
+      closeTo(searchBottom(tester) + 5, 0.5),
     );
     final originalHeading = tester.renderObject(heading);
 
@@ -4329,11 +4408,39 @@ void main() {
     expect(controller.isExpanded('template:402--WAL'), isTrue);
     expect(tester.renderObject(heading), isNot(same(originalHeading)));
     expect(
-      tester.getTopLeft(heading).dy - toolbarBottom(tester),
+      tester.getTopLeft(heading).dy - searchBottom(tester),
       closeTo(signedOffset, 0.5),
     );
     expect(tester.getTopLeft(variant).dy, closeTo(variantTop, 0.5));
   });
+
+  testWidgets(
+    'the list starts below a gap and the search field shows its edge only '
+    'while rows pass under it',
+    (tester) async {
+      loadAnchorRows((index) => 'Item $index');
+      await openReport(tester, fontFamily: reportFont);
+      await tester.pumpAndSettle();
+      final viewport = tester.renderObject<RenderViewport>(
+        find.byType(Viewport),
+      );
+      final search = viewport.childAfter(viewport.firstChild!)! as dynamic;
+      expect(
+        tester.getTopLeft(anchorRow(0)).dy,
+        closeTo(pinnedBottom(tester) + listTopGap, 0.5),
+      );
+      expect(search.showsDivider, isFalse);
+
+      await tester.drag(anchorRow(3), const Offset(0, -450));
+      await tester.pumpAndSettle();
+      expect(search.pinned, isTrue);
+      expect(search.showsDivider, isTrue);
+      expect(
+        search as RenderObject,
+        paints..rect(color: AppScheme.light.borderStrong),
+      );
+    },
+  );
 
   testWidgets('clearing search restores a partly collapsed large title', (
     tester,
@@ -4348,7 +4455,7 @@ void main() {
     await tester.pumpAndSettle();
     final rowTop = tester.getTopLeft(first).dy;
     expect(rowTop, closeTo(expandedTop - 48, 0.5));
-    expect(rowTop, closeTo(toolbarBottom(tester), 0.5));
+    expect(rowTop, closeTo(toolbarBottom(tester) + listTopGap, 0.5));
 
     await tester.enterText(find.byType(TextField), 'ROW-30 SUP');
     await tester.pumpAndSettle();

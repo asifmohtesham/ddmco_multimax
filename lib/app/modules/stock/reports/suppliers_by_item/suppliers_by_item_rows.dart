@@ -1791,6 +1791,98 @@ class SuppliersByItemBadge extends StatelessWidget {
   }
 }
 
+/// The slim heading pinned under the search field in Group by Item while the
+/// rows of an item or template fill the top of the list: its code, its
+/// variant count (or name) and its Balance Qty.
+class SuppliersByItemPinnedHeading extends StatelessWidget {
+  const SuppliersByItemPinnedHeading({
+    super.key,
+    required this.entry,
+    required this.shows,
+    this.fieldLabel = _defaultCaption,
+  });
+
+  final SuppliersByItemLayoutRow entry;
+  final bool Function(SuppliersByItemField) shows;
+  final SuppliersByItemFieldCaption fieldLabel;
+
+  /// The strip's height at the default text size.
+  static const minHeight = 48.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final row = entry.node.row;
+    final template = row.kind == SuppliersByItemRowKind.template;
+    final aside = template
+        ? (shows(_Field.templateVariantCount)
+              ? countLabel(entry.variantCount, 'variant')
+              : null)
+        : row.distinctItemName;
+    final balance = _itemMetrics(
+      entry,
+      shows,
+      fieldLabel,
+    ).where((metric) => metric.label == fieldLabel(_Field.itemBalance));
+    final metric = balance.firstOrNull;
+    final role = _isComponent(row) ? 'Component' : 'Item';
+    return Semantics(
+      header: true,
+      label: [
+        '$role ${row.itemTitle}',
+        ?aside,
+        if (metric != null) '${metric.label} ${metric.value}',
+      ].join(', '),
+      excludeSemantics: true,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: minHeight),
+        alignment: AlignmentDirectional.centerStart,
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+        decoration: BoxDecoration(
+          color: context.scheme.fg,
+          border: Border(
+            bottom: BorderSide(color: context.scheme.borderStrong),
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: row.itemTitle,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    if (aside != null)
+                      TextSpan(
+                        text: ' · $aside',
+                        style: TextStyle(color: context.scheme.textMuted),
+                      ),
+                  ],
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+            if (metric != null) ...[
+              const SizedBox(width: 12),
+              Text(
+                metric.value,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: context.scheme.textMuted,
+                  fontFeatures: _tabularFigures,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// One figure in a template header: a caption above its value.
 class SuppliersByItemStat extends StatelessWidget {
   const SuppliersByItemStat({

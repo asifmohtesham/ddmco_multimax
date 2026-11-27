@@ -323,6 +323,7 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
                   if (canPinSearch)
                     _ResultsHeaderSliver(
                       key: _searchHeaderKey,
+                      dividerColor: context.scheme.borderStrong,
                       child: Material(
                         color: context.scheme.fg,
                         child: _ResultsHeader(
@@ -339,6 +340,13 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
                         ),
                       ),
                     ),
+                  // Page background between the search field and the first
+                  // card, so the card does not merge into the header. It sits
+                  // above the pinned heading so the heading and the rows share
+                  // one scroll offset.
+                  const SliverToBoxAdapter(
+                    child: SizedBox(height: _listTopGap),
+                  ),
                   // Keep the viewport state across loading and retry.
                   ValueListenableBuilder(
                     valueListenable: _pinnedSupplier,
@@ -347,17 +355,21 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
                       supplierKey: pinned?.entry.key,
                       groupEnd: pinned?.groupEnd,
                       paintedSupplier: _paintedSupplier,
-                      child:
-                          !showResults ||
-                              pinned == null ||
-                              view.group != SuppliersByItemGroup.supplier
+                      seamColor: context.scheme.fg,
+                      child: !showResults || pinned == null
                           ? const SizedBox.shrink()
-                          : ColoredBox(
+                          : view.group == SuppliersByItemGroup.supplier
+                          ? ColoredBox(
                               color: context.scheme.fg,
                               child: _treeKey.currentState!._groupTile(
                                 pinned.entry,
                                 fields,
                               ),
+                            )
+                          : SuppliersByItemPinnedHeading(
+                              entry: pinned.entry,
+                              shows: fields.shows,
+                              fieldLabel: _controller.fieldLabel,
                             ),
                     ),
                   ),
@@ -630,15 +642,60 @@ class _ReportState extends StatelessWidget {
 /// is room for it and at least 144 dp of results. The search field stays in
 /// the same element when the keyboard changes the viewport height.
 class _ResultsHeaderSliver extends SingleChildRenderObjectWidget {
-  const _ResultsHeaderSliver({super.key, required super.child});
+  const _ResultsHeaderSliver({
+    super.key,
+    required this.dividerColor,
+    required super.child,
+  });
+
+  /// The hairline drawn under the pinned header while rows pass beneath it.
+  final Color dividerColor;
 
   @override
   _RenderResultsHeader createRenderObject(BuildContext context) =>
-      _RenderResultsHeader();
+      _RenderResultsHeader()..dividerColor = dividerColor;
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderResultsHeader renderObject,
+  ) {
+    renderObject.dividerColor = dividerColor;
+  }
 }
 
 class _RenderResultsHeader extends RenderSliverToBoxAdapter {
   bool pinned = false;
+  Color _dividerColor = const Color(0x00000000);
+
+  set dividerColor(Color value) {
+    if (_dividerColor == value) return;
+    _dividerColor = value;
+    markNeedsPaint();
+  }
+
+  /// Rows are scrolling under the pinned header, so it shows its bottom edge.
+  /// The header's own scroll offset stays 0 while the large title collapses,
+  /// so this asks whether the sliver after it has started to pass under it.
+  bool get showsDivider {
+    if (!pinned) return false;
+    final viewport = parent;
+    if (viewport is! RenderViewport) return constraints.scrollOffset > 0;
+    final next = viewport.childAfter(this);
+    return next != null && next.constraints.scrollOffset > 0;
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    super.paint(context, offset);
+    final box = child;
+    if (box == null || !showsDivider) return;
+    final bottom = offset.dy + box.size.height;
+    context.canvas.drawRect(
+      Rect.fromLTWH(offset.dx, bottom - 1, constraints.crossAxisExtent, 1),
+      Paint()..color = _dividerColor,
+    );
+  }
 
   @override
   void performLayout() {
@@ -687,6 +744,16 @@ class _RenderResultsHeader extends RenderSliverToBoxAdapter {
   }
 }
 
+/// The page-background space above the first card.
+const _listTopGap = 12.0;
+
+/// How little of a template heading is left in view before its pinned strip
+/// takes over; at least the strip's height, so it hides the rest.
+const _pinnedStripExtent = SuppliersByItemPinnedHeading.minHeight;
+
+/// The group heading pinned under the search field: a supplier in Group by
+/// Supplier, or the item or template whose rows fill the top of the list in
+/// Group by Item.
 typedef _PinnedSupplier = ({SuppliersByItemLayoutRow entry, double groupEnd});
 
 /// Paints one overlay heading above the lazy rows, inside the scrollable so
@@ -697,9 +764,13 @@ class _SupplierHeaderSliver extends SingleChildRenderObjectWidget {
     required this.supplierKey,
     required this.groupEnd,
     required this.paintedSupplier,
+    required this.seamColor,
     required super.child,
   });
 
+  /// Fills the sub-pixel seam above the pinned heading, so rows do not show
+  /// through between it and the search field on fractional pixel ratios.
+  final Color seamColor;
   final SuppliersByItemRowKey? supplierKey;
   final double? groupEnd;
   final ValueNotifier<SuppliersByItemRowKey?> paintedSupplier;
@@ -708,7 +779,8 @@ class _SupplierHeaderSliver extends SingleChildRenderObjectWidget {
   _RenderSupplierHeader createRenderObject(BuildContext context) =>
       _RenderSupplierHeader(paintedSupplier)
         ..supplierKey = supplierKey
-        ..groupEnd = groupEnd;
+        ..groupEnd = groupEnd
+        ..seamColor = seamColor;
 
   @override
   void updateRenderObject(
@@ -717,7 +789,8 @@ class _SupplierHeaderSliver extends SingleChildRenderObjectWidget {
   ) {
     renderObject
       ..supplierKey = supplierKey
-      ..groupEnd = groupEnd;
+      ..groupEnd = groupEnd
+      ..seamColor = seamColor;
   }
 }
 
@@ -740,6 +813,13 @@ class _RenderSupplierHeader extends RenderSliverToBoxAdapter {
     if (_groupEnd == value) return;
     _groupEnd = value;
     markNeedsLayout();
+  }
+
+  Color _seamColor = const Color(0x00000000);
+  set seamColor(Color value) {
+    if (_seamColor == value) return;
+    _seamColor = value;
+    markNeedsPaint();
   }
 
   double get _childTop => geometry!.paintExtent - child!.size.height;
@@ -788,6 +868,10 @@ class _RenderSupplierHeader extends RenderSliverToBoxAdapter {
   @override
   void paint(PaintingContext context, Offset offset) {
     if (geometry!.paintExtent == 0) return;
+    context.canvas.drawRect(
+      Rect.fromLTWH(offset.dx, offset.dy - 1, constraints.crossAxisExtent, 2),
+      Paint()..color = _seamColor,
+    );
     context.pushClipRect(needsCompositing, offset, _paintClip, super.paint);
   }
 
@@ -1253,11 +1337,7 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
   }
 
   void _scheduleSupplierHeader() {
-    if (_supplierHeaderScheduled ||
-        (widget.view.group != SuppliersByItemGroup.supplier &&
-            widget.pinnedSupplier.value == null)) {
-      return;
-    }
+    if (_supplierHeaderScheduled) return;
     _supplierHeaderScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _supplierHeaderScheduled = false;
@@ -1273,12 +1353,14 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
     final list = _renderList;
     final viewport = RenderAbstractViewport.maybeOf(list);
     final visible = _laidOut;
-    if (widget.view.group != SuppliersByItemGroup.supplier ||
-        list == null ||
-        viewport == null ||
-        visible == null) {
-      return null;
-    }
+    if (list == null || viewport == null || visible == null) return null;
+    final bySupplier = widget.view.group == SuppliersByItemGroup.supplier;
+    // A supplier heading pins as it is once it starts to pass under the
+    // header. A template heading is taller than its slim pinned strip, so
+    // the strip takes over only when less of the heading than the strip
+    // would cover is still in view.
+    bool isHeading(SuppliersByItemLayoutRow row) =>
+        bySupplier ? row.group != null : row.depth == 0;
     final base = _headerBottom(viewport, includeSupplier: false);
     double topOf(RenderBox box) =>
         box.localToGlobal(Offset.zero, ancestor: viewport).dy;
@@ -1290,11 +1372,23 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
 
       final index = list.indexOf(box);
       final row = visible.rows[index];
-      if (top == base && row.group != null) return null;
-      final groupIndex = row.group != null
+      if (isHeading(row) && top == base) return null;
+      if (!bySupplier &&
+          isHeading(row) &&
+          top + box.size.height - _gapAt(index) - base >= _pinnedStripExtent) {
+        return null;
+      }
+      final groupIndex = isHeading(row)
           ? index
           : visible.indexByKey[row.ancestorKeys.firstOrNull];
       if (groupIndex == null) return null;
+      // In Group by Item only a template, whose variants can fill the
+      // screen, pins its heading.
+      if (!bySupplier &&
+          visible.rows[groupIndex].node.row.kind !=
+              SuppliersByItemRowKind.template) {
+        return null;
+      }
       // Look only at the laid-out cache for the next heading. If the next
       // heading is farther away, the current one has room at its full height.
       var remainingGroup = double.infinity;
@@ -1303,7 +1397,7 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
         next != null;
         next = list.childAfter(next)
       ) {
-        if (visible.rows[list.indexOf(next)].group != null) {
+        if (isHeading(visible.rows[list.indexOf(next)])) {
           remainingGroup = topOf(next) - base;
           break;
         }
@@ -1583,6 +1677,15 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
     if (needsCorrection) scroll.jumpTo(target);
 
     if (anchor.hasAligned && !needsCorrection) {
+      // The aligned row can bring a new group heading to the top. Pin it now
+      // and align once more below it, instead of letting it cover the row.
+      final heading = _supplierAtTop();
+      if (heading?.entry.key != widget.pinnedSupplier.value?.entry.key) {
+        _supplierHeaderChanged = true;
+        widget.pinnedSupplier.value = heading;
+        _scheduleCorrection();
+        return;
+      }
       // At this point any discrepancy is constrained by a real scroll limit.
       assert(
         keepSearchOffset ||
