@@ -537,26 +537,30 @@ class _SearchSession {
     required IconData icon,
     required String message,
     bool isError = false,
-  }) => Center(
-    child: SingleChildScrollView(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            size: 64,
-            color: isError ? Colors.red.shade300 : Colors.grey.shade400,
+  }) => Builder(
+    builder: (context) {
+      final error = Theme.of(context).colorScheme.error;
+      final scheme = context.scheme;
+      return Center(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 64,
+                color: isError ? error : scheme.textSubtle,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                message,
+                style: TextStyle(color: isError ? error : scheme.textMuted),
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
-          Text(
-            message,
-            style: TextStyle(
-              color: isError ? Colors.red : Colors.grey.shade600,
-            ),
-          ),
-        ],
-      ),
-    ),
+        ),
+      );
+    },
   );
 
   void dispose() {

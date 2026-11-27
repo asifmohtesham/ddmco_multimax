@@ -256,3 +256,47 @@ extension AppSchemeX on BuildContext {
     );
   }
 }
+
+/// WCAG 2.x contrast ratio between two opaque colours.
+double contrastRatio(Color a, Color b) {
+  final la = a.computeLuminance();
+  final lb = b.computeLuminance();
+  final hi = la > lb ? la : lb;
+  final lo = la > lb ? lb : la;
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/// The ink for small accent-coloured text: text buttons, links, section
+/// titles. The accent primaries are tuned for white-on-fill, not for text on
+/// the tinted surfaces, so some (light Blue and Purple, dark Maroon) fall
+/// below WCAG AA (4.5:1) on the scaffold, sheets, dialogs and search views.
+/// Those get body ink; the others keep the accent.
+///
+/// The surfaces are every one small accent text is drawn on without an
+/// explicit colour: cards and plain sheets ([AppScheme.fg]), the scaffold and
+/// search views ([AppScheme.bg]), input fills ([AppScheme.subtle]), and the
+/// seeded Material containers — sheets (low), menus (container), and dialogs
+/// and search views (high). `surfaceContainerHighest` is left out: it is a
+/// fill for chips and tracks, not a text surface.
+Color accentTextFor(ColorScheme colors, AppScheme scheme) {
+  final surfaces = [
+    scheme.fg,
+    scheme.bg,
+    scheme.subtle,
+    colors.surfaceContainerLow,
+    colors.surfaceContainer,
+    colors.surfaceContainerHigh,
+  ];
+  return surfaces.every((s) => contrastRatio(colors.primary, s) >= 4.5)
+      ? colors.primary
+      : scheme.text;
+}
+
+extension AccentTextX on BuildContext {
+  /// [accentTextFor] for the current theme. Use it instead of
+  /// `colorScheme.primary` for any small text.
+  Color get accentText {
+    final theme = Theme.of(this);
+    return accentTextFor(theme.colorScheme, AppScheme.of(theme.brightness));
+  }
+}
