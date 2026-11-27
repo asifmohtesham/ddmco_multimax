@@ -54,6 +54,11 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- FCM: alerts without an explicit channel land on POS delivery
+             (created by PushService), not the generic "Miscellaneous". -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="pos_delivery" />
     </application>
     <queries>
         <intent>

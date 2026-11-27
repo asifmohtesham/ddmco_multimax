@@ -9,6 +9,7 @@ import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/services/attendance_notify_scheduler.dart';
 import 'package:multimax/app/data/services/digest_scheduler.dart';
 import 'package:multimax/app/data/services/digest_service.dart';
+import 'package:multimax/app/data/services/push_service.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 
 /// Requests the platform notification permission. Kept as a free function so
@@ -58,6 +59,7 @@ class NotificationSettingsController extends GetxController {
   final AttendanceNotifyScheduler _attendanceScheduler;
   final Future<bool> Function() _notificationsAllowed;
   final bool _isAndroid;
+  final PushService? _push;
 
   NotificationSettingsController({
     StorageService? storage,
@@ -66,7 +68,9 @@ class NotificationSettingsController extends GetxController {
     Future<bool> Function()? requestPermission,
     Future<bool> Function()? notificationsAllowed,
     bool? isAndroid,
-  })  : _storage = storage ?? Get.find<StorageService>(),
+    PushService? push,
+  })  : _push = push ?? (Get.isRegistered<PushService>() ? Get.find<PushService>() : null),
+        _storage = storage ?? Get.find<StorageService>(),
         _scheduler = scheduler ?? DigestScheduler(),
         _attendanceScheduler = attendanceScheduler ?? AttendanceNotifyScheduler(),
         _requestPermission = requestPermission ?? requestNotificationsPermission,
@@ -81,6 +85,7 @@ class NotificationSettingsController extends GetxController {
 
   final attendanceEnabled = true.obs;
   final terminalEnabled = true.obs;
+  final pushEnabled = true.obs;
 
   /// The OS switch is off: the sections explain it instead of silently never
   /// notifying.
@@ -91,6 +96,9 @@ class NotificationSettingsController extends GetxController {
   bool get showDigest => _account?.isManager ?? false;
   bool get showAttendance =>
       _isAndroid && (_account?.employeeId ?? '').trim().isNotEmpty;
+  /// POS delivery push alerts: Android, push available, and a role that gets them.
+  bool get showPush =>
+      _isAndroid && (_push?.supported ?? false) && pushEligible(_account);
   bool get showTerminal =>
       _isAndroid && (_account?.hasRole('System Manager') ?? false);
 
@@ -104,7 +112,8 @@ class NotificationSettingsController extends GetxController {
     alarmStyle.value = _storage.getDigestAlarmStyle(_user);
     attendanceEnabled.value = _storage.getAttendanceRemindersEnabled(_user);
     terminalEnabled.value = _storage.getAttendanceTerminalAlerts(_user);
-    if (showAttendance || showTerminal) unawaited(_refreshBlocked());
+    pushEnabled.value = _storage.getPushDeliveryAlerts(_user);
+    if (showAttendance || showTerminal || showPush) unawaited(_refreshBlocked());
   }
 
   Future<void> _refreshBlocked() async {
@@ -127,6 +136,14 @@ class NotificationSettingsController extends GetxController {
     terminalEnabled.value = value;
     await _storage.saveAttendanceTerminalAlerts(_user, value);
     await _attendanceScheduler.rearm();
+  }
+
+  Future<void> setPushEnabled(bool value) async {
+    if (value) notificationsBlocked.value = !await _requestPermission();
+    pushEnabled.value = value;
+    await _storage.savePushDeliveryAlerts(_user, value);
+    // Registers or withdraws this phone in ERP to match the switch.
+    await _push?.sync(askPermission: false);
   }
 
   Future<void> setEnabled(bool value) async {

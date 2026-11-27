@@ -40,6 +40,30 @@ class NotificationSettingsScreen
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (controller.showPush) ...[
+                SettingsGroup(
+                  label: 'Deliveries',
+                  children: [
+                    SettingsSwitchRow(
+                      title: 'POS delivery alerts',
+                      subtitle: 'Tell me when a POS Upload is ready to dispatch, '
+                          'delivered, returned or overdue',
+                      value: controller.pushEnabled.value,
+                      onChanged: controller.setPushEnabled,
+                    ),
+                  ],
+                ),
+                if (blocked && !(controller.showAttendance || controller.showTerminal))
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(AppSpace.s3, AppSpace.s2, AppSpace.s3, 0),
+                    child: Text(
+                      'Notifications are turned off for Multimax. Allow them in Android settings '
+                      'to get these alerts.',
+                      style: TextStyle(fontSize: 12.5, color: context.scheme.textMuted),
+                    ),
+                  ),
+                const SizedBox(height: AppSpace.s4),
+              ],
               if (controller.showAttendance || controller.showTerminal) ...[
                 SettingsGroup(
                   label: 'Attendance',

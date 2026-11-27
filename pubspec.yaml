@@ -51,6 +51,10 @@ dependencies:
   timezone: ^0.11.1
   flutter_timezone: ^5.1.0
   math_expressions: ^3.2.0
+  # Push notifications (POS Upload delivery alerts) via Firebase Cloud Messaging.
+  # Android only for now; the app registers its token with ERP's Mobile Push Device.
+  firebase_core: ^5.2.0
+  firebase_messaging: ^17.1.0
 
 dev_dependencies:
   flutter_test:

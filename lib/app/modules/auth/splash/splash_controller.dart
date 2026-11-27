@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/services/attendance_notify_scheduler.dart';
 import 'package:multimax/app/data/services/digest_scheduler.dart';
+import 'package:multimax/app/data/services/push_service.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 
 /// Runs the startup session check once the app is on screen, then opens
@@ -50,8 +51,11 @@ class SplashController extends GetxController {
     await _authController.checkAuthenticationStatus();
     _slowTimer?.cancel();
     _selfHealSchedules();
-    Get.offAllNamed(
-      _authController.isAuthenticated.value ? AppRoutes.HOME : AppRoutes.LOGIN,
-    );
+    final signedIn = _authController.isAuthenticated.value;
+    Get.offAllNamed(signedIn ? AppRoutes.HOME : AppRoutes.LOGIN);
+    // A tapped alert that launched the app opens its POS Upload over home.
+    if (signedIn && Get.isRegistered<PushService>()) {
+      Get.find<PushService>().homeReady();
+    }
   }
 }

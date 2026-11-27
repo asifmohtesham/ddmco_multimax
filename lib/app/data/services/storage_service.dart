@@ -52,6 +52,8 @@ class StorageService {
   // Attendance notification preferences (#2b), per user. Absent = on.
   static const String _attEnabledKey = 'notif_att_enabled';
   static const String _attTerminalKey = 'notif_att_terminal';
+  static const String _pushDeliveryKey = 'notif_push_delivery';
+  static const String _pushRegisteredKey = 'notif_push_registered';
   static const String _attPromptedKey = 'notif_att_prompted';
 
   // Sales Order: last selling price list this user saved an order with
@@ -264,6 +266,20 @@ class StorageService {
   /// Terminal quiet/back alerts are on by default for System Managers.
   bool getAttendanceTerminalAlerts(String user) =>
       _box.read<bool>('$_attTerminalKey::$user') ?? true;
+
+  /// POS delivery push alerts are on by default for the roles that get them.
+  bool getPushDeliveryAlerts(String user) =>
+      _box.read<bool>('$_pushDeliveryKey::$user') ?? true;
+
+  Future<void> savePushDeliveryAlerts(String user, bool value) async =>
+      _box.write('$_pushDeliveryKey::$user', value);
+
+  /// Whether this phone is in ERP's Mobile Push Device register for [user].
+  bool getPushRegistered(String user) =>
+      _box.read<bool>('$_pushRegisteredKey::$user') ?? false;
+
+  Future<void> savePushRegistered(String user, bool value) async =>
+      _box.write('$_pushRegisteredKey::$user', value);
 
   /// Written by the main isolate once the Dashboard has asked for
   /// notification permission, so the prompt never repeats.
