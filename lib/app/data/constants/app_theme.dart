@@ -305,3 +305,15 @@ extension AccentTextX on BuildContext {
     return accentTextFor(theme.colorScheme, AppScheme.of(theme.brightness));
   }
 }
+
+extension StatusInkX on BuildContext {
+  bool get _isDark => Theme.of(this).brightness == Brightness.dark;
+
+  /// Warning text and icons: orange x700 in light mode, x300 in dark. The
+  /// material `Colors.orange` is 2.2:1 on white.
+  Color get warningInk => _isDark ? AppColors.orange300 : AppColors.orange700;
+
+  /// Success text and icons: green x700 in light mode, x300 in dark. The
+  /// material `Colors.green` is 2.5:1 on white.
+  Color get successInk => _isDark ? AppColors.green300 : AppColors.green700;
+}

@@ -1493,7 +1493,7 @@ class _CheckWoButtonState extends State<_CheckWoButton> {
               : Icon(_expanded ? Icons.expand_less : Icons.precision_manufacturing_outlined, size: 18),
           label: Text(_expanded ? 'Hide Work Orders' : 'Check Work Orders'),
           style: OutlinedButton.styleFrom(
-            foregroundColor: cs.primary,
+            foregroundColor: context.accentText,
             side: BorderSide(color: cs.primary.withValues(alpha: 0.5)),
             visualDensity: VisualDensity.compact,
             textStyle: text.labelMedium,

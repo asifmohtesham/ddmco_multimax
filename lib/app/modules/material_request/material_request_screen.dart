@@ -560,7 +560,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
                 '$fulfilledCount',
                 'Ordered',
                 color: fulfilledCount == detailed.items.length
-                    ? Colors.green
+                    ? context.successInk
                     : context.accentText,
               ),
             ],
@@ -575,7 +575,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
               minHeight: 4,
               backgroundColor: colorScheme.surfaceContainerHighest,
               valueColor: AlwaysStoppedAnimation<Color>(
-                orderedQty >= totalQty ? Colors.green : colorScheme.primary,
+                orderedQty >= totalQty ? AppColors.green500 : colorScheme.primary,
               ),
             ),
           ),

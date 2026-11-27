@@ -57,6 +57,11 @@ void main() {
           reason: 'text buttons draw in the accent text ink',
         );
         expect(t.tabBarTheme.labelColor, ink, reason: 'tab labels too');
+        expect(
+          t.outlinedButtonTheme.style?.foregroundColor?.resolve({}),
+          ink,
+          reason: 'outlined buttons too',
+        );
       });
 
       testWidgets('section titles, tabs and balance chips $tag', (
@@ -173,6 +178,60 @@ void main() {
           );
           _expectReadable(tester, ['Recent searches', 'Clear all']);
         });
+      });
+
+      testWidgets('status inks on cards and their chip tints $tag', (
+        tester,
+      ) async {
+        late Color warning, success;
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: theme(),
+            home: Builder(
+              builder: (context) {
+                warning = context.warningInk;
+                success = context.successInk;
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        );
+        final fg = AppScheme.of(brightness).fg;
+        for (final ink in [warning, success]) {
+          expect(contrastRatio(ink, fg), greaterThanOrEqualTo(4.5));
+          // BalanceChip fills with its ink at 15%.
+          final chip = Color.alphaBlend(ink.withValues(alpha: .15), fg);
+          expect(contrastRatio(ink, chip), greaterThanOrEqualTo(4.5));
+        }
+      });
+
+      testWidgets('outlined button in a dialog $tag', (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: theme(),
+            home: Scaffold(
+              body: Builder(
+                builder: (context) => TextButton(
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => AlertDialog(
+                      actions: [
+                        OutlinedButton(
+                          onPressed: () {},
+                          child: const Text('Keep editing'),
+                        ),
+                      ],
+                    ),
+                  ),
+                  child: const Text('Open'),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('Open'));
+        await tester.pumpAndSettle();
+        _expectReadable(tester, ['Keep editing']);
       });
 
       testWidgets('filter sheet headings and actions $tag', (tester) async {

@@ -217,7 +217,7 @@ class _SimpleRack extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.only(right: 4),
                       child: Icon(Icons.check_circle,
-                          color: Colors.green, size: 20),
+                          color: context.successInk, size: 20),
                     ),
                   if (c.rackStockTooltip.value != null)
                     Tooltip(
