@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/batch/form/batch_form_controller.dart';
 import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
@@ -364,7 +365,7 @@ class BatchFormScreen extends GetView<BatchFormController> {
                       fontSize: 16,
                       fontFamily: 'ShureTechMono',
                       fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary,
+                      color: context.accentText,
                       fontFeatures: const [FontFeature.slashedZero()],
                     ),
                     maxLines: 2,

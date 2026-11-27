@@ -162,7 +162,7 @@ class PerformanceTimelineCard extends StatelessWidget {
                 style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
-                    color: Theme.of(context).primaryColor
+                    color: context.accentText
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
@@ -206,7 +206,7 @@ class PerformanceTimelineCard extends StatelessWidget {
                 style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
-                    color: Theme.of(context).primaryColor
+                    color: context.accentText
                 ),
                 overflow: TextOverflow.ellipsis,
               ),

@@ -187,7 +187,7 @@ ThemeData buildAppTheme(
       elevation: 0,
     ),
     tabBarTheme: TabBarThemeData(
-      labelColor: primary,
+      labelColor: accentTextFor(colorScheme, scheme),
       unselectedLabelColor: scheme.textMuted,
       indicatorColor: primary,
       indicatorSize: TabBarIndicatorSize.tab,

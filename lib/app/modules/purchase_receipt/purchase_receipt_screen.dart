@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/purchase_receipt/purchase_receipt_controller.dart';
@@ -339,7 +340,7 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
                   label: 'Grand Total',
                   value: '$currencySymbol $grandTotal',
                   icon: Icons.attach_money,
-                  valueColor: colorScheme.primary,
+                  valueColor: context.accentText,
                   backgroundColor:
                       colorScheme.primaryContainer.withValues(alpha: 0.3),
                 ),

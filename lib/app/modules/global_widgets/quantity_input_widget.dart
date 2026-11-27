@@ -216,7 +216,7 @@ class _InfoBadge extends StatelessWidget {
             text,
             style: TextStyle(
               fontSize: 11,
-              color: primaryColor,
+              color: context.accentText,
               fontWeight: FontWeight.w600,
             ),
           ),

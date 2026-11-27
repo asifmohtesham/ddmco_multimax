@@ -40,6 +40,9 @@ class MaterialRequestItemCard extends StatelessWidget {
         : hasStarted
             ? (isDark ? AppColors.orange300 : AppColors.orange700)
             : colorScheme.primary;
+    // The not-started accent fails AA as small text for some accents.
+    final Color progressInk =
+        hasStarted ? progressColor : context.accentText;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -133,7 +136,7 @@ class MaterialRequestItemCard extends StatelessWidget {
                       '${(progress * 100).toInt()}%',
                       style: theme.textTheme.labelSmall?.copyWith(
                           fontWeight: FontWeight.bold,
-                          color: progressColor),
+                          color: progressInk),
                     ),
                   ],
                 ),
@@ -216,7 +219,7 @@ class MaterialRequestItemCard extends StatelessWidget {
           style: theme.textTheme.bodyMedium?.copyWith(
             fontWeight: FontWeight.w600,
             color:
-                color ?? (isPrimary ? colorScheme.primary : colorScheme.onSurface),
+                color ?? (isPrimary ? context.accentText : colorScheme.onSurface),
           ),
         ),
       ],

@@ -3,6 +3,7 @@
 // Keep the app's shared Material APIs until its Material migration.
 // ignore: deprecated_member_use
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/balance_chip.dart';
 import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
@@ -274,7 +275,7 @@ class _SimpleRack extends StatelessWidget {
           BalanceChip(
             balance:   rackBal,
             isLoading: validating,
-            color:     effectiveColor,
+            color:     w.accentColor ?? context.accentText,
             prefix:    'Rack Balance:',
             forceShow: validating || isValid,
           ),
@@ -362,7 +363,7 @@ class _EditModeRack extends StatelessWidget {
             BalanceChip(
               balance:   rackBal,
               isLoading: validating,
-              color:     effectiveColor,
+              color:     w.accentColor ?? context.accentText,
               prefix:    'Rack Balance:',
               forceShow: validating || isValid,
             ),

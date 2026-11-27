@@ -1,6 +1,7 @@
 // ignore_for_file: lines_longer_than_80_chars
 
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/balance_chip.dart';
 import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
@@ -225,7 +226,7 @@ class _SimpleField extends StatelessWidget {
               ? Colors.green
               : effectiveColor;
 
-      final chipColor   = isWarning ? Colors.orange : effectiveColor;
+      final chipColor   = isWarning ? Colors.orange : w.accentColor ?? context.accentText;
       final chipBalance = w.balanceOverride?.call() ?? c.batchBalanceFor('');
 
       Widget buildSuffixRow() => IntrinsicWidth(
@@ -397,7 +398,7 @@ class _EditModeField extends StatelessWidget {
 
       final isHardError = !isValid && errorMsg.isNotEmpty;
       final isWarning   =  isValid && errorMsg.isNotEmpty;
-      final chipColor   = isWarning ? Colors.orange : effectiveColor;
+      final chipColor   = isWarning ? Colors.orange : w.accentColor ?? context.accentText;
       final chipBalance = w.balanceOverride?.call() ?? c.batchBalanceFor('');
       final warehouse   = w.browseWarehouse ?? c.resolvedWarehouseForBatch;
 

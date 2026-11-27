@@ -605,7 +605,7 @@ class _ModuleGroup extends StatelessWidget {
           ),
           childrenPadding: const EdgeInsets.only(bottom: 8),
           iconColor:  Theme.of(context).primaryColor,
-          textColor:  Theme.of(context).primaryColor,
+          textColor:  context.accentText,
           children: children,
         ),
       );
@@ -766,7 +766,7 @@ class _DrawerItem extends StatelessWidget {
                       ? FontWeight.w700
                       : FontWeight.w500,
                   color: isSelected
-                      ? primaryColor
+                      ? context.accentText
                       : s.text,
                   letterSpacing: 0.2,
                 ),

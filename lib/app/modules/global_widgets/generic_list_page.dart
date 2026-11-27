@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
@@ -105,7 +106,7 @@ class GenericListPage extends StatelessWidget {
                 bottom: TabBar(
                   controller: tabController,
                   tabs: tabs!,
-                  labelColor: colorScheme.primary,
+                  labelColor: context.accentText,
                   indicatorColor: colorScheme.primary,
                 ),
               ),

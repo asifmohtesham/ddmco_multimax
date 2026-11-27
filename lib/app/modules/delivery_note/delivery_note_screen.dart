@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
@@ -448,7 +449,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
               label: 'GRAND TOTAL',
               value: '$currencySymbol $grandTotal',
               icon: Icons.payments_outlined,
-              valueColor: colorScheme.primary,
+              valueColor: context.accentText,
             ),
             const SizedBox(height: 12),
             Divider(height: 1, color: colorScheme.outlineVariant),

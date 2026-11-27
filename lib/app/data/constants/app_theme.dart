@@ -269,16 +269,19 @@ double contrastRatio(Color a, Color b) {
 /// The ink for small accent-coloured text: text buttons, links, section
 /// titles. The accent primaries are tuned for white-on-fill, not for text on
 /// the tinted surfaces, so some (light Blue and Purple, dark Maroon) fall
-/// below WCAG AA (4.5:1) on the scaffold, sheets, dialogs and search views.
-/// Those get body ink; the others keep the accent.
+/// below WCAG AA (4.5:1) on the scaffold, sheets, dialogs, search views and
+/// accent-tinted badges. Those get body ink; the others keep the accent.
 ///
 /// The surfaces are every one small accent text is drawn on without an
 /// explicit colour: cards and plain sheets ([AppScheme.fg]), the scaffold and
 /// search views ([AppScheme.bg]), input fills ([AppScheme.subtle]), and the
 /// seeded Material containers — sheets (low), menus (container), and dialogs
-/// and search views (high). `surfaceContainerHighest` is left out: it is a
-/// fill for chips and tracks, not a text surface.
+/// and search views (high) — plus the accent's own badge tint (up to 15%)
+/// over cards and the scaffold, which light Orange fails (4.20:1).
+/// `surfaceContainerHighest` is left out: it is a fill for chips and tracks,
+/// not a text surface.
 Color accentTextFor(ColorScheme colors, AppScheme scheme) {
+  final tint = colors.primary.withValues(alpha: 0.15);
   final surfaces = [
     scheme.fg,
     scheme.bg,
@@ -286,6 +289,8 @@ Color accentTextFor(ColorScheme colors, AppScheme scheme) {
     colors.surfaceContainerLow,
     colors.surfaceContainer,
     colors.surfaceContainerHigh,
+    Color.alphaBlend(tint, scheme.fg),
+    Color.alphaBlend(tint, scheme.bg),
   ];
   return surfaces.every((s) => contrastRatio(colors.primary, s) >= 4.5)
       ? colors.primary

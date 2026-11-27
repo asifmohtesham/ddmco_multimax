@@ -1,6 +1,7 @@
 // ignore_for_file: lines_longer_than_80_chars
 
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
@@ -240,7 +241,7 @@ class SharedQtyField extends StatelessWidget {
                     padding: const EdgeInsets.only(right: 8.0),
                     child: Center(
                       widthFactor: 1.0,
-                      child: QtyCapBadge(controller: c, color: effectiveColor),
+                      child: QtyCapBadge(controller: c, color: accentColor ?? context.accentText),
                     ),
                   );
                 }),

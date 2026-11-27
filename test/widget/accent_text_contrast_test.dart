@@ -4,6 +4,8 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/global_search_item.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/modules/global_widgets/balance_chip.dart';
+import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
 import 'package:multimax/app/modules/global_widgets/global_document_search_delegate.dart';
 import 'package:multimax/app/modules/global_widgets/global_filter_bottom_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
@@ -36,6 +38,16 @@ void main() {
           t.colorScheme.surfaceContainerLow,
           t.colorScheme.surfaceContainer,
           t.colorScheme.surfaceContainerHigh,
+          // Accent-tinted badges (BalanceChip, info pills) on cards and the
+          // scaffold.
+          Color.alphaBlend(
+            t.colorScheme.primary.withValues(alpha: .15),
+            scheme.fg,
+          ),
+          Color.alphaBlend(
+            t.colorScheme.primary.withValues(alpha: .15),
+            scheme.bg,
+          ),
         ]) {
           expect(contrastRatio(ink, surface), greaterThanOrEqualTo(4.5));
         }
@@ -44,6 +56,47 @@ void main() {
           ink,
           reason: 'text buttons draw in the accent text ink',
         );
+        expect(t.tabBarTheme.labelColor, ink, reason: 'tab labels too');
+      });
+
+      testWidgets('section titles, tabs and balance chips $tag', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: theme(),
+            home: DefaultTabController(
+              length: 2,
+              child: Scaffold(
+                appBar: AppBar(
+                  bottom: const TabBar(
+                    tabs: [
+                      Tab(text: 'Open'),
+                      Tab(text: 'Closed'),
+                    ],
+                  ),
+                ),
+                body: Builder(
+                  builder: (context) => Column(
+                    children: [
+                      const DocSectionCard(title: 'Items', children: []),
+                      BalanceChip(
+                        isLoading: false,
+                        color: context.accentText,
+                        textOverride: 'Rack Balance: 12',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        _expectReadable(tester, ['Items', 'Rack Balance: 12']);
+        // Tab labels take the theme's accent text ink.
+        final tab = find.text('Open');
+        final ink = DefaultTextStyle.of(tester.element(tab)).style.color!;
+        expect(ink, theme().tabBarTheme.labelColor);
       });
 
       group('search views $tag', () {
@@ -65,9 +118,7 @@ void main() {
           searcher: searcher ?? (_, __) async => [],
         );
 
-        testWidgets('list search recents and Clear all dialog', (
-          tester,
-        ) async {
+        testWidgets('list search recents and Clear all dialog', (tester) async {
           await _openSearch(tester, apiDelegate(), theme());
           _expectReadable(tester, [
             'Recent searches',
@@ -77,7 +128,11 @@ void main() {
 
           await tester.tap(find.text('Clear all'));
           await tester.pumpAndSettle();
-          _expectReadable(tester, ['Clear recent searches?', 'Cancel', 'Clear']);
+          _expectReadable(tester, [
+            'Clear recent searches?',
+            'Cancel',
+            'Clear',
+          ]);
         });
 
         testWidgets('list search empty results', (tester) async {
@@ -192,7 +247,8 @@ void _expectReadable(WidgetTester tester, List<String> labels) {
     expect(
       contrastRatio(ink, surface),
       greaterThanOrEqualTo(4.5),
-      reason: '"$label" ${ink.toARGB32().toRadixString(16)} on '
+      reason:
+          '"$label" ${ink.toARGB32().toRadixString(16)} on '
           '${surface.toARGB32().toRadixString(16)}',
     );
   }
