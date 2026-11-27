@@ -385,6 +385,173 @@
         2880,
         0
       ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Push alert for the phones of Delivery Dispatchers and Stock Managers (Mobile Push Device).\n// Out for Delivery goes to Stock Managers only: the dispatchers are the ones recording it.\nconst { event, audit } = $('Verify committed action').first().json;\nconst reasonLabel = { Late: 'Delivery delayed', Rejected: 'Rejected by customer', Other: 'Other reason' };\nconst driver = audit.driver_name || audit.driver;\nconst titles = {\n  'Out for Delivery': `Out for delivery · ${event.name}`,\n  'Delivery Return': `Delivery unsuccessful · ${event.name}`,\n  Delivered: `Delivered · ${event.name}`,\n};\nconst body = [event.customer, driver ? `Driver: ${driver}` : null,\n  audit.action === 'Delivery Return' ? reasonLabel[audit.reason] : null].filter(Boolean).join(' · ');\nreturn [{ json: {\n  roles: audit.action === 'Out for Delivery' ? 'Stock Manager' : 'Delivery Dispatcher,Stock Manager',\n  exclude: audit.recorded_by || '',\n  title: titles[audit.action] || `${audit.action} · ${event.name}`,\n  body,\n  name: event.name,\n  event: audit.action,\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        360
+      ],
+      "id": "99787a1d-992b-4ccf-98f1-1fbfb74e3fce",
+      "name": "Build push alert",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Check event dedupe').first().json.erpBase + '/api/method/mobile_push_recipients' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "roles",
+              "value": "={{ $json.roles }}"
+            },
+            {
+              "name": "exclude",
+              "value": "={{ $json.exclude }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2640,
+        360
+      ],
+      "id": "4d3ddb53-dc5f-4f28-844a-1fcc9bc8318f",
+      "name": "Read push recipients",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": false,
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Multimax ERP GET"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// One FCM message per registered phone. Tag = POS name, so a newer alert replaces the older one.\nconst out = [];\nfor (const [index, item] of $input.all().entries()) {\n  const alert = $('Build push alert').itemMatching(index).json;\n  const devices = Array.isArray(item.json.message) ? item.json.message : [];\n  for (const device of devices) {\n    out.push({ json: { device: device.name, message: {\n      token: device.token,\n      notification: { title: alert.title, body: alert.body },\n      data: { doctype: 'POS Upload', name: alert.name, event: alert.event },\n      android: { priority: 'high', notification: { channel_id: 'pos_delivery', tag: alert.name } },\n    } } });\n  }\n}\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        360
+      ],
+      "id": "56b21ca6-a846-45ed-99b6-ebb97ee94d48",
+      "name": "One message per phone",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://fcm.googleapis.com/v1/projects/multimax-fb26b/messages:send",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ message: $json.message }) }}",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 10,
+              "batchInterval": 100
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3120,
+        360
+      ],
+      "id": "31968982-8966-4a18-bfae-df057c3964ca",
+      "name": "Send push",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": false,
+      "credentials": {
+        "googleApi": {
+          "id": "01ebo3kOmHsfj6ID",
+          "name": "Firebase FCM (multimax-fb26b)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// FCM says the token is gone (app uninstalled or data cleared): disable that phone in ERP.\nconst out = [];\nfor (const [index, item] of $input.all().entries()) {\n  const status = item.json.statusCode;\n  const error = item.json.body?.error;\n  const code = (error?.details || []).map(d => d.errorCode).find(Boolean) || error?.status;\n  if (status === 404 || code === 'UNREGISTERED' || (status === 400 && code === 'INVALID_ARGUMENT' && /token/i.test(error?.message || ''))) {\n    out.push({ json: { device: $('One message per phone').itemMatching(index).json.device, error: `${status} ${code}: ${error?.message || ''}`.slice(0, 900) } });\n  }\n}\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3360,
+        360
+      ],
+      "id": "fd53d986-ba67-4b01-ac7e-fb994ae12539",
+      "name": "Find dead tokens",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Check event dedupe').first().json.erpBase + '/api/method/mobile_push_mark_invalid' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ device: $json.device, error: $json.error }) }}",
+        "options": {
+          "timeout": 10000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3600,
+        360
+      ],
+      "id": "5560435f-a4f2-4b14-9494-497c3255bc1f",
+      "name": "Disable dead token",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": false,
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Multimax ERP GET"
+        }
+      }
     }
   ],
   "pinData": {},
@@ -495,6 +662,11 @@
             "node": "Quote dispatch post?",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Build push alert",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -540,6 +712,61 @@
         [
           {
             "node": "Send to Updates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build push alert": {
+      "main": [
+        [
+          {
+            "node": "Read push recipients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read push recipients": {
+      "main": [
+        [
+          {
+            "node": "One message per phone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One message per phone": {
+      "main": [
+        [
+          {
+            "node": "Send push",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send push": {
+      "main": [
+        [
+          {
+            "node": "Find dead tokens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find dead tokens": {
+      "main": [
+        [
+          {
+            "node": "Disable dead token",
             "type": "main",
             "index": 0
           }

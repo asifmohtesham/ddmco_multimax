@@ -22,6 +22,8 @@ SITES = {"staging": "https://erp-testing.multimax.cloud", "live": "https://erp.m
 SERVER_SCRIPTS = (
     ("Mobile Push Register", "mobile_push_register", "register.py"),
     ("Mobile Push Unregister", "mobile_push_unregister", "unregister.py"),
+    ("Mobile Push Recipients", "mobile_push_recipients", "recipients.py"),
+    ("Mobile Push Mark Invalid", "mobile_push_mark_invalid", "mark-invalid.py"),
 )
 METADATA = {"owner", "creation", "modified", "modified_by", "docstatus", "idx", "_user_tags",
             "_comments", "_assign", "_liked_by", "doctype", "name", "parent", "parentfield", "parenttype"}

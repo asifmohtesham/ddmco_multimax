@@ -573,7 +573,7 @@
     },
     {
       "parameters": {
-        "jsCode": "function statusVersions(reply) {\n  if (!Array.isArray(reply.docinfo?.versions)) throw new Error('ERP returned no POS Version list');\n  const result = [];\n  for (const version of reply.docinfo.versions) {\n    let data;\n    try {\n      data = typeof version.data === 'string' ? JSON.parse(version.data) : version.data;\n    } catch {\n      throw new Error('ERP returned an invalid POS Version');\n    }\n    const change = data?.changed?.find(row => row[0] === 'status' && row[1] !== row[2]);\n    if (change) result.push({ name: version.name, creation: version.creation, from: change[1], to: change[2], audit: data.updater_reference?.pos_delivery });\n  }\n  return result;\n}\nfunction escapeHtml(value) {\n  return String(value).replace(/[&<>\"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;'})[c]);\n}\nfunction lines(title, pos, dn, audit) {\n  const row = (label, value) => value ? `${label}: ${escapeHtml(value)}` : null;\n  const url = `https://erp.multimax.cloud/app/pos-upload/${encodeURIComponent(pos.name)}`;\n  return [\n    `<b>${escapeHtml(title)}</b>`,\n    `POS Upload: <a href=\"${escapeHtml(url)}\">${escapeHtml(pos.name)}</a>`,\n    row('Customer', pos.customer),\n    row('Delivery Note', dn),\n    row('Driver', audit?.driver_name || audit?.driver),\n    row('Recorded by', audit?.recorded_by_name || audit?.recorded_by),\n  ].filter(Boolean);\n}\nfunction erpTime(value) {\n  return DateTime.fromISO(value.replace(' ', 'T'), { zone: 'Asia/Dubai' }).setZone('Asia/Dubai');\n}\nfunction messageTime(timestamp) {\n  return timestamp.setLocale('en-GB').toFormat('dd MMM yyyy, HH:mm');\n}\nfunction currentDeliveryNote(reply) {\n  if (!Array.isArray(reply.data)) throw new Error('ERP returned no Delivery Note list');\n  return reply.data.length === 1 ? reply.data[0].name : null;\n}\n\nconst alerts = [];\nfor (const [index, item] of $input.all().entries()) {\n  const candidate = $('Find overdue entries').itemMatching(index).json;\n  const current = $('Re-read POS').itemMatching(index).json.data;\n  const entry = statusVersions(item.json)[0];\n  if (current?.name !== candidate.pos.name || current.status !== candidate.pos.status ||\n      entry?.name !== candidate.entry || entry.to !== current.status) continue;\n  const dn = currentDeliveryNote($('Find current DN').itemMatching(index).json);\n  const dispatchStage = current.status === 'To Deliver';\n  const audit = !dispatchStage || entry.audit?.action === 'Delivery Return' ? entry.audit : null;\n  const linesOfAlert = lines(dispatchStage ? 'Overdue for dispatch' : 'Overdue for delivery', current, dn, audit);\n  const minutes = Math.floor(candidate.elapsed / 60000);\n  linesOfAlert.push(\n    `Time: ${messageTime(erpTime(candidate.evaluatedAt))}`,\n    `Stage: ${current.status}`,\n    `Time in stage: ${Math.floor(minutes / 60)} h ${minutes % 60} min`,\n    `Threshold: ${candidate.hours} working hours`,\n  );\n  alerts.push({ json: { text: linesOfAlert.join('\\n'), key: candidate.key }, pairedItem: { item: index } });\n}\nreturn alerts;"
+        "jsCode": "function statusVersions(reply) {\n  if (!Array.isArray(reply.docinfo?.versions)) throw new Error('ERP returned no POS Version list');\n  const result = [];\n  for (const version of reply.docinfo.versions) {\n    let data;\n    try {\n      data = typeof version.data === 'string' ? JSON.parse(version.data) : version.data;\n    } catch {\n      throw new Error('ERP returned an invalid POS Version');\n    }\n    const change = data?.changed?.find(row => row[0] === 'status' && row[1] !== row[2]);\n    if (change) result.push({ name: version.name, creation: version.creation, from: change[1], to: change[2], audit: data.updater_reference?.pos_delivery });\n  }\n  return result;\n}\nfunction escapeHtml(value) {\n  return String(value).replace(/[&<>\"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;'})[c]);\n}\nfunction lines(title, pos, dn, audit) {\n  const row = (label, value) => value ? `${label}: ${escapeHtml(value)}` : null;\n  const url = `https://erp.multimax.cloud/app/pos-upload/${encodeURIComponent(pos.name)}`;\n  return [\n    `<b>${escapeHtml(title)}</b>`,\n    `POS Upload: <a href=\"${escapeHtml(url)}\">${escapeHtml(pos.name)}</a>`,\n    row('Customer', pos.customer),\n    row('Delivery Note', dn),\n    row('Driver', audit?.driver_name || audit?.driver),\n    row('Recorded by', audit?.recorded_by_name || audit?.recorded_by),\n  ].filter(Boolean);\n}\nfunction erpTime(value) {\n  return DateTime.fromISO(value.replace(' ', 'T'), { zone: 'Asia/Dubai' }).setZone('Asia/Dubai');\n}\nfunction messageTime(timestamp) {\n  return timestamp.setLocale('en-GB').toFormat('dd MMM yyyy, HH:mm');\n}\nfunction currentDeliveryNote(reply) {\n  if (!Array.isArray(reply.data)) throw new Error('ERP returned no Delivery Note list');\n  return reply.data.length === 1 ? reply.data[0].name : null;\n}\n\nconst alerts = [];\nfor (const [index, item] of $input.all().entries()) {\n  const candidate = $('Find overdue entries').itemMatching(index).json;\n  const current = $('Re-read POS').itemMatching(index).json.data;\n  const entry = statusVersions(item.json)[0];\n  if (current?.name !== candidate.pos.name || current.status !== candidate.pos.status ||\n      entry?.name !== candidate.entry || entry.to !== current.status) continue;\n  const dn = currentDeliveryNote($('Find current DN').itemMatching(index).json);\n  const dispatchStage = current.status === 'To Deliver';\n  const audit = !dispatchStage || entry.audit?.action === 'Delivery Return' ? entry.audit : null;\n  const linesOfAlert = lines(dispatchStage ? 'Overdue for dispatch' : 'Overdue for delivery', current, dn, audit);\n  const minutes = Math.floor(candidate.elapsed / 60000);\n  linesOfAlert.push(\n    `Time: ${messageTime(erpTime(candidate.evaluatedAt))}`,\n    `Stage: ${current.status}`,\n    `Time in stage: ${Math.floor(minutes / 60)} h ${minutes % 60} min`,\n    `Threshold: ${candidate.hours} working hours`,\n  );\n  alerts.push({ json: { text: linesOfAlert.join('\\n'), key: candidate.key,\n    // For the push branch: which POS, for whom and why.\n    pos: current.name, customer: current.customer, stage: current.status,\n    overdueTitle: dispatchStage ? 'Overdue for dispatch' : 'Overdue for delivery' }, pairedItem: { item: index } });\n}\nreturn alerts;"
       },
       "id": "7babac1a-f19c-4e43-a666-f0f31f81fea8",
       "name": "Build current-stage alert",
@@ -627,6 +627,173 @@
         4320,
         0
       ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Push alert per overdue POS for the phones of Delivery Dispatchers and Stock Managers.\nreturn $input.all().map((item, index) => ({\n  json: {\n    roles: 'Delivery Dispatcher,Stock Manager',\n    exclude: '',\n    title: `${item.json.overdueTitle} · ${item.json.pos}`,\n    body: [item.json.customer, `Stage: ${item.json.stage}`].filter(Boolean).join(' · '),\n    name: item.json.pos,\n    event: 'Overdue',\n  },\n  pairedItem: { item: index },\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4080,
+        360
+      ],
+      "id": "f47fbf4e-e347-4f3a-b4fc-793521fb1014",
+      "name": "Build push alert",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Check calendar freshness').first().json.erpBase + '/api/method/mobile_push_recipients' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "roles",
+              "value": "={{ $json.roles }}"
+            },
+            {
+              "name": "exclude",
+              "value": "={{ $json.exclude }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4320,
+        360
+      ],
+      "id": "ece7699a-c951-4e92-8cf4-5cdf44f796da",
+      "name": "Read push recipients",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": false,
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Multimax ERP GET"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// One FCM message per registered phone. Tag = POS name, so a newer alert replaces the older one.\nconst out = [];\nfor (const [index, item] of $input.all().entries()) {\n  const alert = $('Build push alert').itemMatching(index).json;\n  const devices = Array.isArray(item.json.message) ? item.json.message : [];\n  for (const device of devices) {\n    out.push({ json: { device: device.name, message: {\n      token: device.token,\n      notification: { title: alert.title, body: alert.body },\n      data: { doctype: 'POS Upload', name: alert.name, event: alert.event },\n      android: { priority: 'high', notification: { channel_id: 'pos_delivery', tag: alert.name } },\n    } } });\n  }\n}\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4560,
+        360
+      ],
+      "id": "d3633d07-f967-40e9-a2ce-7d65e6e4871c",
+      "name": "One message per phone",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://fcm.googleapis.com/v1/projects/multimax-fb26b/messages:send",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ message: $json.message }) }}",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 10,
+              "batchInterval": 100
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4800,
+        360
+      ],
+      "id": "d62f9a72-f45f-4516-b741-3a97fcd166f5",
+      "name": "Send push",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": false,
+      "credentials": {
+        "googleApi": {
+          "id": "01ebo3kOmHsfj6ID",
+          "name": "Firebase FCM (multimax-fb26b)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// FCM says the token is gone (app uninstalled or data cleared): disable that phone in ERP.\nconst out = [];\nfor (const [index, item] of $input.all().entries()) {\n  const status = item.json.statusCode;\n  const error = item.json.body?.error;\n  const code = (error?.details || []).map(d => d.errorCode).find(Boolean) || error?.status;\n  if (status === 404 || code === 'UNREGISTERED' || (status === 400 && code === 'INVALID_ARGUMENT' && /token/i.test(error?.message || ''))) {\n    out.push({ json: { device: $('One message per phone').itemMatching(index).json.device, error: `${status} ${code}: ${error?.message || ''}`.slice(0, 900) } });\n  }\n}\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5040,
+        360
+      ],
+      "id": "6dcef644-0c18-4126-aa0d-4c40e51d0582",
+      "name": "Find dead tokens",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Check calendar freshness').first().json.erpBase + '/api/method/mobile_push_mark_invalid' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ device: $json.device, error: $json.error }) }}",
+        "options": {
+          "timeout": 10000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5280,
+        360
+      ],
+      "id": "50e16a5a-afe9-48ca-9f63-3401aaa2bd29",
+      "name": "Disable dead token",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": false,
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Multimax ERP GET"
+        }
+      }
     }
   ],
   "pinData": {},
@@ -828,6 +995,11 @@
             "node": "Send to Updates",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Build push alert",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -837,6 +1009,61 @@
         [
           {
             "node": "Record successful overdue sends",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build push alert": {
+      "main": [
+        [
+          {
+            "node": "Read push recipients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read push recipients": {
+      "main": [
+        [
+          {
+            "node": "One message per phone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One message per phone": {
+      "main": [
+        [
+          {
+            "node": "Send push",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send push": {
+      "main": [
+        [
+          {
+            "node": "Find dead tokens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find dead tokens": {
+      "main": [
+        [
+          {
+            "node": "Disable dead token",
             "type": "main",
             "index": 0
           }

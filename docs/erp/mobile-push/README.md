@@ -30,6 +30,8 @@ App sign-out / switch off ─► mobile_push_unregister
 | DocType **Mobile Push Device** (`records/01-…json`) | One row per installed app: `user`, `enabled`, `platform`, `app_id`, `app_version`, `device_model`, `last_seen`, `last_error`, `token` (unique). System Manager only — users write through the API methods. |
 | Server Script API `mobile_push_register` (`scripts/register.py`) | Upserts by token for the session user, re-enables it and stamps `last_seen`. A token that belonged to another user moves to the caller. |
 | Server Script API `mobile_push_unregister` (`scripts/unregister.py`) | Disables the caller's own row for that token. Unknown tokens are not an error. |
+| Server Script API `mobile_push_recipients` (`scripts/recipients.py`) | For the sender: enabled devices of enabled users holding any of `roles` (comma-separated), minus `exclude`. System Manager only, because it returns tokens. |
+| Server Script API `mobile_push_mark_invalid` (`scripts/mark-invalid.py`) | For the sender: disables a device FCM rejected and stores `last_error`. System Manager only. |
 
 Apply (idempotent; before-images go to `before/<site>-<ts>/`):
 
@@ -38,7 +40,22 @@ ERP_KEY=<key>:<secret> python docs/erp/mobile-push/apply.py --site staging --dry
 ERP_KEY=<key>:<secret> python docs/erp/mobile-push/apply.py --site staging
 ```
 
-Rollback: delete the two Server Scripts and the DocType (no other record depends on them).
+Rollback: delete the four Server Scripts and the DocType (no other record depends on them).
+
+## n8n sender
+
+The sender is n8n credential **Firebase FCM (multimax-fb26b)** (`googleApi` service account, scope
+`firebase.messaging`, allowed domain `fcm.googleapis.com` only). Both delivery workflows
+(`../pos-upload-delivery/n8n/`) get the same six-node branch:
+
+`Build push alert` → `Read push recipients` → `One message per phone` → `Send push` → `Find dead tokens` → `Disable dead token`
+
+- The branch is a second output of the node that feeds Telegram, so the Telegram alert does not depend on it.
+  Every push node continues on error.
+- Events: Out for Delivery goes to Stock Managers only. Delivered and Delivery Return go to Delivery
+  Dispatchers and Stock Managers. The user who recorded the action is always excluded.
+- Overdue: each overdue POS goes to both roles.
+- Ready to dispatch (To Deliver on DN submit) is **not** sent: the ERP Webhook does not fire for it today.
 
 ## App (`lib/app/data/services/push_service.dart`)
 
@@ -78,5 +95,5 @@ Rollback: delete the two Server Scripts and the DocType (no other record depends
 | CI secret `GOOGLE_SERVICES_JSON_BASE64` | set 2026-11-27 |
 | ERP DocType + API methods | staging and **live** done and tested 2026-11-27 (live 23:28 Dubai; ZZTEST row deleted) |
 | App token registration, tap-to-open, settings switch | built, not released |
-| n8n push branch (Events + Overdue) | not started |
+| n8n push branch (Events + Overdue) | built in the repo sources and tested end to end on 2026-11-27 with a temporary workflow against live ERP and the XCover. **Not yet on the live workflows.** |
 | iOS | not started |
