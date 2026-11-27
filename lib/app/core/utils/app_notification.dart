@@ -25,7 +25,30 @@ abstract class AppNotification {
   static void info(String message) =>
       _show(message, _infoColor, Icons.info_outline);
 
-  static void _show(String message, Color bg, IconData icon) {
+  /// Shows a blue informational snackbar with an action button (omitted when
+  /// [onPressed] is null). Stays up longer so there is time to tap it.
+  static void withAction(
+    String message, {
+    required String label,
+    VoidCallback? onPressed,
+  }) =>
+      _show(message, _infoColor, Icons.notifications_active_outlined,
+          action: onPressed == null
+              ? null
+              : SnackBarAction(
+                  label: label,
+                  textColor: Colors.white,
+                  onPressed: onPressed,
+                ),
+          duration: const Duration(seconds: 8));
+
+  static void _show(
+    String message,
+    Color bg,
+    IconData icon, {
+    SnackBarAction? action,
+    Duration duration = const Duration(seconds: 3),
+  }) {
     final ctx = Get.context;
     if (ctx == null) return;
     ScaffoldMessenger.of(ctx)
@@ -50,7 +73,8 @@ abstract class AppNotification {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
           ),
-          duration: const Duration(seconds: 3),
+          action: action,
+          duration: duration,
         ),
       );
   }

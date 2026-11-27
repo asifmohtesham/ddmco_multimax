@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/services/push_service.dart';
 import 'package:multimax/app/modules/global_widgets/app_avatar.dart';
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/global_widgets/settings_group.dart';
@@ -22,6 +23,9 @@ bool showNotificationsEntry({
   final isMobile =
       platform == TargetPlatform.android || platform == TargetPlatform.iOS;
   if (isMobile && user.isManager) return true;
+  // POS delivery push alerts (Android): Delivery Dispatchers who are not
+  // managers and have no linked employee still need the switch.
+  if (platform == TargetPlatform.android && pushEligible(user)) return true;
   return platform == TargetPlatform.android &&
       (user.employeeId ?? '').trim().isNotEmpty;
 }

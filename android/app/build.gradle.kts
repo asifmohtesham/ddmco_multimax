@@ -7,6 +7,7 @@ plugins {
     // plugin version pinned in settings.gradle.kts.
     // The Flutter Gradle plugin must stay after the Android plugin.
     id("dev.flutter.flutter-gradle-plugin")
+    id("com.google.gms.google-services")
 }
 
 val keyPropertiesFile = rootProject.file("key.properties")

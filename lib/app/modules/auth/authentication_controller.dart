@@ -15,6 +15,7 @@ import 'package:multimax/app/data/services/digest_worker.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/data/services/reminder_scheduler.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/data/services/push_service.dart';
 import 'package:multimax/app/modules/auth/logout_flow.dart';
 import 'package:multimax/app/modules/auth/widgets/logout_dialog.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
@@ -161,6 +162,11 @@ class AuthenticationController extends GetxController {
       // (Android only — iOS cannot check punches at fire time).
       if (!kIsWeb && Platform.isAndroid) {
         unawaited(AttendanceNotifyScheduler().rearm().catchError((_) {}));
+      }
+
+      // Register (or withdraw) this phone for POS delivery push alerts.
+      if (Get.isRegistered<PushService>()) {
+        unawaited(Get.find<PushService>().sync());
       }
 
       if (Get.isRegistered<PermissionService>()) {
@@ -332,6 +338,7 @@ class AuthenticationController extends GetxController {
     currentUser.value ??= user;
     isAuthenticated.value = true;
     Get.offAllNamed(AppRoutes.HOME);
+    if (Get.isRegistered<PushService>()) Get.find<PushService>().homeReady();
     GlobalSnackbar.success(
       title: 'Login Successful',
       message: 'Welcome back, ${currentUser.value?.name ?? user.name}!',
@@ -363,6 +370,11 @@ class AuthenticationController extends GetxController {
     logoutError.value = null;
     final cancelToken = CancelToken();
     try {
+      // While the session still exists: stop this phone getting the user's
+      // alerts. Capped at a few seconds and never fails the sign-out.
+      if (Get.isRegistered<PushService>()) {
+        await Get.find<PushService>().unregister();
+      }
       final outcome = await localFirstLogout(
         serverLogout: () =>
             _apiProvider.logoutApiCall(cancelToken: cancelToken),

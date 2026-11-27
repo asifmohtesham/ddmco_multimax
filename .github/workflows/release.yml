@@ -80,6 +80,11 @@ jobs:
           keyPassword=${{ secrets.KEY_PASSWORD }}
           EOF
 
+      # Firebase config (FCM push). Kept out of this public repo; the build
+      # fails at processReleaseGoogleServices if the secret is missing.
+      - name: Write google-services.json
+        run: echo "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" | base64 --decode > android/app/google-services.json
+
       - run: flutter pub get
 
       - name: Build App Bundle
