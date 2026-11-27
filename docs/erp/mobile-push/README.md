@@ -75,7 +75,8 @@ Rollback: delete the two Server Scripts and the DocType (no other record depends
 | Step | State |
 |---|---|
 | Firebase project + Android apps | done (2026-11-27) |
-| ERP DocType + API methods | **staging** done and tested 2026-11-27; live pending |
+| CI secret `GOOGLE_SERVICES_JSON_BASE64` | set 2026-11-27 |
+| ERP DocType + API methods | staging and **live** done and tested 2026-11-27 (live 23:28 Dubai; ZZTEST row deleted) |
 | App token registration, tap-to-open, settings switch | built, not released |
 | n8n push branch (Events + Overdue) | not started |
 | iOS | not started |
