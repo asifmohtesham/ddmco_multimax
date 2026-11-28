@@ -1,7 +1,0 @@
-{
-  "doctype": "Workflow State",
-  "name": "Cancelled",
-  "workflow_state_name": "Cancelled",
-  "style": "Danger",
-  "_if_missing": true
-}

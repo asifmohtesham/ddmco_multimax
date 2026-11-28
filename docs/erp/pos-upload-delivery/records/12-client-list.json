@@ -1,8 +1,0 @@
-{
-  "doctype": "Client Script",
-  "name": "POS Upload-List",
-  "dt": "POS Upload",
-  "view": "List",
-  "enabled": 1,
-  "_script_file": "../scripts/pos-upload-list.js"
-}

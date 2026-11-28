@@ -29,7 +29,7 @@ const String _kPushChannelName = 'POS delivery';
 const String _kPushChannelDescription =
     'POS Upload delivery updates: ready to dispatch, delivered, returned, overdue';
 
-/// Roles that receive delivery alerts (see docs/erp/mobile-push/README.md).
+/// Roles that receive delivery alerts (see mobile-push/README.md in the erp-scripts repository).
 const Set<String> kPushRoles = {'Delivery Dispatcher', 'Stock Manager'};
 
 bool pushEligible(User? user) =>

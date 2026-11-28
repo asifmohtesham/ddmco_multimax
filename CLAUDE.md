@@ -153,9 +153,9 @@ The `docs/` folder contains important design and architecture notes:
 - `docs/recent_searches.md` — Search overlay history, per-user storage, and screen scoping
 - `docs/stock_entry_flow.md` — Dual-rack (source/target) logic for Stock Entry
 - `docs/STATEFUL_WIDGET_AUDIT.md` — Known widget lifecycle issues (orphaned Workers, setState conflicts)
-- `docs/pos_delivery_note_item_rate_report.md` — Backend ERPNext Script Report + Client Script (customer-code ↔ item-code mapping); reproducible source for a Desk-only artifact
-- `docs/suppliers_by_item_report.md` — Suppliers by Item Desk Script Report, including filters, tree and rate contract, app entry points, and reproducible Python and JavaScript
-- `docs/item_image_virtual_field.md` — Desk-only virtual `Item Image` column on Stock Entry / Material Request / Purchase Order / Purchase Receipt / Purchase Invoice / Quotation / Sales Order / Delivery Note / Sales Invoice items (Custom Field + Client Script): shown and exported, never saved, never dirties the form
+- `docs/pos_delivery_note_item_rate_report.md` — POS and Delivery Note Item Rate Desk Script Report + Client Script (customer-code ↔ item-code mapping): join model, statuses, filters and gotchas; the code is in `erp-scripts`
+- `docs/suppliers_by_item_report.md` — Suppliers by Item Desk Script Report: filters, tree and rate contract, app entry points; the Python and JavaScript are in `erp-scripts`
+- `docs/erp_scripts_repository.md` — Desk-only ERP material (Server / Client Scripts, Script Report source, POS Upload delivery workflow, mobile push, Item Image field, Batch-Wise Balance History - Custom) lives in the private `erp-scripts` repository; table of what moved where
 - `docs/sales_order_delivery_flow.md` — Dashboard Sales Order → scan-to-pick Delivery Note (SO line binding, caps, resume, v16 CSRF)
 - `docs/items_from_photos.md` — Items from Photos (share/drag/choose label photos → reviewed Excel/PDF with stock): every screen, message, rule, platform route (Android, iOS share extension, Mac), code map, release history and open items in one file
 - `docs/batch_age_validation.md` — Oldest stock first: a batch is refused while an older batch of the item has stock (age = earliest Purchase Receipt, `WH-` warehouses under the pick warehouse's parent, drafts netted, no in-app override)

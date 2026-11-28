@@ -1,9 +1,0 @@
-{
-  "doctype": "Server Script",
-  "name": "POS Upload Delivery Drivers",
-  "script_type": "API",
-  "disabled": 0,
-  "api_method": "pos_upload_delivery_drivers",
-  "allow_guest": 0,
-  "_script_file": "../scripts/driver-defaults.py"
-}

@@ -1,7 +1,0 @@
-{
-  "doctype": "Workflow State",
-  "name": "Out for Delivery",
-  "workflow_state_name": "Out for Delivery",
-  "style": "Primary",
-  "_if_missing": true
-}
