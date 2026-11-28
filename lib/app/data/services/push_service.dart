@@ -1,5 +1,5 @@
 /// Push notifications (Firebase Cloud Messaging) for POS Upload delivery
-/// alerts. Android only for now — iOS needs its APNs setup first.
+/// alerts, on Android and iOS (APNs via Firebase).
 ///
 /// The app's only job is to keep ERP's "Mobile Push Device" register current
 /// (via the mobile_push_register / mobile_push_unregister API methods) and to
@@ -95,8 +95,18 @@ class FirebasePushMessaging implements PushMessaging {
   // getToken/onTokenRefresh still work in firebase_messaging 17; the new
   // register()/onRegistered pair is event-only and adds nothing here.
   @override
-  // ignore: deprecated_member_use
-  Future<String?> getToken() => _fm.getToken();
+  Future<String?> getToken() async {
+    // On iOS the FCM token needs the APNs token first, which arrives a moment
+    // after launch (and only once permission is granted); asking earlier throws.
+    if (!kIsWeb && Platform.isIOS) {
+      for (var i = 0; i < 20 && await _fm.getAPNSToken() == null; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      }
+      if (await _fm.getAPNSToken() == null) return null;
+    }
+    // ignore: deprecated_member_use
+    return _fm.getToken();
+  }
 
   @override
   // ignore: deprecated_member_use
@@ -125,12 +135,15 @@ class PushService extends GetxService {
     Future<Map<String, String>> Function()? appInfo,
     void Function(PushOpen open)? navigate,
     bool? supported,
+    String? platform,
   })  : _messaging = messaging ?? FirebasePushMessaging(),
         _post = post ?? _apiPost,
         _storageOverride = storage,
         _appInfo = appInfo ?? _packageInfo,
         _navigate = navigate ?? _openDocument,
-        _supported = supported ?? (!kIsWeb && Platform.isAndroid);
+        _supported =
+            supported ?? (!kIsWeb && (Platform.isAndroid || Platform.isIOS)),
+        _platform = platform ?? (!kIsWeb && Platform.isIOS ? 'ios' : 'android');
 
   final PushMessaging _messaging;
   final Future<void> Function(String, Map<String, dynamic>) _post;
@@ -138,6 +151,9 @@ class PushService extends GetxService {
   final Future<Map<String, String>> Function() _appInfo;
   final void Function(PushOpen) _navigate;
   bool _supported;
+
+  /// Mobile Push Device `platform`: 'android' or 'ios'.
+  final String _platform;
 
   final List<StreamSubscription> _subs = [];
   PushOpen? _pending;
@@ -204,7 +220,7 @@ class PushService extends GetxService {
       final info = await _appInfo();
       await _post('mobile_push_register', {
         'token': token,
-        'platform': 'android',
+        'platform': _platform,
         ...info,
       });
       _token = token;

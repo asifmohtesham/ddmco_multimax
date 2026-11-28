@@ -12,8 +12,9 @@ import 'package:multimax/app/modules/global_widgets/settings_group.dart';
 import 'package:multimax/app/modules/global_widgets/settings_row.dart';
 import 'package:multimax/app/modules/user_area/user_area_controller.dart';
 
-/// The Notifications entry: managers on Android/iOS (documents digest), and
-/// Android users linked to an Employee (attendance reminders).
+/// The Notifications entry: managers on Android/iOS (documents digest),
+/// delivery-alert roles on Android/iOS, and Android users linked to an
+/// Employee (attendance reminders).
 bool showNotificationsEntry({
   required User? user,
   required TargetPlatform platform,
@@ -23,9 +24,9 @@ bool showNotificationsEntry({
   final isMobile =
       platform == TargetPlatform.android || platform == TargetPlatform.iOS;
   if (isMobile && user.isManager) return true;
-  // POS delivery push alerts (Android): Delivery Dispatchers who are not
-  // managers and have no linked employee still need the switch.
-  if (platform == TargetPlatform.android && pushEligible(user)) return true;
+  // POS delivery push alerts: Delivery Dispatchers who are not managers and
+  // have no linked employee still need the switch.
+  if (isMobile && pushEligible(user)) return true;
   return platform == TargetPlatform.android &&
       (user.employeeId ?? '').trim().isNotEmpty;
 }

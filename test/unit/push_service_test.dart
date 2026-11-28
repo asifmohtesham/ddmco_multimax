@@ -71,10 +71,11 @@ void main() {
         'roles': [for (final r in roles) {'role': r}],
       };
 
-  Future<PushService> start({bool supported = true}) => PushService(
+  Future<PushService> start({bool supported = true, String? platform}) => PushService(
         messaging: messaging,
         storage: storage,
         supported: supported,
+        platform: platform,
         appInfo: () async => {'app_id': 'com.ddmco.multimax', 'app_version': '2.63.0+167'},
         navigate: opened.add,
         post: (method, params) async {
@@ -93,6 +94,14 @@ void main() {
   });
 
   tearDown(() => Get.deleteAll(force: true));
+
+  test('an iPhone registers with platform ios', () async {
+    signIn(['Stock Manager']);
+    final push = await start(platform: 'ios');
+    await push.sync();
+    expect(posts.single.$1, 'mobile_push_register');
+    expect(posts.single.$2['platform'], 'ios');
+  });
 
   test('registers a Delivery Dispatcher with token, platform and app info', () async {
     signIn(['Stock User', 'Delivery Dispatcher']);
@@ -208,10 +217,11 @@ void main() {
       expect(pushEligible(null), isFalse);
     });
 
-    test('a Delivery Dispatcher without an employee sees Notifications on Android only', () {
+    test('a Delivery Dispatcher without an employee sees Notifications on Android and iOS', () {
       final d = u(['Stock User', 'Delivery Dispatcher']);
       expect(showNotificationsEntry(user: d, platform: TargetPlatform.android, isWeb: false), isTrue);
-      expect(showNotificationsEntry(user: d, platform: TargetPlatform.iOS, isWeb: false), isFalse);
+      expect(showNotificationsEntry(user: d, platform: TargetPlatform.iOS, isWeb: false), isTrue);
+      expect(showNotificationsEntry(user: d, platform: TargetPlatform.iOS, isWeb: true), isFalse);
     });
   });
 }

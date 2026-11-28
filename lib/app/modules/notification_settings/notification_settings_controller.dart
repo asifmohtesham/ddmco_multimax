@@ -96,9 +96,9 @@ class NotificationSettingsController extends GetxController {
   bool get showDigest => _account?.isManager ?? false;
   bool get showAttendance =>
       _isAndroid && (_account?.employeeId ?? '').trim().isNotEmpty;
-  /// POS delivery push alerts: Android, push available, and a role that gets them.
-  bool get showPush =>
-      _isAndroid && (_push?.supported ?? false) && pushEligible(_account);
+  /// POS delivery push alerts: push available on this phone (Android or iOS)
+  /// and a role that gets them.
+  bool get showPush => (_push?.supported ?? false) && pushEligible(_account);
   bool get showTerminal =>
       _isAndroid && (_account?.hasRole('System Manager') ?? false);
 

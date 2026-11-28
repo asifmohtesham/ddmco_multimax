@@ -268,12 +268,13 @@ void main() {
 
   group('POS delivery alerts', () {
     late _FakePush push;
-    NotificationSettingsController buildPush() => NotificationSettingsController(
+    NotificationSettingsController buildPush({bool isAndroid = true}) =>
+        NotificationSettingsController(
           storage: storage,
           scheduler: scheduler,
           attendanceScheduler:
               AttendanceNotifyScheduler(storage: storage, work: _FakeWork()),
-          isAndroid: true,
+          isAndroid: isAndroid,
           push: push,
           notificationsAllowed: () async => true,
           requestPermission: () async {
@@ -296,6 +297,10 @@ void main() {
       final c = buildPush()..onInit();
       expect(c.showPush, isTrue);
       expect(c.pushEnabled.value, isTrue);
+    });
+
+    test('shown on iOS too (push supported there)', () {
+      expect((buildPush(isAndroid: false)..onInit()).showPush, isTrue);
     });
 
     test('hidden without a delivery role', () {
