@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/models/suppliers_by_item_report.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/modules/stock/reports/suppliers_by_item/suppliers_by_item_controller.dart';
 
 class SuppliersByItemBinding extends Bindings {
@@ -27,6 +28,9 @@ class SuppliersByItemBinding extends Bindings {
         initialFilters: preset is SuppliersByItemFilters
             ? preset
             : const SuppliersByItemFilters(),
+        resolveBarcode: Get.isRegistered<ScanService>()
+            ? Get.find<ScanService>().resolveItemBarcode
+            : null,
       ),
       tag: tagForRoute(route),
     );

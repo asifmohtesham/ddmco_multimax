@@ -10,10 +10,13 @@ import 'package:flutter/rendering.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/suppliers_by_item_report.dart';
+import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
+import 'package:multimax/app/modules/global_widgets/camera_scan_overlay.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/header_chip_band.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/modules/stock/reports/suppliers_by_item/suppliers_by_item_binding.dart';
@@ -25,7 +28,10 @@ import 'package:multimax/app/modules/stock/reports/suppliers_by_item/suppliers_b
 import 'package:multimax/app/modules/stock/reports/suppliers_by_item/suppliers_by_item_view_sheet.dart';
 
 class SuppliersByItemScreen extends StatefulWidget {
-  const SuppliersByItemScreen({super.key});
+  const SuppliersByItemScreen({super.key, this.scan = CameraScanOverlay.show});
+
+  /// Opens the camera scanner and returns the code read, or null.
+  final Future<String?> Function(BuildContext context) scan;
 
   @override
   State<SuppliersByItemScreen> createState() => _SuppliersByItemScreenState();
@@ -108,6 +114,9 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
   final _treeKey = GlobalKey<_SuppliersTreeState>();
   var _wasCurrent = true;
   var _fieldsOpen = false;
+  var _cameraOpen = false;
+  var _watchingScanner = false;
+  Worker? _scanWorker;
   final _draft = {
     for (final field in _filterFields) field.key: TextEditingController(),
   };
@@ -115,6 +124,22 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    if (!_watchingScanner) {
+      _watchingScanner = true;
+      if (_controller.canScan && Get.isRegistered<DataWedgeService>()) {
+        _scanWorker = ever(Get.find<DataWedgeService>().scannedCode, (
+          String code,
+        ) {
+          // A sheet, the camera or another screen on top owns the scanner.
+          if (code.isEmpty ||
+              !mounted ||
+              ModalRoute.isCurrentOf(context) != true) {
+            return;
+          }
+          unawaited(_applyScan(code));
+        });
+      }
+    }
     final current = ModalRoute.isCurrentOf(context) ?? true;
     if (current && !_wasCurrent) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -126,6 +151,7 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
 
   @override
   void dispose() {
+    _scanWorker?.dispose();
     _scrollController.dispose();
     _searchInput.dispose();
     _searchFocus.dispose();
@@ -148,6 +174,35 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
       if (mounted && ModalRoute.isCurrentOf(context) == true) {
         _fieldsFocus.requestFocus();
       }
+    }
+  }
+
+  Future<void> _scanWithCamera() async {
+    if (_cameraOpen || _controller.isLoading.value) return;
+    _cameraOpen = true;
+    try {
+      final code = await widget.scan(context);
+      if (mounted && code != null) await _applyScan(code);
+    } finally {
+      _cameraOpen = false;
+    }
+  }
+
+  Future<void> _applyScan(String code) async {
+    final outcome = await _controller.applyScan(code);
+    if (!mounted) return;
+    switch (outcome) {
+      case SuppliersByItemScanOutcome.notFound:
+        GlobalSnackbar.error(
+          message: 'No Item matches this barcode: ${code.trim()}',
+        );
+      case SuppliersByItemScanOutcome.failed:
+        GlobalSnackbar.error(
+          message: 'Could not look up this barcode. Try again.',
+        );
+      case SuppliersByItemScanOutcome.applied ||
+          SuppliersByItemScanOutcome.ignored:
+        break;
     }
   }
 
@@ -231,8 +286,34 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
         ModalRoute.of(context)?.settings.arguments is SuppliersByItemFilters;
     final padding = MediaQuery.paddingOf(context);
 
+    // The header keeps two icons beside its title; a third would move all of
+    // them into its More menu on a phone, so scanning is the screen's FAB.
+    final canScan = _controller.canScan;
+
     return AppShellScaffold(
       backgroundColor: context.scheme.bg,
+      floatingActionButtonHeaderKey: canScan ? _toolbarKey : null,
+      floatingActionButton: canScan
+          ? Obx(() {
+              final busy = _controller.scanning.value;
+              return FloatingActionButton(
+                heroTag: null,
+                tooltip: 'Scan barcode',
+                onPressed: busy ? null : _scanWithCamera,
+                child: busy
+                    ? Builder(
+                        builder: (context) => SizedBox.square(
+                          dimension: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: IconTheme.of(context).color,
+                          ),
+                        ),
+                      )
+                    : const Icon(Icons.qr_code_scanner),
+              );
+            })
+          : null,
       bottomNavigationBar: Obx(() {
         final settingsError = _controller.settingsScopeLoadError.value;
         if (settingsError == null &&
@@ -437,7 +518,8 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
                           12,
                           12,
                           12,
-                          padding.bottom + 16,
+                          // Clears the scan button as well as the nav bar.
+                          padding.bottom + (canScan ? 88 : 16),
                         ),
                         child: Semantics(
                           header: true,

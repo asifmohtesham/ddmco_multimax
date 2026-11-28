@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/models/suppliers_by_item_report.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
@@ -844,4 +845,161 @@ void main() {
       expect(report.visibleRows.rows.last.sourceKey, detached);
     },
   );
+
+  group('applyScan', () {
+    Item item(String code, {String name = '', String? variantOf}) => Item(
+      name: name,
+      itemName: 'Item $code',
+      itemCode: code,
+      itemGroup: 'Products',
+      variantOf: variantOf,
+    );
+
+    Future<SuppliersByItemController> report(
+      _ReportApi api,
+      Future<Item?> Function(String) resolve, {
+      SuppliersByItemFilters filters = const SuppliersByItemFilters(),
+    }) async {
+      final report = SuppliersByItemController(
+        api: api,
+        initialFilters: filters,
+        resolveBarcode: resolve,
+      );
+      addTearDown(report.onClose);
+      await report.run();
+      return report;
+    }
+
+    test('replaces the Item selection and keeps the other filters', () async {
+      final api = _ReportApi()..respond = () async => _variants();
+      final lookups = <String>[];
+      final scanned = await report(
+        api,
+        (code) async {
+          lookups.add(code);
+          return item('2002906', name: 'ITEM-2002906');
+        },
+        filters: const SuppliersByItemFilters(
+          items: ['OLD'],
+          variantOf: ['OLD-TEMPLATE'],
+          suppliers: ['EDGE'],
+          warehouses: ['Stores - KA'],
+          includeDrafts: false,
+          expandBom: true,
+        ),
+      );
+      scanned.setQuery('edge');
+
+      expect(
+        await scanned.applyScan(' 20029068 '),
+        SuppliersByItemScanOutcome.applied,
+      );
+
+      expect(lookups, ['20029068']);
+      expect(api.requests, hasLength(2));
+      expect(api.requests.last.toJson(), {
+        'items': ['ITEM-2002906'],
+        'suppliers': ['EDGE'],
+        'warehouses': ['Stores - KA'],
+        'include_drafts': 0,
+        'expand_bom': 1,
+      });
+      expect(scanned.activeFilters['items'], 'ITEM-2002906');
+      expect(scanned.activeFilters.containsKey('variant_of'), isFalse);
+      expect(scanned.query.value, isEmpty);
+      expect(scanned.scanning.value, isFalse);
+    });
+
+    test('a variant selects its template', () async {
+      final api = _ReportApi()..respond = () async => _variants();
+      final scanned = await report(
+        api,
+        (_) async => item('2002906', variantOf: 'ALS'),
+        filters: const SuppliersByItemFilters(items: ['OLD']),
+      );
+
+      await scanned.applyScan('20029068');
+
+      expect(api.requests.last.items, isEmpty);
+      expect(api.requests.last.variantOf, ['ALS']);
+    });
+
+    test(
+      'an unmatched code and a failed lookup leave the report alone',
+      () async {
+        final api = _ReportApi()..respond = () async => _variants();
+        var fail = false;
+        final scanned = await report(
+          api,
+          (_) async => fail ? throw StateError('offline') : null,
+          filters: const SuppliersByItemFilters(items: ['2002906']),
+        );
+        final revision = scanned.loadedRevision.value;
+
+        expect(
+          await scanned.applyScan('99999999'),
+          SuppliersByItemScanOutcome.notFound,
+        );
+        fail = true;
+        expect(
+          await scanned.applyScan('99999999'),
+          SuppliersByItemScanOutcome.failed,
+        );
+
+        expect(api.requests, hasLength(1));
+        expect(scanned.filters.value.items, ['2002906']);
+        expect(scanned.loadedRevision.value, revision);
+        expect(scanned.hasLoaded, isTrue);
+        expect(scanned.error.value, isNull);
+        expect(scanned.scanning.value, isFalse);
+      },
+    );
+
+    test(
+      'drops a scan while busy, when empty, or without a resolver',
+      () async {
+        final api = _ReportApi()..respond = () async => _variants();
+        final lookup = Completer<Item?>();
+        var lookups = 0;
+        final scanned = await report(api, (_) {
+          lookups++;
+          return lookup.future;
+        });
+
+        expect(
+          await scanned.applyScan('  '),
+          SuppliersByItemScanOutcome.ignored,
+        );
+        final first = scanned.applyScan('20029068');
+        expect(scanned.scanning.value, isTrue);
+        expect(
+          await scanned.applyScan('20029075'),
+          SuppliersByItemScanOutcome.ignored,
+        );
+        lookup.complete(item('2002906'));
+        expect(await first, SuppliersByItemScanOutcome.applied);
+        expect(lookups, 1);
+        expect(api.requests, hasLength(2));
+
+        final loading = Completer<List<SuppliersByItemNode>>();
+        api.respond = () => loading.future;
+        final running = scanned.run();
+        expect(
+          await scanned.applyScan('20029068'),
+          SuppliersByItemScanOutcome.ignored,
+        );
+        loading.complete(_variants());
+        await running;
+        expect(lookups, 1);
+
+        final plain = SuppliersByItemController(api: api);
+        addTearDown(plain.onClose);
+        expect(plain.canScan, isFalse);
+        expect(
+          await plain.applyScan('20029068'),
+          SuppliersByItemScanOutcome.ignored,
+        );
+      },
+    );
+  });
 }
