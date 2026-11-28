@@ -1,7 +1,0 @@
-{
-  "doctype": "Workflow State",
-  "name": "Completed",
-  "workflow_state_name": "Completed",
-  "style": "Success",
-  "_if_missing": true
-}

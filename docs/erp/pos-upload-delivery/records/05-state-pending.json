@@ -1,7 +1,0 @@
-{
-  "doctype": "Workflow State",
-  "name": "Pending",
-  "workflow_state_name": "Pending",
-  "style": "",
-  "_if_missing": true
-}

@@ -1,7 +1,0 @@
-{
-  "doctype": "Workflow State",
-  "name": "Delivered",
-  "workflow_state_name": "Delivered",
-  "style": "Success",
-  "_if_missing": true
-}
