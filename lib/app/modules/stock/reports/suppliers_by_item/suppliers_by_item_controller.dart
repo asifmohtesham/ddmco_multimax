@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:collection/collection.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/models/suppliers_by_item_report.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
@@ -20,13 +21,30 @@ class _HierarchyExpansion {
   final search = <SuppliersByItemRowKey>{};
 }
 
+/// What a scanned barcode did to the report.
+enum SuppliersByItemScanOutcome {
+  /// The scanned Item replaced the Item selection and the report ran.
+  applied,
+
+  /// No Item has this barcode; the report is unchanged.
+  notFound,
+
+  /// The lookup failed (connection, permission); the report is unchanged.
+  failed,
+
+  /// Dropped: empty, or the report was already busy.
+  ignored,
+}
+
 class SuppliersByItemController extends GetxController {
   SuppliersByItemController({
     required ApiProvider api,
     SuppliersByItemFilters initialFilters = const SuppliersByItemFilters(),
+    Future<Item?> Function(String barcode)? resolveBarcode,
     StorageService? storage,
     FutureOr<String?> Function()? siteResolver,
   }) : _api = api,
+       _resolveBarcode = resolveBarcode,
        _storage =
            storage ??
            (Get.isRegistered<StorageService>()
@@ -36,6 +54,7 @@ class SuppliersByItemController extends GetxController {
        filters = initialFilters.obs;
 
   final ApiProvider _api;
+  final Future<Item?> Function(String barcode)? _resolveBarcode;
   final StorageService? _storage;
   final FutureOr<String?> Function()? _siteResolver;
   late final ReportOwnerSource? _ownerSource = _createOwnerSource();
@@ -77,6 +96,7 @@ class SuppliersByItemController extends GetxController {
   final activeFilters = <String, String>{}.obs;
   final nodes = <SuppliersByItemNode>[].obs;
   final isLoading = false.obs;
+  final scanning = false.obs;
   final error = RxnString();
   final _reportColumns = Rxn<_ReportColumns>();
 
@@ -792,6 +812,62 @@ class SuppliersByItemController extends GetxController {
         viewRetrying.value = false;
       }
     }
+  }
+
+  bool get canScan => _resolveBarcode != null;
+
+  /// Looks up the scanned Item and runs the report for it. The scan replaces
+  /// the Items and Variant Of selection (a variant selects its template, as
+  /// from a shared photo) and keeps every other filter. An unmatched code or
+  /// a failed lookup leaves the report as it is.
+  Future<SuppliersByItemScanOutcome> applyScan(String code) async {
+    final resolve = _resolveBarcode;
+    final barcode = code.trim();
+    if (resolve == null ||
+        barcode.isEmpty ||
+        _disposing ||
+        isClosed ||
+        scanning.value ||
+        isLoading.value) {
+      return SuppliersByItemScanOutcome.ignored;
+    }
+
+    final owner = _ownerGeneration;
+    final Item? item;
+    scanning.value = true;
+    try {
+      item = await resolve(barcode);
+    } catch (_) {
+      return _disposing || owner != _ownerGeneration
+          ? SuppliersByItemScanOutcome.ignored
+          : SuppliersByItemScanOutcome.failed;
+    } finally {
+      scanning.value = false;
+    }
+    if (_disposing || isClosed || owner != _ownerGeneration) {
+      return SuppliersByItemScanOutcome.ignored;
+    }
+    if (item == null) return SuppliersByItemScanOutcome.notFound;
+    // A refresh started during the lookup; run() would drop the scan.
+    if (isLoading.value) return SuppliersByItemScanOutcome.ignored;
+
+    final scanned = SuppliersByItemFilters.forScannedItem(
+      // The report's Items Link filter expects the ERPNext document name.
+      itemCode: item.name.isEmpty ? item.itemCode : item.name,
+      variantOf: item.variantOf,
+    );
+    final current = filters.value;
+    await run(
+      filters: SuppliersByItemFilters(
+        items: scanned.items,
+        variantOf: scanned.variantOf,
+        suppliers: current.suppliers,
+        warehouses: current.warehouses,
+        includeDrafts: current.includeDrafts,
+        expandBom: current.expandBom,
+      ),
+    );
+    return SuppliersByItemScanOutcome.applied;
   }
 
   Future<void> run({SuppliersByItemFilters? filters}) async {

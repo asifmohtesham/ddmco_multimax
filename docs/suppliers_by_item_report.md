@@ -193,6 +193,23 @@ has `BOM-3000338-001` with a component `3000281` that expands draft
   The report keeps session choices and offers **Retry** if saving fails.
   **Item / Supplier**, **No supplier recorded**, navigation and the
   **End of list** marker remain available with every Field off.
+
+  **Scan barcode** is the report's floating button (the camera) and also
+  listens to the hardware scanner while the report is the screen on top; a
+  filter sheet, the camera or another screen above it takes the scanner. It
+  is a floating button because a third header icon would move Fields and
+  Refresh into the header's More menu on a phone. A scan looks the Item up
+  with `ScanService.resolveItemBarcode` (EAN-8, registered barcode or Batch)
+  and runs the report for it: a variant selects its template in **Variant
+  Of**, any other Item selects itself in **Items**, as from a shared photo.
+  The scan replaces both of those filters and keeps **Suppliers**,
+  **Warehouses** and the two switches. An unmatched code shows "No Item
+  matches this barcode: <code>" and a failed lookup "Could not look up this
+  barcode. Try again."; both leave the results and filters as they were. A
+  scan made while the report is loading is dropped. The button is hidden
+  while the expanded header reaches it (a small screen with many filter
+  chips), like every list screen's floating button; the hardware scanner
+  still works then.
   [Report screen](../lib/app/modules/stock/reports/suppliers_by_item/suppliers_by_item_screen.dart)
 The Item form has no Suppliers card, because the Item DocType has no supplier
 field. Supplier lookups use this report.
