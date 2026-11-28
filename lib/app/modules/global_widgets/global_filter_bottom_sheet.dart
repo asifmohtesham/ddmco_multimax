@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/core/widgets/sheet_status_bar_gap.dart';
 
 class SortOption {
@@ -113,7 +114,7 @@ class GlobalFilterBottomSheet extends StatelessWidget {
                       'Sort By',
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w600,
-                        color: colorScheme.primary,
+                        color: context.accentText,
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -173,7 +174,7 @@ class GlobalFilterBottomSheet extends StatelessWidget {
                     'Filter Options',
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w600,
-                      color: colorScheme.primary,
+                      color: context.accentText,
                     ),
                   ),
                   // const SizedBox(height: 16),

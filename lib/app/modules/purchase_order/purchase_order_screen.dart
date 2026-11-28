@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/purchase_order/purchase_order_controller.dart';
@@ -318,7 +319,7 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
                   label: 'Total',
                   value: '$currencySymbol $grandTotal',
                   icon: Icons.account_balance_wallet_outlined,
-                  valueColor: colorScheme.primary,
+                  valueColor: context.accentText,
                   backgroundColor:
                       colorScheme.primaryContainer.withValues(alpha: 0.3),
                 ),

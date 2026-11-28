@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/customer_model.dart';
@@ -196,7 +197,7 @@ class _PosUploadFilterBottomSheetState
                                     ? FontWeight.bold
                                     : FontWeight.normal,
                                 color: isSelected
-                                    ? colorScheme.primary
+                                    ? context.accentText
                                     : colorScheme.onSurface,
                               ),
                             ),

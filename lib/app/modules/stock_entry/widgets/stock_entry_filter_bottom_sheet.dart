@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/core/utils/navigator_utils.dart';
@@ -353,7 +354,7 @@ class _StockEntryFilterBottomSheetState
                                       ? FontWeight.bold
                                       : FontWeight.normal,
                                   color: isSelected
-                                      ? colorScheme.primary
+                                      ? context.accentText
                                       : colorScheme.onSurface,
                                 ),
                               ),

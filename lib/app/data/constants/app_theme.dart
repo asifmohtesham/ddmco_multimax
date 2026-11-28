@@ -256,3 +256,69 @@ extension AppSchemeX on BuildContext {
     );
   }
 }
+
+/// WCAG 2.x contrast ratio between two opaque colours.
+double contrastRatio(Color a, Color b) {
+  final la = a.computeLuminance();
+  final lb = b.computeLuminance();
+  final hi = la > lb ? la : lb;
+  final lo = la > lb ? lb : la;
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/// The ink for small accent-coloured text: text buttons, links, section
+/// titles. The accent primaries are tuned for white-on-fill, not for text on
+/// the tinted surfaces, so some (light Blue and Purple, dark Maroon) fall
+/// below WCAG AA (4.5:1) on the scaffold, sheets, dialogs, search views and
+/// accent-tinted badges. Those get body ink; the others keep the accent.
+///
+/// The surfaces are every one small accent text is drawn on without an
+/// explicit colour: cards and plain sheets ([AppScheme.fg]), the scaffold and
+/// search views ([AppScheme.bg]), input fills ([AppScheme.subtle]), and the
+/// seeded Material containers — sheets (low), menus (container), and dialogs
+/// and search views (high) — plus the accent's own badge tint (up to 15%)
+/// over cards and the scaffold, which light Orange fails (4.20:1).
+/// `surfaceContainerHighest` is left out: it is a fill for chips and tracks,
+/// not a text surface.
+Color accentTextFor(ColorScheme colors, AppScheme scheme) {
+  final tint = colors.primary.withValues(alpha: 0.15);
+  final surfaces = [
+    scheme.fg,
+    scheme.bg,
+    scheme.subtle,
+    colors.surfaceContainerLow,
+    colors.surfaceContainer,
+    colors.surfaceContainerHigh,
+    Color.alphaBlend(tint, scheme.fg),
+    Color.alphaBlend(tint, scheme.bg),
+  ];
+  return surfaces.every((s) => contrastRatio(colors.primary, s) >= 4.5)
+      ? colors.primary
+      : scheme.text;
+}
+
+extension AccentTextX on BuildContext {
+  /// [accentTextFor] for the current theme. Use it instead of
+  /// `colorScheme.primary` for any small text.
+  Color get accentText {
+    final theme = Theme.of(this);
+    return accentTextFor(theme.colorScheme, AppScheme.of(theme.brightness));
+  }
+}
+
+extension StatusInkX on BuildContext {
+  bool get _isDark => Theme.of(this).brightness == Brightness.dark;
+
+  /// Warning text and icons: orange x700 in light mode, x300 in dark. The
+  /// material `Colors.orange` is 2.2:1 on white.
+  Color get warningInk => _isDark ? AppColors.orange300 : AppColors.orange700;
+
+  /// Success text and icons: green x700 in light mode, x300 in dark. The
+  /// material `Colors.green` is 2.5:1 on white.
+  Color get successInk => _isDark ? AppColors.green300 : AppColors.green700;
+}
+
+/// [ink] when it clears WCAG AA (4.5:1) as small text on [surface], else
+/// [fallback]. For caller-supplied colours, such as an item sheet's accent.
+Color readableInk(Color ink, Color surface, Color fallback) =>
+    contrastRatio(ink, surface) >= 4.5 ? ink : fallback;

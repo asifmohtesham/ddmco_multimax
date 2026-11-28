@@ -1,6 +1,7 @@
 // ignore_for_file: lines_longer_than_80_chars
 
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/balance_chip.dart';
 import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
@@ -222,10 +223,10 @@ class _SimpleField extends StatelessWidget {
       final borderColor = isHardError
           ? theme.colorScheme.error
           : isValid
-              ? Colors.green
+              ? context.successInk
               : effectiveColor;
 
-      final chipColor   = isWarning ? Colors.orange : effectiveColor;
+      final chipColor   = isWarning ? context.warningInk : w.accentColor ?? context.accentText;
       final chipBalance = w.balanceOverride?.call() ?? c.batchBalanceFor('');
 
       Widget buildSuffixRow() => IntrinsicWidth(
@@ -247,7 +248,7 @@ class _SimpleField extends StatelessWidget {
                   isWarning
                       ? Icons.warning_amber_rounded
                       : Icons.check_circle,
-                  color: isWarning ? Colors.orange : Colors.green,
+                  color: isWarning ? context.warningInk : context.successInk,
                   size: 20,
                 ),
               ),
@@ -264,7 +265,7 @@ class _SimpleField extends StatelessWidget {
               _pickerSuffixBtn(effectiveColor, w.onPickerTap!),
             if (!validating && isValid && w.onPickerTap != null)
               _pickerSuffixBtn(
-                isWarning ? Colors.orange : effectiveColor,
+                isWarning ? context.warningInk : effectiveColor,
                 w.onPickerTap!,
               ),
             if (c.batchController.text.isNotEmpty && !isReadOnly)
@@ -301,8 +302,8 @@ class _SimpleField extends StatelessWidget {
               helperText:    isWarning ? errorMsg : null,
               helperMaxLines: 2,
               helperStyle: isWarning
-                  ? const TextStyle(
-                      color:      Colors.orange,
+                  ? TextStyle(
+                      color:      context.warningInk,
                       fontWeight: FontWeight.w600,
                       fontSize:   11,
                     )
@@ -397,7 +398,7 @@ class _EditModeField extends StatelessWidget {
 
       final isHardError = !isValid && errorMsg.isNotEmpty;
       final isWarning   =  isValid && errorMsg.isNotEmpty;
-      final chipColor   = isWarning ? Colors.orange : effectiveColor;
+      final chipColor   = isWarning ? context.warningInk : w.accentColor ?? context.accentText;
       final chipBalance = w.balanceOverride?.call() ?? c.batchBalanceFor('');
       final warehouse   = w.browseWarehouse ?? c.resolvedWarehouseForBatch;
 

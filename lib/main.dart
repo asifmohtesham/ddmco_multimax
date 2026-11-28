@@ -192,7 +192,7 @@ ThemeData buildAppTheme(
       elevation: 0,
     ),
     tabBarTheme: TabBarThemeData(
-      labelColor: primary,
+      labelColor: accentTextFor(colorScheme, scheme),
       unselectedLabelColor: scheme.textMuted,
       indicatorColor: primary,
       indicatorSize: TabBarIndicatorSize.tab,
@@ -250,8 +250,18 @@ ThemeData buildAppTheme(
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
       ),
     ),
+    // Text and outlined buttons sit on dialogs, sheets and search views as
+    // well as cards;
+    // the accent fails AA as small text on those for some accents.
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: accentTextFor(colorScheme, scheme),
+      ),
+    ),
     textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(foregroundColor: primary),
+      style: TextButton.styleFrom(
+        foregroundColor: accentTextFor(colorScheme, scheme),
+      ),
     ),
     visualDensity: VisualDensity.adaptivePlatformDensity,
     textTheme: TextTheme(

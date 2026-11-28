@@ -111,7 +111,7 @@ class BatchPickerSheet extends StatelessWidget {
                 child: Obx(() {
                   if (c.isLoading.value)   return _Skeleton();
                   if (c.errorMessage.value != null) {
-                    return _ErrorState(
+                    return BatchPickerErrorState(
                       message: c.errorMessage.value!,
                       onRetry: c.retry,
                       accentColor: accentColor,
@@ -119,7 +119,7 @@ class BatchPickerSheet extends StatelessWidget {
                   }
                   final rows = c.filtered;
                   if (rows.isEmpty) {
-                    return _EmptyState(
+                    return BatchPickerEmptyState(
                       hasSearch:   c.searchQuery.value.isNotEmpty,
                       accentColor: accentColor,
                       warehouseFiltered: !c.showAllWarehouses.value && warehouse != null,
@@ -150,6 +150,19 @@ class BatchPickerSheet extends StatelessWidget {
 }
 
 // ── Handle ────────────────────────────────────────────────────────────────────
+/// Ink for the caller's accent as small text on the sheet, or on the
+/// accent's own [tint] over it. The accent is caller-supplied (teal by
+/// default, 3.7:1 on white), so it labels text only where it clears WCAG AA;
+/// body ink otherwise. Icons and borders keep the accent.
+@visibleForTesting
+Color batchPickerInk(BuildContext context, Color accent, {double tint = 0}) {
+  final surface = Theme.of(context).colorScheme.surface;
+  final behind = tint == 0
+      ? surface
+      : Color.alphaBlend(accent.withValues(alpha: tint), surface);
+  return readableInk(accent, behind, context.scheme.text);
+}
+
 class _Handle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -211,7 +224,7 @@ class _Header extends StatelessWidget {
                             : warehouse!,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: c.showAllWarehouses.value
-                              ? accentColor
+                              ? batchPickerInk(context, accentColor)
                               : context.scheme.textMuted,
                         ),
                         overflow: TextOverflow.ellipsis,
@@ -271,7 +284,7 @@ class _Header extends StatelessWidget {
                             fontSize:   12,
                             fontWeight: FontWeight.w500,
                             color:      allWh
-                                ? accentColor
+                                ? batchPickerInk(context, accentColor, tint: 0.12)
                                 : context.scheme.textMuted,
                           ),
                         ),
@@ -394,7 +407,9 @@ class _BatchRow extends StatelessWidget {
             BalanceChip(
               balance:   row.balanceQty,
               isLoading: false,
-              color:     expired ? context.scheme.textMuted : accentColor,
+              color:     expired
+                  ? context.scheme.textMuted
+                  : batchPickerInk(context, accentColor, tint: 0.15),
               prefix:    '',
             ),
 
@@ -515,14 +530,17 @@ class _SkeletonBar extends StatelessWidget {
 
 // ── Empty State ───────────────────────────────────────────────────────────────
 // After:
-class _EmptyState extends StatelessWidget {
+/// The picker's no-results state. Public so tests can check its contrast.
+@visibleForTesting
+class BatchPickerEmptyState extends StatelessWidget {
   final bool         hasSearch;
   final Color        accentColor;
   /// True when results are scoped to a specific warehouse (filter is active).
   final bool         warehouseFiltered;
   final VoidCallback onShowAll;
 
-  const _EmptyState({
+  const BatchPickerEmptyState({
+    super.key,
     required this.hasSearch,
     required this.accentColor,
     this.warehouseFiltered = false,
@@ -562,7 +580,7 @@ class _EmptyState extends StatelessWidget {
                 icon:  Icon(Icons.public_rounded, size: 16, color: accentColor),
                 label: Text(
                   'Show all warehouses',
-                  style: TextStyle(color: accentColor),
+                  style: TextStyle(color: batchPickerInk(context, accentColor)),
                 ),
                 style: OutlinedButton.styleFrom(
                   side: BorderSide(color: accentColor.withOpacity(0.5)),
@@ -579,12 +597,15 @@ class _EmptyState extends StatelessWidget {
 }
 
 // ── Error State ───────────────────────────────────────────────────────────────
-class _ErrorState extends StatelessWidget {
+/// The picker's load-failure state. Public so tests can check its contrast.
+@visibleForTesting
+class BatchPickerErrorState extends StatelessWidget {
   final String       message;
   final VoidCallback onRetry;
   final Color        accentColor;
 
-  const _ErrorState({
+  const BatchPickerErrorState({
+    super.key,
     required this.message,
     required this.onRetry,
     required this.accentColor,
@@ -612,7 +633,7 @@ class _ErrorState extends StatelessWidget {
               icon:  const Icon(Icons.refresh),
               label: const Text('Retry'),
               style: OutlinedButton.styleFrom(
-                foregroundColor: accentColor,
+                foregroundColor: batchPickerInk(context, accentColor),
                 side: BorderSide(color: accentColor),
               ),
             ),

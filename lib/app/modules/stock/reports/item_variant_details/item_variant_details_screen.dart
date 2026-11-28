@@ -1419,7 +1419,7 @@ class _VariantTileState extends State<_VariantTile> {
                               : 'Check Stock',
                         ),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: cs.primary,
+                          foregroundColor: context.accentText,
                           side: BorderSide(
                             color: cs.primary.withValues(alpha: 0.4),
                           ),

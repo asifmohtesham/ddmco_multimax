@@ -30,7 +30,7 @@ class SoPickHeader extends StatelessWidget {
     final done = progress.isComplete;
     final accent = done
         ? (isDark ? AppColors.green300 : AppColors.green700)
-        : scheme.primary;
+        : context.accentText;
     final barFill = done ? AppColors.green500 : scheme.primary;
 
     return Container(

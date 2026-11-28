@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 
 /// A zero-elevation, titled section card used to visually group related
 /// fields in DocType form screens.
@@ -87,7 +88,7 @@ class DocSectionCard extends StatelessWidget {
                 Text(
                   title,
                   style: theme.textTheme.titleSmall?.copyWith(
-                    color: colorScheme.primary,
+                    color: context.accentText,
                     fontWeight: FontWeight.bold,
                   ),
                 ),

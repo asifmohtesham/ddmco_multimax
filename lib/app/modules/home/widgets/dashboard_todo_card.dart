@@ -73,7 +73,7 @@ class DashboardTodoCard extends StatelessWidget {
       case 'low':
         return context.scheme.textMuted;
       default: // medium
-        return Theme.of(context).colorScheme.primary;
+        return context.accentText;
     }
   }
 

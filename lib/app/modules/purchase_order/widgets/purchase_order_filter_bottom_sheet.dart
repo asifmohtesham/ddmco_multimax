@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/supplier_model.dart';
 import 'package:multimax/app/modules/purchase_order/purchase_order_controller.dart';
@@ -144,7 +145,7 @@ class _PurchaseOrderFilterBottomSheetState
                                     ? FontWeight.bold
                                     : FontWeight.normal,
                                 color: isSelected
-                                    ? colorScheme.primary
+                                    ? context.accentText
                                     : colorScheme.onSurface,
                               ),
                             ),

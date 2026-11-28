@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/material_request_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
@@ -436,7 +437,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
                         ? detailed.scheduleDate
                         : '—',
                     icon: Icons.event_outlined,
-                    valueColor: colorScheme.primary,
+                    valueColor: context.accentText,
                     alignRight: true,
                   ),
                 ),
@@ -559,8 +560,8 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
                 '$fulfilledCount',
                 'Ordered',
                 color: fulfilledCount == detailed.items.length
-                    ? Colors.green
-                    : colorScheme.primary,
+                    ? context.successInk
+                    : context.accentText,
               ),
             ],
           ),
@@ -574,7 +575,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
               minHeight: 4,
               backgroundColor: colorScheme.surfaceContainerHighest,
               valueColor: AlwaysStoppedAnimation<Color>(
-                orderedQty >= totalQty ? Colors.green : colorScheme.primary,
+                orderedQty >= totalQty ? AppColors.green500 : colorScheme.primary,
               ),
             ),
           ),
