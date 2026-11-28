@@ -61,3 +61,8 @@ android/app/*.keystore
 # Design mockups (not source code)
 docs/mockups/
 .superpowers/
+
+# Firebase config — written by CI from the GOOGLE_SERVICES_JSON_BASE64 secret
+# (public repo). Locally: copy the file from the Firebase console.
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist

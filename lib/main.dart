@@ -16,6 +16,7 @@ import 'package:multimax/app/data/services/database_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/services/hid_wedge_service.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
+import 'package:multimax/app/data/services/push_service.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/services/share_intake_service.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
@@ -104,6 +105,10 @@ Future<void> main() async {
   // open when the server cannot be reached at startup. (GetStorage itself is
   // initialised at the top of main.)
   Get.put<StorageService>(StorageService(), permanent: true);
+
+  // Push notifications (Android, FCM). Starts Firebase and catches an alert
+  // that launched the app; registration happens once the user is known.
+  await Get.putAsync<PushService>(() => PushService().start(), permanent: true);
 
   Get.put<AuthenticationController>(AuthenticationController(), permanent: true);
   Get.put<AppUpdateService>(

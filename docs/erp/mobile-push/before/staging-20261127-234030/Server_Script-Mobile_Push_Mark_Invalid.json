@@ -1,0 +1,20 @@
+{
+  "name": "Mobile Push Mark Invalid",
+  "owner": "asif@multimax.cloud",
+  "creation": "2026-11-27 23:40:18.673863",
+  "modified": "2026-11-27 23:40:18.673863",
+  "modified_by": "asif@multimax.cloud",
+  "docstatus": 0,
+  "idx": 0,
+  "script_type": "API",
+  "event_frequency": "All",
+  "doctype_event": "Before Insert",
+  "api_method": "mobile_push_mark_invalid",
+  "allow_guest": 0,
+  "disabled": 0,
+  "script": "# Server Script (API) mobile_push_mark_invalid — the sender reports a token FCM rejected (uninstalled app, bad token).\n# Args: device (Mobile Push Device name), error (FCM error text). System Manager only.\nif \"System Manager\" not in frappe.get_roles():\n    frappe.throw(\"Not permitted\", frappe.PermissionError)\n\ndevice = frappe.form_dict.get(\"device\")\nif not device or not frappe.db.exists(\"Mobile Push Device\", device):\n    frappe.throw(\"Unknown device.\")\nfrappe.db.set_value(\"Mobile Push Device\", device, {\n    \"enabled\": 0,\n    \"last_error\": (frappe.form_dict.get(\"error\") or \"Rejected by FCM\")[:1000],\n})\nfrappe.response[\"message\"] = {\"device\": device}\n",
+  "enable_rate_limit": 0,
+  "rate_limit_count": 5,
+  "rate_limit_seconds": 86400,
+  "doctype": "Server Script"
+}

@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/services/attendance_notify_scheduler.dart';
 import 'package:multimax/app/data/services/digest_scheduler.dart';
+import 'package:multimax/app/data/services/push_service.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/notification_settings/notification_settings_controller.dart';
 
@@ -56,6 +57,14 @@ class _CountingScheduler extends DigestScheduler {
 
   @override
   Future<void> rearm() async => rearms++;
+}
+
+class _FakePush extends PushService {
+  _FakePush() : super(supported: true);
+  final syncs = <bool>[];
+
+  @override
+  Future<void> sync({bool askPermission = true}) async => syncs.add(askPermission);
 }
 
 void main() {
@@ -254,6 +263,71 @@ void main() {
       await c.setTerminalEnabled(true);
       expect(storage.getAttendanceTerminalAlerts(user), isTrue);
       expect(work.calls, ['cancel:$kAttendanceUniqueName', 'registerOneOff:$kAttendanceUniqueName']);
+    });
+  });
+
+  group('POS delivery alerts', () {
+    late _FakePush push;
+    NotificationSettingsController buildPush({bool isAndroid = true}) =>
+        NotificationSettingsController(
+          storage: storage,
+          scheduler: scheduler,
+          attendanceScheduler:
+              AttendanceNotifyScheduler(storage: storage, work: _FakeWork()),
+          isAndroid: isAndroid,
+          push: push,
+          notificationsAllowed: () async => true,
+          requestPermission: () async {
+            permissionAsks++;
+            return permissionAnswer;
+          },
+        );
+
+    setUp(() {
+      push = _FakePush();
+      box._data['currentUser'] = <String, dynamic>{
+        ...box._data['currentUser'] as Map,
+        'roles': [
+          {'role': 'Delivery Dispatcher'}
+        ],
+      };
+    });
+
+    test('shown to a Delivery Dispatcher on Android, on by default', () {
+      final c = buildPush()..onInit();
+      expect(c.showPush, isTrue);
+      expect(c.pushEnabled.value, isTrue);
+    });
+
+    test('shown on iOS too (push supported there)', () {
+      expect((buildPush(isAndroid: false)..onInit()).showPush, isTrue);
+    });
+
+    test('hidden without a delivery role', () {
+      box._data['currentUser'] = <String, dynamic>{
+        ...box._data['currentUser'] as Map,
+        'roles': [
+          {'role': 'Stock User'}
+        ],
+      };
+      expect((buildPush()..onInit()).showPush, isFalse);
+    });
+
+    test('switching off persists and withdraws without a permission prompt', () async {
+      final c = buildPush()..onInit();
+      await c.setPushEnabled(false);
+      expect(storage.getPushDeliveryAlerts(user), isFalse);
+      expect(permissionAsks, 0);
+      expect(push.syncs, [false]);
+    });
+
+    test('switching on asks permission and re-registers', () async {
+      final c = buildPush()..onInit();
+      await c.setPushEnabled(false);
+      await c.setPushEnabled(true);
+      expect(storage.getPushDeliveryAlerts(user), isTrue);
+      expect(permissionAsks, 1);
+      expect(push.syncs, [false, false]);
     });
   });
 }
