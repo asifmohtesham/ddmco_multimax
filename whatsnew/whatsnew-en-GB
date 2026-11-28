@@ -1,1 +1,1 @@
-Suppliers by Item: the list now starts below a small gap under the search box, and a thin line marks the search box once rows scroll beneath it. While you scroll through a template's variants, its code, variant count and Balance Qty stay pinned at the top.
+Suppliers by Item: scan a barcode to see who supplies an item. Tap the scan button at the bottom right to use the camera, or use the handheld's scanner while the report is open. The report then shows that item (or all variants of its template) and keeps your Supplier and Warehouse filters.
